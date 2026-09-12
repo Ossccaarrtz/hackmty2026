@@ -30,10 +30,10 @@ def lambda_handler(event, context):
     response = table.query(KeyConditionExpression=Key("user_id").eq(user_id))
     items = response["Items"]
 
-    deposits = [i for i in items if i["type"] == "deposit"]
-    purchases = [i for i in items if i["type"] == "purchase"]
-    bills = [i for i in items if i["type"] == "bill"]
-    meta = next((i for i in items if i["type"] == "meta"), {"total_income": 0, "total_expense": 0})
+    deposits = [i for i in items if i.get("type") == "deposit"]
+    purchases = [i for i in items if i.get("type") == "purchase"]
+    bills = [i for i in items if i.get("type") == "bill"]
+    meta = next((i for i in items if i.get("type") == "meta"), {"total_income": 0, "total_expense": 0})
 
     result = compute_signals(
         deposits=deposits,
