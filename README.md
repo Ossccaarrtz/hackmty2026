@@ -131,8 +131,8 @@ Se descubrió que la infraestructura de Jarbis ya vive en esta cuenta (`jarbis-*
 | Recurso | Detalle |
 |---|---|
 | Tabla DynamoDB | `jarbis-financiero-data` — PK `user_id`, SK `sk` (mismo patrón que las tablas `jarbis-*` existentes). También guarda `STATE#simulation` y el log de `ACTION#...` |
-| Lambdas | `jarbis-financiero-signals`, `jarbis-financiero-transactions`, `jarbis-financiero-advance-day`, `jarbis-financiero-chat`, `jarbis-financiero-notifier`, `jarbis-financiero-notifications` — todas Python 3.12, todas usan el rol ya existente `job-search-lambda-role` |
-| API Gateway | Rutas `GET /signals`, `GET /transactions`, `POST /simulation/advance-day`, `POST /chat/message`, `GET /notifications` agregadas al API `jarbis` ya existente. CORS configurado a nivel de API (necesario para el POST con JSON body del chat) |
+| Lambdas | `jarbis-financiero-signals`, `jarbis-financiero-transactions`, `jarbis-financiero-advance-day`, `jarbis-financiero-chat`, `jarbis-financiero-notifier`, `jarbis-financiero-notifications`, `jarbis-financiero-envelopes` — todas Python 3.12, todas usan el rol ya existente `job-search-lambda-role` |
+| API Gateway | Rutas `GET /signals`, `GET /transactions`, `POST /simulation/advance-day`, `POST /chat/message`, `GET /notifications`, `GET/POST /envelopes`, `POST /envelopes/income-pattern`, `POST /envelopes/confirm-allocation` agregadas al API `jarbis` ya existente. CORS configurado a nivel de API (necesario para el POST con JSON body del chat) |
 | DynamoDB Streams | Habilitado en `jarbis-financiero-data` (`NEW_AND_OLD_IMAGES`) — dispara `jarbis-financiero-notifier` en cada escritura, sin polling |
 | Nessie API key | Variable de entorno `NESSIE_API_KEY` en el Lambda `jarbis-financiero-advance-day` (no hardcodeada) |
 
@@ -201,6 +201,27 @@ Probado en vivo de punta a punta: se le pidió al chat mover $15 a ahorro → el
 **El chat tiene memoria real de conversación** — no es solo un endpoint sin estado. Cada mensaje reconstruye el historial visible (lo que Mia escribió + la respuesta final de Centinel, no los pasos internos de qué herramienta se llamó) desde DynamoDB (`sk: CHAT_HISTORY`) antes de mandarlo a Gemini, y lo vuelve a guardar al final. Topado a los últimos 10 intercambios para controlar costo/latencia. `reset=true` también borra la memoria, para que cada ensayo empiece limpio.
 
 Probado en vivo: le pedí al chat "¿cuál sería un monto razonable para ahorrar?", sugirió $30, y en el siguiente mensaje escribí solo "ok, hazlo con ese monto" (sin repetir el número) — ejecutó los $30 correctamente. Después de un reset, la misma frase ambigua sin contexto previo hizo que el modelo preguntara en vez de inventar un monto — la memoria funciona, y su ausencia no produce alucinaciones.
+
+**Sexto endpoint en vivo — apartados de gastos fijos (envelope budgeting) con reparto proporcional automático de nómina:**
+```
+GET  https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/envelopes?user_id=mia
+POST .../envelopes                    { "category": "gasolina", "monthly_target": 2000 }
+POST .../envelopes/income-pattern     { "expected_amount": 565, "frequency_days": 11 }
+POST .../envelopes/confirm-allocation
+```
+
+La idea: el usuario define gastos fijos mensuales por categoría (ej. gasolina $2000/mes), y cuando cae un depósito que coincide con su nómina, se reparte proporcional a cada apartado según los **días reales transcurridos** desde el depósito anterior — no una fracción fija de "1/4 si es semanal", porque el ingreso de Mia es irregular.
+
+**Cómo distingue una nómina real de un depósito random (ej. un amigo mandando $100):** Nessie no da ninguna señal estructurada para esto (el objeto `deposit` solo trae monto, fecha y una descripción de texto libre). En vez de adivinar con pattern-matching frágil sobre texto, el usuario declara su patrón de ingreso **una sola vez** (`POST /envelopes/income-pattern`) — monto aproximado + frecuencia — y cada depósito nuevo se compara contra ese patrón con tolerancia (25% por default). Solo un depósito que matchea dispara el reparto. Misma doctrina anti-alucinación del resto del proyecto: el sistema no asume, verifica contra algo ya confirmado explícitamente.
+
+**Disparo automático, sin endpoint nuevo que llamar:** reutiliza el mismo webhook de DynamoDB Streams del punto anterior — `jarbis-financiero-notifier` ya reacciona a cada depósito nuevo, ahora también intenta el reparto si coincide con el patrón.
+
+**Reusa el mismo umbral de liquidez de 7 días que `move_to_savings`** (no un umbral nuevo e inconsistente): si el reparto completo dejaría el colchón por debajo de eso, no ejecuta nada solo — genera una propuesta pendiente (`partial_allocation_pause`) que se confirma por chat (`confirm_pending_allocation`) o por `POST /envelopes/confirm-allocation`.
+
+Probado en vivo end-to-end: se crearon apartados de gasolina ($2000/mes) y comida ($3000/mes), se declaró el patrón de nómina (~$565 cada 11 días), y:
+- Un depósito de $580 (dentro de tolerancia) disparó el reparto solo: $266.67 a gasolina y $400 a comida (proporcional a 4 días reales transcurridos), notificación automática en `/notifications` sin llamar nada más.
+- Un depósito de $100 inmediatamente después **no movió nada** — no coincide con el patrón, cero notificación, cero reparto.
+- Hallazgo de una auditoría propia durante esta prueba: los repartos a apartados se contaban como "gasto discrecional" en el score (`essential_ratio` cayó de 79 a 56), porque `signal_engine.py` no sabía que `category="envelope:*"` es una reasignación interna de dinero, no un gasto. Corregido tratándolo igual que `savings_transfer` (ni esencial ni discrecional, no dispara el guardrail de anomalía).
 
 Detalle completo de la historia simulada en [`/seed/README.md`](./seed/README.md).
 

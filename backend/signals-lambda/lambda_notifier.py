@@ -12,6 +12,8 @@ import boto3
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 
+import agent_actions as actions
+
 REGION = "us-east-1"
 TABLE_NAME = "jarbis-financiero-data"
 
@@ -83,5 +85,27 @@ def lambda_handler(event, context):
                 f"Nuevo movimiento detectado: se detuvo el cargo automatico de {new_image.get('payee', 'un cargo')}.",
                 time.strftime("%Y-%m-%d")
             )
+
+        elif event_name == "INSERT" and new_image.get("type") == "deposit":
+            # Reparto automatico a apartados -- solo procede si el deposito
+            # matchea el patron de nomina que el usuario declaro. Un
+            # deposito random (ej. un amigo mandando $100) no dispara nada
+            # porque no matchea, verified_allocate_envelopes ya lo checa.
+            try:
+                result = actions.verified_allocate_envelopes(user_id, new_image.get("amount"), new_image.get("date", ""))
+            except Exception:
+                result = None
+            if result and result.get("ok"):
+                write_notification(
+                    user_id,
+                    f"Nomina detectada: se repartió ${result['amount']} entre tus apartados.",
+                    new_image.get("date", "")
+                )
+            elif result and result.get("pending"):
+                write_notification(
+                    user_id,
+                    f"Nomina detectada, pero repartirla dejaria tu colchon muy bajo -- tienes una propuesta de reparto pendiente de confirmar.",
+                    new_image.get("date", "")
+                )
 
     return {"statusCode": 200}

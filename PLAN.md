@@ -94,6 +94,19 @@ Se lanzaron dos revisiones independientes buscando bugs reales (no solo estilo).
 - ~~Webhook tras cada transacción~~ — **ya resuelto.** DynamoDB Streams habilitado en `jarbis-financiero-data`, dispara `jarbis-financiero-notifier` automáticamente en cada escritura (sin polling). Probado en vivo: se pidió por chat mover $15 a ahorro → sin llamar nada más, la notificación ya estaba en `GET /notifications` segundos después. Funciona igual sin importar si la acción vino del chat o de `advance-day`.
 - ~~Billing de Gemini~~ — **ya resuelto.** Cloud Prepay activado (MXN 100). Probado en vivo: 8 solicitudes seguidas en menos de un minuto, todas exitosas (el límite gratuito era 5/minuto). Modelo de vuelta a `gemini-3.6-flash`.
 - **Un segundo escenario/persona** (alguien con ingreso estable) — quedó como idea abierta en la pizarra de equipo, útil para demostrar que el score no castiga a todos igual.
+- ~~Apartados de gastos fijos con reparto proporcional~~ — **ya resuelto** (ver sección 4.5). Falta la UI de frontend para crear apartados / declarar el patrón de nómina — hoy solo funciona por chat o por el endpoint REST directo.
+
+## 4.5. Apartados (envelope budgeting con reparto proporcional de nómina) — ✅ construido, desplegado y probado en vivo
+
+Detalle completo con ejemplos de request/response en el [README](./README.md#backend-desplegado-ya-en-la-cuenta-oficial-de-aws-del-equipo), sección "Sexto endpoint en vivo". Resumen de lo que cambió respecto al spec original:
+- Todo lo de abajo se implementó tal cual — `agent_actions.verified_allocate_envelopes`, `lambda_envelopes.py` nuevo, `lambda_notifier.py` extendido, 4 tools nuevas en el chat.
+- Se agregó `set_income_pattern` como tool de chat (no estaba en el spec original) para poder declarar el patrón de nómina sin usar el endpoint REST directo.
+- **Bug encontrado y corregido durante la prueba en vivo:** `signal_engine.py` contaba los repartos a apartados como gasto discrecional (rompía `essential_ratio`) porque no reconocía `category="envelope:*"` como una reasignación interna de dinero. Se agregó `is_neutral()` para tratarlo igual que `savings_transfer`.
+- Se resolvió la pregunta abierta del reparto: proporcional entre todos los apartados (no por prioridad), como se proponía.
+- Pendiente real: no hay UI en frontend todavía para crear apartados / declarar el patrón de nómina — hoy solo se configura por chat o llamando el endpoint REST directo. `_handle_reset` de `advance-day` tampoco limpia apartados/patrón de nómina (son independientes de la simulación de checkpoints a propósito).
+
+<details>
+<summary>Spec original (referencia)</summary>
 
 ## 4.5. Spec — Apartados (envelope budgeting con reparto proporcional de nómina)
 
@@ -128,6 +141,8 @@ Se lanzaron dos revisiones independientes buscando bugs reales (no solo estilo).
 - `GET /envelopes?user_id=mia` — lista con saldo derivado + estado (`on_track` / `pending_confirmation`).
 
 **Pregunta abierta (decidir antes de programar el paso 8 con varios apartados a la vez):** si hay varios apartados y la nómina no alcanza para todos con el colchón sano, ¿reparto proporcional entre todos (todos reciben menos) o por prioridad (llenar el primero al 100% antes de tocar el siguiente)? Propuesta: proporcional entre todos, más defendible frente a jueces ("nadie se queda en cero arbitrariamente").
+
+</details>
 
 ## 5. Notas de seguridad ya resueltas (no hay que volver a decidir esto)
 

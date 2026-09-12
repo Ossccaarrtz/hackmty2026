@@ -24,6 +24,13 @@ CATEGORY_TO_MERCHANT = {
 }
 
 
+def is_neutral(category):
+    """Reasignaciones internas de dinero (ahorro, apartados) -- no son gasto
+    discrecional ni esencial, y no deben disparar la alerta de anomalia.
+    'envelope:<categoria>' es dinamico por usuario, no cabe en un set fijo."""
+    return category in NEUTRAL_CATEGORIES or (category or "").startswith("envelope:")
+
+
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
@@ -71,7 +78,7 @@ def score_income_regularity(deposits):
 def score_essential_ratio(purchases, total_income):
     discretionary_spend = sum(
         float(p["amount"]) for p in purchases
-        if p["category"] not in ESSENTIAL_CATEGORIES and p["category"] not in NEUTRAL_CATEGORIES
+        if p["category"] not in ESSENTIAL_CATEGORIES and not is_neutral(p["category"])
     )
     ratio = discretionary_spend / total_income if total_income else 0
     return {
@@ -140,7 +147,7 @@ def detect_anomaly(purchases, as_of_date, window_days=14):
     if not as_of_date:
         return {"detected": False}
 
-    spend = [p for p in purchases if p["category"] not in NEUTRAL_CATEGORIES and p["date"] <= as_of_date]
+    spend = [p for p in purchases if not is_neutral(p["category"]) and p["date"] <= as_of_date]
     if len(spend) < 4:
         return {"detected": False}
 
