@@ -125,6 +125,7 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .footer-link{text-decoration:underline;text-underline-offset:3px;font-size:12px;color:#34465e}
 .profile-header{display:flex;align-items:center;gap:14px;margin:6px 0 20px}
 .profile-avatar-lg{width:64px;height:64px;font-size:22px}
+.profile-logout{margin-top:24px}
 @media(max-width:700px){.app-footer{flex-direction:column;gap:6px;text-align:center;padding:0 10px}}
 
 /* FAQ widget: always-visible bottom-right launcher, small anchored popup (not full screen) */
@@ -234,3 +235,16 @@ input:focus,select:focus,textarea:focus{outline:0;box-shadow:0 0 0 3px #0048781f
 .envelope-row-actions{display:flex;align-items:center;gap:14px}
 .envelope-edit-button{margin:0;white-space:nowrap}
 .envelope-row-top small{display:block;margin-top:4px;color:#748197}
+
+/* Dashboard spacing and card alignment refinements. */
+.connected-dashboard .transactions{padding-inline:24px}
+.connected-dashboard .stats-grid{align-items:stretch}
+.connected-dashboard .stats-grid>.health-card{height:auto;min-height:310px}
+
+@media(max-width:700px){
+  .connected-dashboard .transactions{padding-inline:4px}
+  .connected-dashboard .stats-grid{grid-auto-rows:1fr}
+  .connected-dashboard .right-column{align-items:stretch}
+  .connected-dashboard .category-spending{width:100%;align-self:center;margin-left:auto;margin-right:auto}
+  .connected-dashboard .stats-grid>.health-card{height:auto;min-height:270px}
+}
