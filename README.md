@@ -339,6 +339,7 @@ Dos agentes de revisión (uno para backend, uno para frontend) auditaron todo el
 - [x] Chat conversacional real con Gemini (`POST /chat/message`) — tool-calling sobre las mismas funciones verificadas, con input libre en la UI (ya no es un replay del feed), manejo explícito de 429, probado con casos adversariales (inyección de prompt, alucinación de hechos, acciones ilegítimas)
 - [x] Notificaciones en tiempo real (DynamoDB Streams → `GET /notifications`) — ya visibles en el dashboard, no solo en el backend
 - [x] CloudFront conectado (`https://d3ebjiymiktpim.cloudfront.net`) — HTTPS real, ya no solo el bucket de S3 sin cifrar
+- [x] Tests automatizados de backend — `backend/signals-lambda/test_agent_actions.py`, 33 tests (`unittest`/`mock` de la stdlib, sin dependencias nuevas). Verificado que de verdad atrapan regresiones: se reintrodujeron temporalmente los dos bugs de seguridad de la auditoría (guardrail de anomalía ignorado, ejecución prematura de cancelación) y ambos tests fallaron como se esperaba antes de restaurar el fix
 
 **Pendiente antes de la demo real (no bloquea seguir construyendo):**
 - ~~Confirmar cuota de la API key de Gemini o habilitar billing~~ — **ya resuelto.** Billing activo (Cloud Prepay, MXN 100), modelo de vuelta a `gemini-3.6-flash`, probado en vivo con ráfaga de 8 llamadas sin ningún 429.
