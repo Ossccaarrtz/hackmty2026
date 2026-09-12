@@ -81,7 +81,7 @@ def lambda_handler(event, context):
         try:
             resp = table.query(KeyConditionExpression=Key("user_id").eq(user_id))
             for item in resp["Items"]:
-                if item.get("category") == "savings_transfer" or item["sk"].startswith("ACTION#"):
+                if item.get("category") == "savings_transfer" or item["sk"].startswith("ACTION#") or item["sk"].startswith("NOTIFICATION#"):
                     table.delete_item(Key={"user_id": user_id, "sk": item["sk"]})
         except Exception:
             pass
