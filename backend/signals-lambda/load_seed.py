@@ -37,6 +37,22 @@ def main():
 
     items = []
 
+    CATEGORY_TO_MERCHANT = {
+        "groceries": "SuperMart",
+        "transport": "MetroTransit",
+        "rent": "Landlord Properties",
+        "utilities": "Telco Co",
+        "discretionary": "Tasty Bites / CineMax",
+    }
+    CATEGORY_LABEL = {
+        "groceries": "Súper",
+        "transport": "Transporte",
+        "rent": "Renta",
+        "utilities": "Teléfono",
+        "discretionary": "Discrecional",
+        "income": "Ingreso freelance",
+    }
+
     for i, dep in enumerate(seed["ledger"]["deposits"]):
         items.append({
             "user_id": USER_ID,
@@ -45,6 +61,9 @@ def main():
             "date": dep["date"],
             "amount": dep["amount"],
             "category": "income",
+            "category_label": CATEGORY_LABEL["income"],
+            "merchant_name": None,
+            "description": "Pago freelance - proyecto cliente",
         })
 
     for i, p in enumerate(seed["ledger"]["purchases"]):
@@ -55,6 +74,8 @@ def main():
             "date": p["date"],
             "amount": p["amount"],
             "category": p["category"],
+            "category_label": CATEGORY_LABEL.get(p["category"], p["category"]),
+            "merchant_name": CATEGORY_TO_MERCHANT.get(p["category"]),
         })
 
     bills = [

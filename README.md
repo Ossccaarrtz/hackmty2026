@@ -130,12 +130,34 @@ Se descubrió que la infraestructura de Jarbis ya vive en esta cuenta (`jarbis-*
 
 | Recurso | Detalle |
 |---|---|
-| Tabla DynamoDB | `jarbis-financiero-data` — PK `user_id`, SK `sk` (mismo patrón que las tablas `jarbis-*` existentes) |
-| Lambda | `jarbis-financiero-signals` — Python 3.12, usa el rol ya existente `job-search-lambda-role` |
-| API Gateway | Ruta nueva `GET /signals` agregada al API `jarbis` ya existente |
-| **Endpoint en vivo** | `https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/signals?user_id=mia` |
+| Tabla DynamoDB | `jarbis-financiero-data` — PK `user_id`, SK `sk` (mismo patrón que las tablas `jarbis-*` existentes). También guarda `STATE#simulation` y el log de `ACTION#...` |
+| Lambdas | `jarbis-financiero-signals`, `jarbis-financiero-transactions`, `jarbis-financiero-advance-day` — todas Python 3.12, todas usan el rol ya existente `job-search-lambda-role` |
+| API Gateway | Rutas `GET /signals`, `GET /transactions`, `POST /simulation/advance-day` agregadas al API `jarbis` ya existente |
+| Nessie API key | Variable de entorno `NESSIE_API_KEY` en el Lambda `jarbis-financiero-advance-day` (no hardcodeada) |
 
 El frontend ya puede apuntar a este endpoint real en vez del mock del README — el shape es idéntico al contrato definido abajo (le falta `actions`, que se agrega cuando el agente decisor esté conectado).
+
+**Segundo endpoint en vivo — todos los movimientos crudos, sin filtrar (para la vista de detalle y para que el frontend tenga con qué jugar libremente):**
+```
+GET https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/transactions?user_id=mia
+```
+Devuelve `{ transactions: [...], summary: {...} }` — cada transacción con `date`, `type` (deposit/purchase), `category`, `category_label`, `merchant_name`, `amount`, `signed_amount`, y `running_balance` ya calculado (para graficar balance en el tiempo sin re-derivar nada). `summary` trae totales y gasto por categoría. 62 movimientos reales de los 90 días de Mia.
+
+**Tercer endpoint en vivo — el agente decisor completo, probado de punta a punta con escrituras reales en Nessie:**
+```
+POST https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/simulation/advance-day?user_id=mia
+POST .../simulation/advance-day?user_id=mia&reset=true   ← reinicia la simulacion a Dia 0
+```
+Cada llamada avanza un checkpoint de la historia de Mia (Día 45 → 62 → 63 → 90) aplicando la política de riesgo real:
+
+| Checkpoint | Qué pasa | ¿Se ejecuta solo? |
+|---|---|---|
+| Día 45 | Solo observación — reporta el score | N/A, no hay acción |
+| Día 62 | Detecta la fuga de Gym Co | **No** — genera un `leak_detected` con `requires_confirmation: true` y la advertencia de riesgo contractual, no toca nada |
+| Día 63 | Confirmación asumida → verificación → `PUT /bills` real en Nessie (`status: cancelled`) | Solo después de "confirmar", nunca antes |
+| Día 90 | Verifica que el bill de arriba sí se detuvo (dependencia causal real) → `POST /withdrawals` + `POST /deposits` reales en Nessie | Autónomo — es reversible, no depende de terceros |
+
+Probado en vivo: el bill queda `cancelled` de verdad en Nessie, aparecen el withdrawal y el deposit de $40 reales, y el score sube de 64 a **74** una vez resuelta la fuga — la causa→efecto es real, no simulada en el frontend.
 
 Detalle completo de la historia simulada en [`/seed/README.md`](./seed/README.md).
 
@@ -213,8 +235,10 @@ URL en vivo: `http://centinel-one-frontend.s3-website-us-east-1.amazonaws.com`. 
 - [x] Definición de score, política de riesgo y arquitectura
 - [x] Seed de ~90 días de historial simulado en Nessie
 - [x] Motor de señales — desplegado como Lambda real + DynamoDB, endpoint `GET /signals` en vivo
-- [ ] Conexión del agente decisor a los endpoints de Nessie
-- [ ] Chat embebido en el dashboard (reemplaza el bot de Telegram de Jarbis)
+- [x] Endpoint de datos crudos — `GET /transactions`, 62 movimientos con balance corriendo
+- [x] Agente decisor — política de riesgo + verificación + escrituras reales a Nessie, probado de punta a punta (`POST /simulation/advance-day`)
+- [ ] Chat embebido en el dashboard (reemplaza el bot de Telegram de Jarbis) — puede simularse con los `new_actions` de advance-day mientras tanto
+- [ ] Ver [`PLAN.md`](./PLAN.md) para el plan de implementación completo del frontend
 - [~] Dashboard — en progreso (frontend trabajando contra el contrato de datos mock)
 
 ## Track

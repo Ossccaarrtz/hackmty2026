@@ -87,7 +87,20 @@ def project_readiness(score_history, current_score, threshold=75):
     return max(int(weeks_to_ready), 0) if weeks_to_ready is not None else None
 
 
-def compute_signals(deposits, purchases, bills, total_income, total_expense):
+def filter_up_to(items, as_of_date):
+    """Filtra deposits/purchases a solo lo ocurrido hasta as_of_date (inclusive). Para 'avanzar dia'."""
+    if not as_of_date:
+        return items
+    return [i for i in items if i["date"] <= as_of_date]
+
+
+def compute_signals(deposits, purchases, bills, total_income=None, total_expense=None, as_of_date=None):
+    deposits = filter_up_to(deposits, as_of_date)
+    purchases = filter_up_to(purchases, as_of_date)
+    if as_of_date:
+        total_income = sum(float(d["amount"]) for d in deposits)
+        total_expense = sum(float(p["amount"]) for p in purchases)
+
     current_balance = total_income - total_expense
 
     income_regularity = score_income_regularity(deposits)
