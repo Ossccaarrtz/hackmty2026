@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ShieldCheck, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, Search, Bell, Send, User, Lock, Eye, EyeOff, FileText, Copy, Check } from 'lucide-react';
+import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ShieldCheck, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, Search, Bell, Send, User, Lock, Eye, EyeOff, FileText, Copy, Check, Receipt, Download } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { api, sessionKey } from './api.js';
 import { appendCheckpoint, appendChatExchange, emptySession, normalizeData } from './data.js';
@@ -9,6 +9,7 @@ import CategorySpending from './CategorySpending.jsx';
 
 const money = value => Number.isFinite(value) ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value) : '—';
 const dateLabel = date => new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`));
+const monthLabel = yearMonth => new Intl.DateTimeFormat('es-MX', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${yearMonth}-01T00:00:00Z`));
 const PENDING_TYPES = ['leak_detected', 'anomaly_pause'];
 function readSession() {
   try { const saved = JSON.parse(sessionStorage.getItem(sessionKey)); if (Array.isArray(saved?.feed) && Array.isArray(saved?.history)) return { ...emptySession(), ...saved }; } catch { /* Storage is optional. */ }
@@ -169,6 +170,7 @@ function App() {
   const [trustLoading, setTrustLoading] = useState(false);
   const [trustError, setTrustError] = useState('');
   const [summaryCopied, setSummaryCopied] = useState(false);
+  const [statementMonth, setStatementMonth] = useState('');
   const [chatInput, setChatInput] = useState('');
   const locked = useRef(false), requestId = useRef(0), closeRef = useRef(null);
   const signals = data?.signals;
@@ -182,6 +184,17 @@ function App() {
     .filter(tx => !categoryFilter || tx.category === categoryFilter)
     .filter(tx => !dateFrom || tx.date >= dateFrom)
     .filter(tx => !dateTo || tx.date <= dateTo);
+  const statementMonths = [...new Set(transactions.map(tx => tx.date.slice(0, 7)))].sort().reverse();
+  const activeStatementMonth = statementMonth || statementMonths[0] || '';
+  const statementTransactions = transactions.filter(tx => tx.date.slice(0, 7) === activeStatementMonth).sort((a, b) => a.date.localeCompare(b.date));
+  const statementIncome = statementTransactions.filter(tx => tx.signed_amount > 0).reduce((sum, tx) => sum + tx.signed_amount, 0);
+  const statementExpense = statementTransactions.filter(tx => tx.signed_amount < 0).reduce((sum, tx) => sum - tx.signed_amount, 0);
+  const statementBreakdown = Object.entries(
+    statementTransactions.filter(tx => tx.signed_amount < 0 && !['savings_transfer'].includes(tx.category) && !tx.category?.startsWith('envelope:'))
+      .reduce((acc, tx) => { acc[tx.category_label] = (acc[tx.category_label] || 0) + Math.abs(tx.signed_amount); return acc; }, {})
+  ).sort((a, b) => b[1] - a[1]);
+  const statementOpening = statementTransactions.length ? statementTransactions[0].running_balance - statementTransactions[0].signed_amount : null;
+  const statementClosing = statementTransactions.length ? statementTransactions.at(-1).running_balance : null;
 
   async function openTrustReport() {
     setModal('trust');
@@ -279,7 +292,7 @@ function App() {
 
   return <>
   <motion.main className={`dashboard connected-dashboard ${page === 'chat' ? 'chat-layout chat-active' : ''}`} variants={dashboardContainer} initial="hidden" animate="visible">
-    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><button className="brand-mark" aria-label="Centinel One inicio" onClick={() => setPage('home')}><img src="/capital-one-logo.svg" alt="Capital One" /></button><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Centinel', 'chat'], [Wallet, 'Movimientos', 'transactions'], [FileText, 'Reporte de confianza', 'trust']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => destination === 'trust' ? openTrustReport() : destination === 'transactions' ? setModal('transactions') : setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="mia-avatar" aria-label="Perfil de Mia" onClick={() => setModal('profile')}>M</button></div></motion.aside>
+    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><button className="brand-mark" aria-label="Centinel One inicio" onClick={() => setPage('home')}><img src="/capital-one-logo.svg" alt="Capital One" /></button><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Centinel', 'chat'], [Wallet, 'Movimientos', 'transactions'], [FileText, 'Reporte de confianza', 'trust'], [Receipt, 'Estado de cuenta', 'statement']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => destination === 'trust' ? openTrustReport() : ['transactions', 'statement'].includes(destination) ? setModal(destination) : setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="mia-avatar" aria-label="Perfil de Mia" onClick={() => setModal('profile')}>M</button></div></motion.aside>
     <section className="main-column">
       <motion.header className="page-header" variants={dashboardItem}><div><h1>Centinel One</h1><p>Hola, Mia. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></motion.header>
       {error && <div className="error-banner" role="alert">{error} <button disabled={loading || busy} onClick={refresh}>Reintentar lectura</button></div>}
@@ -304,7 +317,7 @@ function App() {
       </AnimatePresence>
     </section>
     {page === 'home' && <section className="right-column"><motion.section className="transactions" variants={dashboardItem} whileHover={{ y: -4 }} transition={{ duration: 0.2 }}><header className="transactions-heading"><div><h2>Movimientos</h2><p>Historial de Mia</p></div><button className="black-button small" onClick={() => setModal('transactions')}>Ver todos</button></header><div className="transaction-list">{transactions.slice(-3).reverse().map(tx => <div className="transaction-row live-transaction" key={tx.id}><span className={`direction ${tx.signed_amount > 0 ? 'inflow' : 'outflow'}`}>{tx.signed_amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={tx.name}>{tx.name}</strong><span className="transaction-date">{dateLabel(tx.date)}</span><span className={`transaction-amount ${tx.signed_amount > 0 ? 'inflow' : ''}`}>{money(tx.signed_amount)}</span></div>)}{!transactions.length && <p className="empty">{loading ? 'Cargando movimientos…' : data ? 'No hay movimientos registrados.' : 'Historial no disponible.'}</p>}</div></motion.section><CategorySpending summary={data?.summary} loading={loading} variants={dashboardItem} /></section>}
-    {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className={`modal glass ${modal === 'transactions' ? 'ledger-modal' : ''}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={event => event.stopPropagation()}><button ref={closeRef} className="close-modal icon-button" aria-label="Cerrar" onClick={() => setModal(null)}><X /></button>
+    {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className={`modal glass ${['transactions', 'statement'].includes(modal) ? 'ledger-modal' : ''} ${modal === 'statement' ? 'statement-printable' : ''}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={event => event.stopPropagation()}><button ref={closeRef} className="close-modal icon-button" aria-label="Cerrar" onClick={() => setModal(null)}><X /></button>
       {modal === 'score' && <><h2 id="dialog-title">Tu score, explicado</h2><p>Indicador propio de resiliencia financiera; no es un score de Buró ni garantiza aprobación de crédito.</p>{signals?.score.breakdown.map(item => <div className="detail-line" key={item.key}><span>{item.label}<small>{item.detail} · Peso: {item.weight}%</small></span><strong>{item.value}/100</strong></div>)}</>}
       {modal === 'transactions' && <><h2 id="dialog-title">Todos los movimientos</h2><p>{transactions.length} movimientos · Saldo: {money(data?.balance)}</p><LineChart values={transactions.map(tx => tx.running_balance)} label="Balance histórico calculado por el backend" /><label className="ledger-search"><Search size={18} /><input aria-label="Buscar movimientos" placeholder="Buscar comercio o categoría" value={query} onChange={event => setQuery(event.target.value)} /></label>
         <div className="ledger-filters">
@@ -330,6 +343,29 @@ function App() {
           <h3>Acciones verificadas ({trustReport.verified_actions.length})</h3>
           {trustReport.verified_actions.length ? trustReport.verified_actions.map((action, index) => <div className="detail-line" key={index}><span>{action.text}<small>{action.date && dateLabel(action.date)} · {action.type}</small></span></div>) : <p className="empty">Sin acciones verificadas todavía.</p>}
           <button className="outline-button" onClick={copyTrustSummary}>{summaryCopied ? <><Check size={16} /> Copiado</> : <><Copy size={16} /> Copiar resumen</>}</button>
+        </>}
+      </>}
+      {modal === 'statement' && <>
+        <div className="statement-header">
+          <div><h2 id="dialog-title">Estado de cuenta</h2><p className="muted-copy">Libro financiero mensual de Mia: en qué se fue el dinero y de dónde vino.</p></div>
+          <div className="statement-header-actions">
+            <select aria-label="Mes del estado de cuenta" value={activeStatementMonth} onChange={event => setStatementMonth(event.target.value)}>
+              {statementMonths.map(ym => <option key={ym} value={ym}>{monthLabel(ym)}</option>)}
+            </select>
+            <button className="black-button small" onClick={() => window.print()}><Download size={15} /> Descargar PDF</button>
+          </div>
+        </div>
+        {!statementTransactions.length ? <p className="empty">Sin movimientos en {activeStatementMonth ? monthLabel(activeStatementMonth) : 'este periodo'}.</p> : <>
+          <div className="statement-summary">
+            <div className="statement-summary-item"><span>Saldo inicial</span><strong>{money(statementOpening)}</strong></div>
+            <div className="statement-summary-item"><span>Ingresos</span><strong className="inflow">+{money(statementIncome)}</strong></div>
+            <div className="statement-summary-item"><span>Gastos</span><strong>-{money(statementExpense)}</strong></div>
+            <div className="statement-summary-item"><span>Saldo final</span><strong>{money(statementClosing)}</strong></div>
+          </div>
+          <h3>En qué se fue el dinero</h3>
+          {statementBreakdown.map(([label, amount]) => <div className="detail-line" key={label}><span>{label}</span><strong>{money(amount)}</strong></div>)}
+          <h3>Movimientos del mes ({statementTransactions.length})</h3>
+          {statementTransactions.map(tx => <div className="detail-line" key={tx.id}><span>{tx.name}<small>{dateLabel(tx.date)} · {tx.category_label}</small></span><strong className={tx.signed_amount > 0 ? 'inflow' : ''}>{money(tx.signed_amount)}</strong></div>)}
         </>}
       </>}
       {modal === 'advance' && <><h2 id="dialog-title">Avanzar la simulación</h2><p>El siguiente checkpoint puede observar la cuenta, detectar una fuga, detener el cargo de Gym Co, o mover dinero a ahorro en el sandbox Nessie.</p><p>El backend no permite consultar el checkpoint actual. Si el próximo paso es detener Gym Co, al continuar confirmas que ya no lo usas y autorizas detener ese cargo de demostración.</p><div className="agent-alert"><ShieldAlert size={20} /><span>Un contrato anual puede generar penalizaciones o cobranza. Bloquear el cargo no cancela la suscripción con el comercio.</span></div><button className="black-button" disabled={busy || uncertain || !data || !!error || session.done} onClick={() => mutate('advance')}>Confirmo y autorizo el siguiente paso</button><button className="text-button" onClick={() => setModal(null)}>Volver sin avanzar</button></>}

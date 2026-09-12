@@ -152,6 +152,22 @@ input,select,textarea{transition:box-shadow .18s ease,border-color .18s ease}
 input:focus,select:focus,textarea:focus{outline:0;box-shadow:0 0 0 3px #0048781f;border-color:#004878}
 .login-input-wrap input:focus{box-shadow:none}
 
+/* Monthly statement (estado de cuenta) */
+.statement-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.statement-header-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.statement-header-actions select{padding:10px 13px;border-radius:10px;border:1px solid #b4c5d8;background:#fff6;color:#1e2b36;font-size:13px}
+.statement-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:24px}
+.statement-summary-item{background:#eef4fb65;border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.statement-summary-item span{font-size:12px;color:#5c6d83}
+.statement-summary-item strong{font-size:18px}
+.statement-summary-item strong.inflow{color:#1a7f4d}
+@media print{
+  body *{visibility:hidden}
+  .statement-printable,.statement-printable *{visibility:visible}
+  .statement-printable{position:absolute;top:0;left:0;width:100%;max-width:100%;max-height:none;overflow:visible;box-shadow:none;background:#fff;color:#000}
+  .statement-printable .close-modal,.statement-printable .statement-header-actions{display:none!important}
+}
+
 /* Upcoming expenses forecast (alerts card) and the trust-report modal */
 .upcoming-expenses{margin:18px 16px 0;padding-top:16px;border-top:1px solid #becddb60}
 .upcoming-expenses h3{font-size:13px;font-weight:600;color:#5c6d83;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px}
