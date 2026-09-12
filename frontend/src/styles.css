@@ -87,8 +87,6 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .transaction-amount.inflow,.detail-line strong.inflow{color:#1a7a4c}
 
 /* Login, footer, profile — reuse the dashboard's own glass/button language, additive only */
-<<<<<<< HEAD
-=======
 /* Comfortable card insets and scrollbars that blend with the glass surfaces. */
 html,.modal,.agent-feed,.chat-transcript{scrollbar-width:thin;scrollbar-color:#8c9fc5 transparent}
 ::-webkit-scrollbar{width:8px;height:8px}
@@ -125,7 +123,6 @@ input,select,textarea{transition:box-shadow .18s ease,border-color .18s ease}
 input:focus,select:focus,textarea:focus{outline:0;box-shadow:0 0 0 3px #0048781f;border-color:#004878}
 .login-input-wrap input:focus{box-shadow:none}
 @media(max-width:700px){.connected-dashboard .transactions{padding:22px 18px 16px}.connected-dashboard .transactions-heading h2{font-size:23px}.connected-dashboard .transactions-heading .small{font-size:11px;padding:10px 12px}.connected-dashboard .live-transaction{grid-template-columns:24px minmax(0,1fr) 39px 63px;gap:7px;font-size:12px}.modal{border-width:4px;padding:24px}}
->>>>>>> 44369dbb92b04b4082719636ffeaebb89b05e3c4
 .category-spending{padding:26px 24px;margin-top:24px}
 .category-content{display:flex;align-items:center;gap:17px;margin-top:24px}
 .category-donut{position:relative;flex:0 0 142px;width:142px;height:142px}
@@ -139,11 +136,7 @@ input:focus,select:focus,textarea:focus{outline:0;box-shadow:0 0 0 3px #0048781f
 .connected-dashboard .breakdown-card{height:auto;min-height:310px}
 @media(min-width:1101px) and (max-width:1400px){.category-content{flex-direction:column}.category-legend{width:100%}.category-donut{flex-basis:155px;width:155px;height:155px}}
 @media(max-width:700px){.category-spending{padding:23px 20px;border-radius:25px}.category-content{flex-direction:column;gap:22px}.category-donut{width:165px;height:165px;flex-basis:165px}.category-legend{width:100%}.category-legend li{font-size:12px}.category-amount{font-size:11px}}
-<<<<<<< HEAD
 .login-page{position:fixed;inset:0;overflow-y:auto;display:flex;flex-direction:column;background:var(--c1-bg)}
-=======
-.login-page{position:fixed;inset:0;overflow-y:auto;display:flex;flex-direction:column;background:radial-gradient(ellipse at 0% 0%,#8ca3df 0%,#a5b7da 38%,#cedde2 82%)}
->>>>>>> 44369dbb92b04b4082719636ffeaebb89b05e3c4
 .login-topbar{display:flex;align-items:center;gap:14px;padding:16px 32px;background:#fff;border-bottom:1px solid #e2e8f0}
 .login-topbar-logo{height:26px;width:auto}
 .login-topbar-brand{display:flex;align-items:center;gap:6px;color:#004878;font-weight:650;font-size:15px}
@@ -285,7 +278,7 @@ input:focus,select:focus,textarea:focus{outline:0;box-shadow:0 0 0 3px #0048781f
 .connected-dashboard .stats-grid>.health-card{height:auto;min-height:310px}
 
 @media(max-width:700px){
-  .connected-dashboard .transactions{padding-inline:4px}
+  .connected-dashboard .transactions{padding-inline:18px}
   .connected-dashboard .stats-grid{grid-auto-rows:1fr}
   .connected-dashboard .right-column{align-items:stretch}
   .connected-dashboard .category-spending{width:100%;align-self:center;margin-left:auto;margin-right:auto}
