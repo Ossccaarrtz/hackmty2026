@@ -80,6 +80,45 @@ TOOLS = [{
                 "required": ["amount", "reason"],
             },
         },
+        {
+            "name": "get_envelopes_status",
+            "description": "Consulta los apartados de gastos fijos de Mia (ej. gasolina, comida) con su meta mensual y saldo acumulado actual.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "create_envelope",
+            "description": "Crea un apartado nuevo para un gasto fijo mensual (ej. 'gasolina' con meta de $2000/mes). El monto se reparte proporcional cada vez que llega la nomina.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {"type": "string", "description": "Nombre del gasto, ej. 'gasolina'"},
+                    "monthly_target": {"type": "number", "description": "Meta mensual en pesos"},
+                },
+                "required": ["category", "monthly_target"],
+            },
+        },
+        {
+            "name": "set_income_pattern",
+            "description": "Declara el patron de nomina de Mia (monto aproximado y frecuencia en dias) para que el sistema sepa distinguir su nomina de un deposito random (ej. un amigo mandandole dinero). Los apartados solo se reparten cuando un deposito coincide con este patron.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "expected_amount": {"type": "number"},
+                    "frequency_days": {"type": "integer", "description": "Cada cuantos dias le llega su nomina, ej. 15"},
+                },
+                "required": ["expected_amount", "frequency_days"],
+            },
+        },
+        {
+            "name": "confirm_pending_allocation",
+            "description": "Ejecuta un reparto de nomina a apartados que quedo pendiente de confirmar porque hubiera dejado el colchon de liquidez muy bajo.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "get_upcoming_expenses",
+            "description": "Consulta gastos recurrentes que se esperan pronto (ej. gasolina cada ~14 dias) segun la cadencia real observada en su historial -- no son montos inventados, se calculan de transacciones reales pasadas.",
+            "parameters": {"type": "object", "properties": {}},
+        },
     ]
 }]
 
@@ -92,7 +131,8 @@ SYSTEM_INSTRUCTION = (
     "3) Si detienes un cargo recurrente, siempre aclara que eso no cancela el contrato con el comercio, solo el cargo automatico. "
     "4) Si una herramienta rechaza la accion, explicale a Mia por que en lenguaje simple, no insistas ni la reintentes con otros valores. "
     "5) release_savings_buffer es para semanas de ingreso bajo -- no lo ofrezcas a menos que Mia mencione que le entro poco dinero o necesita liquidez extra. "
-    "6) Se breve y claro, en español."
+    "6) Los apartados (create_envelope) se reparten solos cuando llega un deposito que coincide con el patron de nomina declarado (set_income_pattern) -- si Mia no ha declarado su patron todavia y quiere crear un apartado, pidele primero el monto y frecuencia aproximada de su nomina. "
+    "7) Se breve y claro, en español."
 )
 
 
@@ -156,6 +196,16 @@ def execute_tool(name, args, user_id):
             return sanitize(actions.verified_move_to_savings(user_id, args.get("amount"), args.get("reason", "")))
         if name == "release_savings_buffer":
             return sanitize(actions.verified_release_buffer(user_id, args.get("amount"), args.get("reason", "")))
+        if name == "get_envelopes_status":
+            return sanitize({"envelopes": actions.get_envelope_balances(user_id)})
+        if name == "create_envelope":
+            return sanitize(actions.create_envelope(user_id, args.get("category", ""), args.get("monthly_target")))
+        if name == "set_income_pattern":
+            return sanitize(actions.set_income_pattern(user_id, args.get("expected_amount"), args.get("frequency_days")))
+        if name == "confirm_pending_allocation":
+            return sanitize(actions.confirm_pending_allocation(user_id))
+        if name == "get_upcoming_expenses":
+            return sanitize({"upcoming_expenses": actions.get_current_signals(user_id)["upcoming_expenses"]})
         return {"ok": False, "reason": f"Herramienta desconocida: {name}"}
     except Exception as e:
         return {"ok": False, "reason": f"Algo fallo revisando tu cuenta ({e}) -- no se ejecuto ninguna accion."}

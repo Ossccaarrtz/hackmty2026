@@ -24,6 +24,13 @@ CATEGORY_TO_MERCHANT = {
 }
 
 
+def is_neutral(category):
+    """Reasignaciones internas de dinero (ahorro, apartados) -- no son gasto
+    discrecional ni esencial, y no deben disparar la alerta de anomalia.
+    'envelope:<categoria>' es dinamico por usuario, no cabe en un set fijo."""
+    return category in NEUTRAL_CATEGORIES or (category or "").startswith("envelope:")
+
+
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
@@ -71,7 +78,7 @@ def score_income_regularity(deposits):
 def score_essential_ratio(purchases, total_income):
     discretionary_spend = sum(
         float(p["amount"]) for p in purchases
-        if p["category"] not in ESSENTIAL_CATEGORIES and p["category"] not in NEUTRAL_CATEGORIES
+        if p["category"] not in ESSENTIAL_CATEGORIES and not is_neutral(p["category"])
     )
     ratio = discretionary_spend / total_income if total_income else 0
     return {
@@ -102,6 +109,52 @@ def score_liquidity(current_balance, purchases, elapsed_days):
         "value": round(clamp(cushion_ratio * 50, 0, 100)),
         "days_covered": days_covered,
     }
+
+
+def forecast_upcoming_expenses(purchases, as_of_date, lookahead_days=5):
+    """Detecta gastos recurrentes por categoria (ej. gasolina cada ~14 dias)
+    a partir de la cadencia real observada -- no asume periodicidad fija.
+    Requiere al menos 3 ocurrencias reales para calcular un intervalo
+    promedio, y descarta categorias donde el intervalo es demasiado
+    irregular (coeficiente de variacion > 50%) para no fingir que un gasto
+    genuinamente aleatorio es 'predecible'."""
+    if not as_of_date:
+        return []
+    today = date.fromisoformat(as_of_date)
+    by_category = {}
+    for p in purchases:
+        if is_neutral(p["category"]) or p["date"] > as_of_date:
+            continue
+        by_category.setdefault(p["category"], []).append(p)
+
+    forecasts = []
+    for category, items in by_category.items():
+        items = sorted(items, key=lambda p: p["date"])
+        if len(items) < 3:
+            continue
+        dates = [date.fromisoformat(p["date"]) for p in items]
+        intervals = [(dates[i + 1] - dates[i]).days for i in range(len(dates) - 1)]
+        avg_interval = mean(intervals)
+        if avg_interval <= 0:
+            continue
+        cv = pstdev(intervals) / avg_interval if len(intervals) > 1 else 0
+        if cv > 0.5:
+            continue
+
+        expected_next = dates[-1] + timedelta(days=round(avg_interval))
+        days_until = (expected_next - today).days
+        if -2 <= days_until <= lookahead_days:
+            forecasts.append({
+                "category": category,
+                "category_label": items[-1].get("category_label", category),
+                "expected_date": expected_next.isoformat(),
+                "expected_amount": round(mean(float(p["amount"]) for p in items), 2),
+                "days_until": days_until,
+                "confidence": round(clamp(100 - cv * 100, 0, 100)),
+            })
+
+    forecasts.sort(key=lambda f: f["days_until"])
+    return forecasts
 
 
 def compute_trend(score_history, current_score):
@@ -140,7 +193,7 @@ def detect_anomaly(purchases, as_of_date, window_days=14):
     if not as_of_date:
         return {"detected": False}
 
-    spend = [p for p in purchases if p["category"] not in NEUTRAL_CATEGORIES and p["date"] <= as_of_date]
+    spend = [p for p in purchases if not is_neutral(p["category"]) and p["date"] <= as_of_date]
     if len(spend) < 4:
         return {"detected": False}
 
@@ -255,6 +308,7 @@ def compute_signals(deposits, purchases, bills, total_income=None, total_expense
         },
         "alerts": alerts,
         "anomaly": anomaly,
+        "upcoming_expenses": forecast_upcoming_expenses(purchases, as_of_date),
         "liquidity": {"days_covered": liquidity["days_covered"]},
         "projection": {"weeks_to_ready": project_readiness(score_history, final_score), "product": "tarjeta secured"},
         "_debug": {"total_income": total_income, "total_expense": total_expense, "current_balance": current_balance, "elapsed_days": elapsed_days},

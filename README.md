@@ -131,8 +131,8 @@ Se descubrió que la infraestructura de Jarbis ya vive en esta cuenta (`jarbis-*
 | Recurso | Detalle |
 |---|---|
 | Tabla DynamoDB | `jarbis-financiero-data` — PK `user_id`, SK `sk` (mismo patrón que las tablas `jarbis-*` existentes). También guarda `STATE#simulation` y el log de `ACTION#...` |
-| Lambdas | `jarbis-financiero-signals`, `jarbis-financiero-transactions`, `jarbis-financiero-advance-day`, `jarbis-financiero-chat`, `jarbis-financiero-notifier`, `jarbis-financiero-notifications` — todas Python 3.12, todas usan el rol ya existente `job-search-lambda-role` |
-| API Gateway | Rutas `GET /signals`, `GET /transactions`, `POST /simulation/advance-day`, `POST /chat/message`, `GET /notifications` agregadas al API `jarbis` ya existente. CORS configurado a nivel de API (necesario para el POST con JSON body del chat) |
+| Lambdas | `jarbis-financiero-signals`, `jarbis-financiero-transactions`, `jarbis-financiero-advance-day`, `jarbis-financiero-chat`, `jarbis-financiero-notifier`, `jarbis-financiero-notifications`, `jarbis-financiero-envelopes`, `jarbis-financiero-trust-report` — todas Python 3.12, todas usan el rol ya existente `job-search-lambda-role` |
+| API Gateway | Rutas `GET /signals`, `GET /transactions`, `POST /simulation/advance-day`, `POST /chat/message`, `GET /notifications`, `GET/POST /envelopes`, `POST /envelopes/income-pattern`, `POST /envelopes/confirm-allocation`, `GET /trust-report` agregadas al API `jarbis` ya existente. CORS configurado a nivel de API (necesario para el POST con JSON body del chat) |
 | DynamoDB Streams | Habilitado en `jarbis-financiero-data` (`NEW_AND_OLD_IMAGES`) — dispara `jarbis-financiero-notifier` en cada escritura, sin polling |
 | Nessie API key | Variable de entorno `NESSIE_API_KEY` en el Lambda `jarbis-financiero-advance-day` (no hardcodeada) |
 
@@ -201,6 +201,44 @@ Probado en vivo de punta a punta: se le pidió al chat mover $15 a ahorro → el
 **El chat tiene memoria real de conversación** — no es solo un endpoint sin estado. Cada mensaje reconstruye el historial visible (lo que Mia escribió + la respuesta final de Centinel, no los pasos internos de qué herramienta se llamó) desde DynamoDB (`sk: CHAT_HISTORY`) antes de mandarlo a Gemini, y lo vuelve a guardar al final. Topado a los últimos 10 intercambios para controlar costo/latencia. `reset=true` también borra la memoria, para que cada ensayo empiece limpio.
 
 Probado en vivo: le pedí al chat "¿cuál sería un monto razonable para ahorrar?", sugirió $30, y en el siguiente mensaje escribí solo "ok, hazlo con ese monto" (sin repetir el número) — ejecutó los $30 correctamente. Después de un reset, la misma frase ambigua sin contexto previo hizo que el modelo preguntara en vez de inventar un monto — la memoria funciona, y su ausencia no produce alucinaciones.
+
+**Sexto endpoint en vivo — apartados de gastos fijos (envelope budgeting) con reparto proporcional automático de nómina:**
+```
+GET  https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/envelopes?user_id=mia
+POST .../envelopes                    { "category": "gasolina", "monthly_target": 2000 }
+POST .../envelopes/income-pattern     { "expected_amount": 565, "frequency_days": 11 }
+POST .../envelopes/confirm-allocation
+```
+
+La idea: el usuario define gastos fijos mensuales por categoría (ej. gasolina $2000/mes), y cuando cae un depósito que coincide con su nómina, se reparte proporcional a cada apartado según los **días reales transcurridos** desde el depósito anterior — no una fracción fija de "1/4 si es semanal", porque el ingreso de Mia es irregular.
+
+**Cómo distingue una nómina real de un depósito random (ej. un amigo mandando $100):** Nessie no da ninguna señal estructurada para esto (el objeto `deposit` solo trae monto, fecha y una descripción de texto libre). En vez de adivinar con pattern-matching frágil sobre texto, el usuario declara su patrón de ingreso **una sola vez** (`POST /envelopes/income-pattern`) — monto aproximado + frecuencia — y cada depósito nuevo se compara contra ese patrón con tolerancia (25% por default). Solo un depósito que matchea dispara el reparto. Misma doctrina anti-alucinación del resto del proyecto: el sistema no asume, verifica contra algo ya confirmado explícitamente.
+
+**Disparo automático, sin endpoint nuevo que llamar:** reutiliza el mismo webhook de DynamoDB Streams del punto anterior — `jarbis-financiero-notifier` ya reacciona a cada depósito nuevo, ahora también intenta el reparto si coincide con el patrón.
+
+**Reusa el mismo umbral de liquidez de 7 días que `move_to_savings`** (no un umbral nuevo e inconsistente): si el reparto completo dejaría el colchón por debajo de eso, no ejecuta nada solo — genera una propuesta pendiente (`partial_allocation_pause`) que se confirma por chat (`confirm_pending_allocation`) o por `POST /envelopes/confirm-allocation`.
+
+Probado en vivo end-to-end: se crearon apartados de gasolina ($2000/mes) y comida ($3000/mes), se declaró el patrón de nómina (~$565 cada 11 días), y:
+- Un depósito de $580 (dentro de tolerancia) disparó el reparto solo: $266.67 a gasolina y $400 a comida (proporcional a 4 días reales transcurridos), notificación automática en `/notifications` sin llamar nada más.
+- Un depósito de $100 inmediatamente después **no movió nada** — no coincide con el patrón, cero notificación, cero reparto.
+- Hallazgo de una auditoría propia durante esta prueba: los repartos a apartados se contaban como "gasto discrecional" en el score (`essential_ratio` cayó de 79 a 56), porque `signal_engine.py` no sabía que `category="envelope:*"` es una reasignación interna de dinero, no un gasto. Corregido tratándolo igual que `savings_transfer` (ni esencial ni discrecional, no dispara el guardrail de anomalía).
+
+**Séptimo endpoint en vivo — reporte de confiabilidad exportable:**
+```
+GET https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/trust-report?user_id=mia
+```
+
+Convierte el score interno en un artefacto de confiabilidad: score actual + historial real (`score_history`) + **el historial completo de acciones verificadas**, sin importar si las disparó un checkpoint de `advance-day`, el chat, o el reparto automático de apartados, + un resumen narrativo generado de forma **determinística, no por un LLM** (cada número está respaldado por una transacción real en Nessie o un registro real en DynamoDB).
+
+Ver [PITCH.md](./PITCH.md) para el porqué de este endpoint y a quién se lo ofrecemos (spoiler: no es un producto que se le vende a "bancos" en general — es la señal que le damos a Capital One sobre sus propios clientes de secured card).
+
+**Cómo evita el problema de las fuentes incompletas:** el log `ACTION#` solo lo escribe `advance-day` (tiene la narrativa más rica, incluye los momentos de "pedí confirmar antes de actuar"), pero si el reporte se basara solo en eso, se perdería cualquier acción ejecutada por el chat o por el reparto automático de apartados. La solución: también se lee `NOTIFICATION#`, que el webhook de DynamoDB Streams escribe sobre **cualquier** escritura real sin importar el origen — y se deduplica por cercanía de timestamp (~5 segundos) para no contar el mismo evento real dos veces cuando ambas fuentes lo capturan.
+
+Probado en vivo: se corrieron los 4 checkpoints de la demo + una acción adicional por chat (mover $15 a ahorro, fuera del flujo de `advance-day`) — el reporte final mostró correctamente las 5 acciones (1 fuga resuelta, 3 movimientos reales de dinero, 1 confirmación pedida), sin duplicados, con el resumen: *"En 88 días de historial verificado, el agente detectó y resolvió 1 fuga(s) de gasto, ejecutó 3 acción(es) real(es) sobre el dinero de mia, y pidió confirmación humana en 1 ocasión(es) antes de actuar cuando el riesgo lo ameritaba. Su score de resiliencia pasó de 54 a 73."*
+
+**`/signals` también trae `upcoming_expenses` — gastos recurrentes que se esperan pronto, calculados de la cadencia real observada por categoría** (ej. "sueles pagar renta cada ~30 días, la próxima esperada es el 17 de septiembre, ~$650"). No asume periodicidad fija ni inventa nada: requiere al menos 3 ocurrencias reales de esa categoría, y descarta categorías donde el intervalo entre gastos es demasiado irregular (coeficiente de variación > 50%) para no fingir que un gasto genuinamente aleatorio es predecible. Expuesto también como tool de chat (`get_upcoming_expenses`). Es la parte "barata" de una idea más grande (avisar de gastos estacionales tipo diciembre) — ver [PLAN.md](./PLAN.md) sección de pendientes para la evaluación de la parte cara (requiere sembrar más historial).
+
+**Bug de seguridad real encontrado y corregido mientras se construía esto:** el guardrail de anomalía (`detect_anomaly`) llevaba toda la sesión **apagado fuera de los checkpoints de `advance-day`** — cualquier llamada sin una fecha de referencia explícita (el chat, `verified_move_to_savings`, `verified_release_buffer`, y el uso normal de `/signals` sin `?as_of`) recibía `as_of_date=None` y automáticamente devolvía `detected: false` sin evaluar nada real. Corregido: `agent_actions.get_full_signals` y `lambda_function.py` ahora usan la fecha real de hoy como referencia cuando no se especifica un checkpoint — sin cambiar ningún valor de score/liquidez ya mostrado (verificado en vivo, idéntico antes y después).
 
 Detalle completo de la historia simulada en [`/seed/README.md`](./seed/README.md).
 
