@@ -126,17 +126,24 @@ Detalle completo de la historia simulada en [`/seed/README.md`](./seed/README.md
 
 ## Frontend — qué construir
 
-**Una sola pantalla.** El dashboard ES la página de inicio (así funciona cualquier app bancaria real — abres y ves tu situación, no una pantalla de bienvenida). Login/onboarding: mockeado o saltado, no le gastes tiempo, no aporta nada al pitch. El chat vive embebido en la misma pantalla (panel lateral o inferior), no es una ruta aparte — cada navegación extra es un riesgo en la demo en vivo.
+**Dos pantallas, no una, no muchas.** Una sola pantalla suena más segura pero le quita espacio a todo — el chat se ve apretado, el feed se ve chiquito, y se lee menos "producto real" (las apps bancarias de verdad, como la de Capital One con Eno, navegan entre dashboard y chat). El riesgo extra de una segunda pantalla es mínimo si el salto es siempre el mismo botón — se ensaya y ya no falla.
 
-**Qué mostrar, en orden de importancia:**
+1. **Pantalla 1 — Dashboard (home).** Login/onboarding: mockeado o saltado, no le gastes tiempo. Aterrizas directo aquí.
+2. **Pantalla 2 — Chat con el agente**, a pantalla completa (no un panel lateral apretado) — al estilo Eno real. Se llega por **un solo botón/ícono de chat siempre visible**, siempre el mismo destino — ese es todo el riesgo de navegación que se agrega.
+
+Narrativa de demo que esto habilita: *"aquí está Mia hoy (pantalla 1) → le pica al chat, aquí confirmó lo del gimnasio (pantalla 2) → regresamos y miren cómo ya subió el score (pantalla 1 de nuevo)"*.
+
+**Qué mostrar en el Dashboard (pantalla 1), en orden de importancia:**
 
 1. **Score como número hero** — grande, arriba, con flecha de tendencia (↑/↓) y una frase de qué significa.
 2. **Desglose del score en 4 barras** (no tabla) — regularidad de ingreso, ratio esencial/discrecional, recurrencia sana, colchón de liquidez. Esto es lo que prueba "no es caja negra".
 3. **Feed de acciones del agente** — timeline, más reciente arriba. Esta es la sección más importante de toda la pantalla: es la prueba visual de que el agente actúa, no solo aconseja.
 4. **Alertas activas** — tarjeta simple, solo lo que necesita atención ahora. Se resuelve → desaparece o se marca resuelta.
-5. **Chat embebido** — para confirmaciones y para preguntarle algo al agente directo.
+5. **Botón de chat** — siempre visible, lleva a la pantalla 2.
 
-**Nice-to-have si alcanza el tiempo:** sparkline del score en el tiempo, una línea de "te alcanza para los próximos N días", una línea de proyección ("listo para un producto de crédito en ~5 semanas").
+**Qué mostrar en el Chat (pantalla 2):** conversación completa con el agente — notificaciones proactivas, confirmaciones con contexto, explicaciones post-acción. Aquí sí puede respirar, no compite por espacio con el resto.
+
+**Nice-to-have si alcanza el tiempo (en el Dashboard):** sparkline del score en el tiempo, una línea de "te alcanza para los próximos N días", una línea de proyección ("listo para un producto de crédito en ~5 semanas").
 
 **Qué NO mostrar:** tabla completa de las 52 transacciones sembradas (si acaso, detrás de un "ver detalle" colapsado, nunca visible por default), pie chart de categorías con muchas rebanadas, métricas de vanidad (fecha de creación de cuenta, conteo total de transacciones). Antes de meter un dato nuevo, pregúntate: ¿esto prueba que el agente decide y actúa, o solo describe datos? Si es lo segundo, no va en la pantalla principal.
 
