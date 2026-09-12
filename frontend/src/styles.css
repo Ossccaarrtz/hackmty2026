@@ -68,3 +68,8 @@ button.small{padding:10px 16px;font-size:13px;border-radius:12px}
 
 .transactions .transaction-row{grid-template-columns:minmax(0,1fr) 60px 64px;height:auto;padding:14px 0}
 .transactions .transaction-row strong{white-space:normal;overflow:visible;text-overflow:clip}
+
+.page-header{align-items:center}
+.balance-chip{display:flex;flex-direction:column;align-items:flex-end;gap:2px;padding:14px 22px;border-radius:20px;background:#fff8;box-shadow:inset 0 0 3px #a0adc633;border:1px solid #8eabc043}
+.balance-chip span{font-size:12px;color:#717f92}
+.balance-chip strong{font-size:22px;letter-spacing:-.5px;color:#161d24}

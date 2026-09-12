@@ -138,6 +138,12 @@ export default function Dashboard() {
       <section className="main-column">
         <header className="page-header">
           <div><h1>Centinel One</h1><p>User: Mia {liveDataError && '· demo data (live backend unreachable)'}</p></div>
+          {balance != null && (
+            <div className="balance-chip">
+              <span>Account balance</span>
+              <strong>${balance.toFixed(2)}</strong>
+            </div>
+          )}
         </header>
 
         {loading ? <p className="empty-note">Loading your live Cash-Flow Resilience Score…</p> : <>
