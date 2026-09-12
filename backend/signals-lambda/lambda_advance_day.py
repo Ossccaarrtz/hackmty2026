@@ -79,6 +79,13 @@ def lambda_handler(event, context):
     if params.get("reset") == "true":
         table.delete_item(Key={"user_id": user_id, "sk": "STATE#simulation"})
         try:
+            resp = table.query(KeyConditionExpression=Key("user_id").eq(user_id))
+            for item in resp["Items"]:
+                if item.get("category") == "savings_transfer" or item["sk"].startswith("ACTION#"):
+                    table.delete_item(Key={"user_id": user_id, "sk": item["sk"]})
+        except Exception:
+            pass
+        try:
             _, _, bills = load_data(user_id)
             gym = next((b for b in bills if b["payee"] == "Gym Co"), None)
             if gym:
@@ -163,21 +170,36 @@ def lambda_handler(event, context):
 
     elif idx == 3:
         # Dia 90: accion autonoma -- mover a ahorro el dinero liberado de la fuga.
-        # Verificacion: solo se ejecuta SI el bill realmente se detuvo antes (dependencia causal real).
+        # Verificacion 1: solo se ejecuta SI el bill realmente se detuvo antes (dependencia causal real).
+        # Verificacion 2 (guardrail de anomalia): si el gasto reciente se ve muy fuera de lo normal
+        # para esta persona, NO se actua solo -- se escala a confirmacion humana en su lugar.
         if state.get("gym_bill_stopped"):
             amount = gym_bill["payment_amount"] if gym_bill else 40
-            try:
-                sweep_to_savings(CHECKING_ID, SAVINGS_ID, amount, "Ahorro automatico - fuga de Gym Co resuelta")
+            if signals["anomaly"]["detected"]:
                 new_actions.append(log_action(user_id, {
-                    "date": as_of, "type": "savings_moved", "requires_confirmation": False,
-                    "amount": amount,
-                    "text": f"Como ya no pagas el gimnasio, mande ${amount} a tu ahorro -- ese dinero ya no lo necesitas para gastos fijos.",
+                    "date": as_of, "type": "anomaly_pause", "requires_confirmation": True,
+                    "text": f"Iba a mover ${amount} a tu ahorro, pero pause la accion: {signals['anomaly']['reason']} "
+                            "¿confirmas que todo esta bien antes de que lo mueva?",
                 }))
-            except Exception as e:
-                new_actions.append(log_action(user_id, {
-                    "date": as_of, "type": "error", "requires_confirmation": False,
-                    "text": f"No se pudo mover el dinero en Nessie: {e}",
-                }))
+            else:
+                try:
+                    sweep_to_savings(CHECKING_ID, SAVINGS_ID, amount, "Ahorro automatico - fuga de Gym Co resuelta")
+                    table.put_item(Item=to_decimal({
+                        "user_id": user_id, "sk": f"TXN#{as_of}#sweep{int(time.time() * 1000)}",
+                        "type": "purchase", "date": as_of, "amount": amount,
+                        "category": "savings_transfer", "category_label": "Ahorro automático",
+                        "merchant_name": None, "description": "Ahorro automatico - fuga de Gym Co resuelta",
+                    }))
+                    new_actions.append(log_action(user_id, {
+                        "date": as_of, "type": "savings_moved", "requires_confirmation": False,
+                        "amount": amount,
+                        "text": f"Como ya no pagas el gimnasio, mande ${amount} a tu ahorro -- ese dinero ya no lo necesitas para gastos fijos.",
+                    }))
+                except Exception as e:
+                    new_actions.append(log_action(user_id, {
+                        "date": as_of, "type": "error", "requires_confirmation": False,
+                        "text": f"No se pudo mover el dinero en Nessie: {e}",
+                    }))
         else:
             new_actions.append(log_action(user_id, {
                 "date": as_of, "type": "info", "requires_confirmation": False,
