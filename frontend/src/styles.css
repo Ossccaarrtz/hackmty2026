@@ -138,6 +138,27 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .login-cta{min-height:52px;display:flex;align-items:center;justify-content:center}
 .login-spinner{width:18px;height:18px;border-radius:50%;border:2px solid #ffffff55;border-top-color:#fff;animation:login-spin .7s linear infinite}
 @keyframes login-spin{to{transform:rotate(360deg)}}
-@keyframes dashboard-pop{0%{opacity:0;transform:scale(.97) translateY(10px)}100%{opacity:1;transform:scale(1) translateY(0)}}
-.connected-dashboard{animation:dashboard-pop .5s cubic-bezier(.16,1,.3,1)}
-@media(prefers-reduced-motion:reduce){.login-spinner{animation:none}.connected-dashboard{animation:none}.login-card{transition:none}}
+@keyframes dashboard-pop{0%{opacity:0;transform:scale(.9) translateY(18px)}100%{opacity:1;transform:scale(1) translateY(0)}}
+.connected-dashboard .sidebar,
+.connected-dashboard .page-header,
+.connected-dashboard .balance-card,
+.connected-dashboard .stats-grid>section,
+.connected-dashboard .alerts-card,
+.connected-dashboard .chat-panel,
+.connected-dashboard .right-column>section{animation:dashboard-pop .5s cubic-bezier(.16,1,.3,1) both}
+.connected-dashboard .sidebar{animation-delay:0s}
+.connected-dashboard .page-header{animation-delay:.05s}
+.connected-dashboard .balance-card{animation-delay:.1s}
+.connected-dashboard .chat-panel{animation-delay:.1s}
+.connected-dashboard .stats-grid>section:nth-child(1){animation-delay:.18s}
+.connected-dashboard .stats-grid>section:nth-child(2){animation-delay:.24s}
+.connected-dashboard .alerts-card{animation-delay:.3s}
+.connected-dashboard .right-column>section:nth-child(1){animation-delay:.36s}
+.connected-dashboard .right-column>section:nth-child(2){animation-delay:.42s}
+@media(prefers-reduced-motion:reduce){
+  .login-spinner{animation:none}
+  .login-card{transition:none}
+  .connected-dashboard .sidebar,.connected-dashboard .page-header,.connected-dashboard .balance-card,
+  .connected-dashboard .stats-grid>section,.connected-dashboard .alerts-card,.connected-dashboard .chat-panel,
+  .connected-dashboard .right-column>section{animation:none}
+}
