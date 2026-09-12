@@ -131,3 +131,13 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .ledger-filter select,.ledger-filter input{padding:9px 11px;border-radius:10px;border:1px solid #b4c5d8;background:#fff6;color:#1e2b36;font-size:13px}
 .ledger-filter-clear{padding-bottom:9px}
 .ledger-filter-count{margin:0 0 12px}
+
+/* Login -> dashboard transition: a brief "signing in" moment, then the dashboard pops in */
+.login-card{transition:opacity .25s,transform .25s}
+.login-card.is-submitting{opacity:.7;transform:scale(.99)}
+.login-cta{min-height:52px;display:flex;align-items:center;justify-content:center}
+.login-spinner{width:18px;height:18px;border-radius:50%;border:2px solid #ffffff55;border-top-color:#fff;animation:login-spin .7s linear infinite}
+@keyframes login-spin{to{transform:rotate(360deg)}}
+@keyframes dashboard-pop{0%{opacity:0;transform:scale(.97) translateY(10px)}100%{opacity:1;transform:scale(1) translateY(0)}}
+.connected-dashboard{animation:dashboard-pop .5s cubic-bezier(.16,1,.3,1)}
+@media(prefers-reduced-motion:reduce){.login-spinner{animation:none}.connected-dashboard{animation:none}.login-card{transition:none}}

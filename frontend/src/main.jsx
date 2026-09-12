@@ -98,14 +98,20 @@ function Login({ onLogin }) {
   const [password, setPassword] = useState('demo1234');
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
-  function submit(event) { event.preventDefault(); onLogin(remember); }
+  const [submitting, setSubmitting] = useState(false);
+  function submit(event) {
+    event.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    window.setTimeout(() => onLogin(remember), 500);
+  }
   return <div className="login-page">
     <header className="login-topbar">
       <img src="/capital-one-logo.svg" alt="Capital One" className="login-topbar-logo" />
       <span className="login-topbar-brand">Centinel One</span>
     </header>
     <div className="login-center">
-      <form className="login-card glass" onSubmit={submit}>
+      <form className={`login-card glass ${submitting ? 'is-submitting' : ''}`} onSubmit={submit}>
         <img src="/capital-one-logo.svg" alt="Capital One" className="login-logo" />
         <h1 className="login-title">Iniciar sesión</h1>
         <p className="login-tagline">Agente de autonomía financiera · Track 1, Capital One Hackathon 2026</p>
@@ -124,7 +130,7 @@ function Login({ onLogin }) {
           </span>
         </label>
         <label className="login-remember"><input type="checkbox" checked={remember} onChange={event => setRemember(event.target.checked)} /> Recordarme</label>
-        <button className="login-cta black-button" type="submit">Iniciar sesión</button>
+        <button className="login-cta black-button" type="submit" disabled={submitting}>{submitting ? <span className="login-spinner" /> : 'Iniciar sesión'}</button>
         <button type="button" className="text-button login-forgot">¿Olvidaste tu usuario o contraseña?</button>
         <p className="login-footnote">Acceso de demostración — cuenta de Mia precargada.</p>
       </form>
