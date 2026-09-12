@@ -72,13 +72,16 @@ def record_score(user_id, as_of_date, value):
 
 
 def get_full_signals(deposits, purchases, bills_plain, user_id=None, as_of_date=None, persist=True):
-    # as_of_date=None significaba "no evalues anomalia ni gastos proximos"
-    # (compute_signals depende de una fecha de referencia real para eso) --
-    # asi que TODA llamada fuera de un checkpoint de advance-day (chat,
-    # verified_move_to_savings, verified_release_buffer, /signals normal)
-    # tenia el guardrail de anomalia permanentemente apagado sin que nadie
-    # lo notara. Default a hoy real cuando no se especifica un checkpoint.
-    as_of_date = as_of_date or date.today().isoformat()
+    # as_of_date=None solia significar "no evalues anomalia ni gastos
+    # proximos" -- corregido primero forzando date.today() aqui, pero eso
+    # cambiaba de referencia solo con el reloj de pared: en cuanto "hoy"
+    # real pasara el ultimo checkpoint sembrado, la referencia se habria
+    # adelantado mas alla de cualquier dato real. Ahora compute_signals
+    # resuelve internamente la fecha de referencia contra los datos mismos
+    # (signal_engine.resolve_reference_date) -- no hace falta forzar nada
+    # aqui, y record_score() abajo sigue usando la fecha real de hoy para
+    # el punto de historial (eso si es correcto: es cuando se registro,
+    # no una fecha de referencia para anomalia/pronostico).
     total_income = sum(float(d["amount"]) for d in deposits)
     total_expense = sum(float(p["amount"]) for p in purchases)
     history = get_score_history(user_id) if user_id else []

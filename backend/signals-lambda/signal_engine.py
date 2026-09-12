@@ -31,6 +31,21 @@ def is_neutral(category):
     return category in NEUTRAL_CATEGORIES or (category or "").startswith("envelope:")
 
 
+def resolve_reference_date(as_of_date, purchases):
+    """Fecha de referencia para 'hoy' cuando no se especifica un checkpoint
+    explicito -- NUNCA el reloj de pared (date.today()), siempre la fecha
+    mas reciente que de verdad existe en los datos. Asi ningun guardrail
+    (anomalia, pronostico de gastos) depende de que el calendario real
+    siga alineado con el ultimo dia sembrado: en cuanto "hoy" real cruce
+    la fecha del ultimo checkpoint de la demo, usar date.today() habria
+    movido la referencia mas alla de cualquier dato real sembrado, sin que
+    nadie lo notara hasta ver numeros raros."""
+    if as_of_date:
+        return as_of_date
+    dates = [p["date"] for p in purchases]
+    return max(dates) if dates else None
+
+
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
@@ -91,7 +106,7 @@ LEAK_LOOKBACK_DAYS = 60  # ventana de "actividad reciente" -- antes se comprobab
 
 
 def evaluate_bills(bills, purchases, as_of_date=None):
-    reference = as_of_date or max((p["date"] for p in purchases), default=None)
+    reference = resolve_reference_date(as_of_date, purchases)
     results = []
     for bill in bills:
         merchant_name = bill["payee"]
@@ -124,12 +139,13 @@ def forecast_upcoming_expenses(purchases, as_of_date, lookahead_days=5):
     promedio, y descarta categorias donde el intervalo es demasiado
     irregular (coeficiente de variacion > 50%) para no fingir que un gasto
     genuinamente aleatorio es 'predecible'."""
-    if not as_of_date:
+    reference = resolve_reference_date(as_of_date, purchases)
+    if not reference:
         return []
-    today = date.fromisoformat(as_of_date)
+    today = date.fromisoformat(reference)
     by_category = {}
     for p in purchases:
-        if is_neutral(p["category"]) or p["date"] > as_of_date:
+        if is_neutral(p["category"]) or p["date"] > reference:
             continue
         by_category.setdefault(p["category"], []).append(p)
 
@@ -196,14 +212,15 @@ def detect_anomaly(purchases, as_of_date, window_days=14):
     """Guardrail de seguridad: compara el gasto reciente contra el propio historial
     de la persona. Si algo se ve muy fuera de lo normal, el agente no debe actuar
     solo -- debe escalar a un humano en vez de asumir que todo esta bien."""
-    if not as_of_date:
+    reference = resolve_reference_date(as_of_date, purchases)
+    if not reference:
         return {"detected": False}
 
-    spend = [p for p in purchases if not is_neutral(p["category"]) and p["date"] <= as_of_date]
+    spend = [p for p in purchases if not is_neutral(p["category"]) and p["date"] <= reference]
     if len(spend) < 4:
         return {"detected": False}
 
-    cutoff = (date.fromisoformat(as_of_date) - timedelta(days=window_days)).isoformat()
+    cutoff = (date.fromisoformat(reference) - timedelta(days=window_days)).isoformat()
     recent = [p for p in spend if p["date"] > cutoff]
     older = [p for p in spend if p["date"] <= cutoff]
     if not older or not recent:
