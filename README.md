@@ -170,7 +170,9 @@ POST https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/chat/message
 { "message": "..." }
 ```
 
-El LLM entiende el mensaje en lenguaje natural y decide que herramienta llamar (`get_status`, `stop_subscription`, `move_to_savings`) — pero esas herramientas son **las mismas funciones verificadas** que usa `advance-day` (`backend/signals-lambda/agent_actions.py`). El LLM nunca decide montos ni ejecuta nada directo: cada función vuelve a verificar contra el estado real antes de actuar (¿de verdad es una fuga? ¿el monto es razonable? ¿no hay una anomalía activa?).
+El LLM entiende el mensaje en lenguaje natural y decide que herramienta llamar (`get_status`, `stop_subscription`, `move_to_savings`, `release_savings_buffer`) — pero esas herramientas son **las mismas funciones verificadas** que usa `advance-day` (`backend/signals-lambda/agent_actions.py`). El LLM nunca decide montos ni ejecuta nada directo: cada función vuelve a verificar contra el estado real antes de actuar (¿de verdad es una fuga? ¿el monto es razonable? ¿no hay una anomalía activa? ¿no excede el tope diario? ¿deja el colchón de liquidez sano?).
+
+**`release_savings_buffer` — suavizado de ingreso irregular, de verdad implementado.** Libera dinero del ahorro de vuelta a checking en una semana de ingreso bajo — el reverso de `move_to_savings`. Verifica que de verdad haya fondos acumulados en el "pool" de ahorro antes de soltar nada. Esto cierra una brecha real que encontró una auditoría de código: el README listaba "suavizado de ingreso" como innovación clave ya resuelta, pero no existía ni una línea de código — ya está implementado, desplegado, y probado (rechaza sin fondos, rechaza sobre lo disponible, ejecuta un monto legítimo).
 
 **Modelo: `gemini-3.1-flash-lite`.** No es la elección original — `gemini-2.5-flash` ya no está disponible para keys nuevas, y `gemini-3.6-flash` (el sugerido por Google) tiene una cuota gratuita de solo **20 solicitudes/día y 5/minuto**, insuficiente para pruebas + demo. El modelo lite tiene su propio cupo separado y no se agotó en las mismas pruebas. **Antes de la demo real: verificar cuota disponible o habilitar billing en el proyecto de Google Cloud** — un 429 a mitad de la presentación sería el peor momento para descubrir esto.
 
@@ -265,21 +267,27 @@ Copia [`.env.example`](./.env.example) a `.env` — ahí está la URL como `VITE
 ```
 aws s3 sync build/ s3://centinel-one-frontend --region us-east-1
 ```
-URL en vivo: `http://centinel-one-frontend.s3-website-us-east-1.amazonaws.com`. CloudFront + dominio `.tech` se conectan hasta el final (ver sección de Arquitectura), esto es solo para ir viendo avances en una URL real desde ya.
+**URL en vivo con HTTPS (CloudFront ya conectado): `https://d3ebjiymiktpim.cloudfront.net`**. El bucket de S3 sigue disponible directo en `http://centinel-one-frontend.s3-website-us-east-1.amazonaws.com` para pruebas rápidas. Falta solo el dominio `.tech` propio (si el equipo confirma que sí lo tienen) — conectarlo a esta distribución de CloudFront ya existente es un paso rápido (certificado ACM en us-east-1 + registro CNAME/alias).
 
 ## Estado actual
 
-**Integración del frontend:** el dashboard consume `/signals` y el historial completo de `/transactions`, con carga, errores y detalle buscable. El chat muestra los mensajes de `/simulation/advance-day`; cada avance solicita autorización explícita antes del POST, ya que el backend no expone el checkpoint actual y asume confirmación en Día 63. No hay transferencias locales ficticias. Consulta [`frontend/README.md`](./frontend/README.md) para configuración, pruebas y límites de sincronización del sandbox. Vite utiliza `frontend/.env` y genera `frontend/dist/`.
+Dos agentes de revisión (uno para backend, uno para frontend) auditaron todo el código en busca de bugs reales — no solo "se ve bien". Todo lo crítico e importante que encontraron ya está corregido y probado contra los endpoints reales, no en teoría. Detalle completo en [`PLAN.md`](./PLAN.md).
 
 - [x] Definición de score, política de riesgo y arquitectura
 - [x] Seed de ~90 días de historial simulado en Nessie
-- [x] Motor de señales — desplegado como Lambda real + DynamoDB, endpoint `GET /signals` en vivo
-- [x] Endpoint de datos crudos — `GET /transactions`, 62 movimientos con balance corriendo
-- [x] Agente decisor — política de riesgo + verificación + escrituras reales a Nessie, probado de punta a punta (`POST /simulation/advance-day`)
-- [x] Frontend conectado al backend real — el template inicial (`FundFlow`) no tenía ninguna conexión (confirmado en su propio README: "no se realizan movimientos reales ni se conecta al backend"). Se agregó `frontend/src/api.js` y se conectaron balance, transacciones, score y el agente (botón "Avanzar día" + feed) a los 3 endpoints en vivo.
-- [x] Chat conversacional real con Gemini (`POST /chat/message`) — tool-calling sobre las mismas funciones verificadas, probado con casos adversariales (inyección de prompt, alucinación de hechos, acciones ilegítimas). **Pendiente antes de la demo: confirmar cuota de la API key o habilitar billing.**
-- [ ] Ver [`PLAN.md`](./PLAN.md) para el plan de implementación completo
-- [~] Dashboard — en progreso (frontend trabajando contra el contrato de datos mock)
+- [x] Motor de señales — score explicable, guardrail de anomalía, alerta de colchón bajo, trend/proyección basados en historial real persistido (`SCORE#` en DynamoDB, no literales inventados)
+- [x] Endpoint de datos crudos — `GET /transactions`, balance corriendo con signos correctos para todos los tipos de movimiento
+- [x] Agente decisor — política de riesgo + verificación + escrituras reales a Nessie, probado de punta a punta, con protección real contra doble-ejecución (escritura condicional atómica en DynamoDB, probada)
+- [x] Suavizado de ingreso irregular (`release_savings_buffer`) — antes solo estaba en el discurso del pitch, ahora es código real, desplegado y probado
+- [x] Frontend conectado al backend real — score, transacciones, agente, y ahora también chat real y notificaciones en vivo
+- [x] Chat conversacional real con Gemini (`POST /chat/message`) — tool-calling sobre las mismas funciones verificadas, con input libre en la UI (ya no es un replay del feed), manejo explícito de 429, probado con casos adversariales (inyección de prompt, alucinación de hechos, acciones ilegítimas)
+- [x] Notificaciones en tiempo real (DynamoDB Streams → `GET /notifications`) — ya visibles en el dashboard, no solo en el backend
+- [x] CloudFront conectado (`https://d3ebjiymiktpim.cloudfront.net`) — HTTPS real, ya no solo el bucket de S3 sin cifrar
+
+**Pendiente antes de la demo real (no bloquea seguir construyendo):**
+- Confirmar cuota de la API key de Gemini o habilitar billing en Google Cloud
+- Dominio `.tech` propio, si el equipo lo tiene — conectarlo a la distribución de CloudFront ya existente
+- Segundo escenario/persona (ingreso estable) — sigue siendo idea abierta, no comprometida
 
 ## Track
 
