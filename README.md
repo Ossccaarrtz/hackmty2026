@@ -174,7 +174,7 @@ El LLM entiende el mensaje en lenguaje natural y decide que herramienta llamar (
 
 **`release_savings_buffer` — suavizado de ingreso irregular, de verdad implementado.** Libera dinero del ahorro de vuelta a checking en una semana de ingreso bajo — el reverso de `move_to_savings`. Verifica que de verdad haya fondos acumulados en el "pool" de ahorro antes de soltar nada. Esto cierra una brecha real que encontró una auditoría de código: el README listaba "suavizado de ingreso" como innovación clave ya resuelta, pero no existía ni una línea de código — ya está implementado, desplegado, y probado (rechaza sin fondos, rechaza sobre lo disponible, ejecuta un monto legítimo).
 
-**Modelo: `gemini-3.1-flash-lite`.** No es la elección original — `gemini-2.5-flash` ya no está disponible para keys nuevas, y `gemini-3.6-flash` (el sugerido por Google) tiene una cuota gratuita de solo **20 solicitudes/día y 5/minuto**, insuficiente para pruebas + demo. El modelo lite tiene su propio cupo separado y no se agotó en las mismas pruebas. **Antes de la demo real: verificar cuota disponible o habilitar billing en el proyecto de Google Cloud** — un 429 a mitad de la presentación sería el peor momento para descubrir esto.
+**Modelo: `gemini-3.6-flash`** (el recomendado por Google). Se probó primero con `gemini-2.5-flash` (ya no disponible para keys nuevas) y luego con `gemini-3.1-flash-lite` porque el free tier de `gemini-3.6-flash` tenía cuota de solo 20 solicitudes/día y 5/minuto. **Ya se activó billing en el proyecto de Google Cloud** (Cloud Prepay, MXN 100) — confirmado en vivo: 8 llamadas seguidas en menos de un minuto, todas `HTTP 200` (el límite gratuito anterior era de 5/minuto). Con la cuota levantada, se volvió a `gemini-3.6-flash`.
 
 **Pruebas adversariales ya corridas contra el endpoint real** (no solo el caso feliz):
 
@@ -285,7 +285,7 @@ Dos agentes de revisión (uno para backend, uno para frontend) auditaron todo el
 - [x] CloudFront conectado (`https://d3ebjiymiktpim.cloudfront.net`) — HTTPS real, ya no solo el bucket de S3 sin cifrar
 
 **Pendiente antes de la demo real (no bloquea seguir construyendo):**
-- Confirmar cuota de la API key de Gemini o habilitar billing en Google Cloud
+- ~~Confirmar cuota de la API key de Gemini o habilitar billing~~ — **ya resuelto.** Billing activo (Cloud Prepay, MXN 100), modelo de vuelta a `gemini-3.6-flash`, probado en vivo con ráfaga de 8 llamadas sin ningún 429.
 - Dominio `.tech` propio, si el equipo lo tiene — conectarlo a la distribución de CloudFront ya existente
 - Segundo escenario/persona (ingreso estable) — sigue siendo idea abierta, no comprometida
 
