@@ -198,6 +198,10 @@ Nessie no puede mandarnos webhooks (es una API estática, no push). El equivalen
 
 Probado en vivo de punta a punta: se le pidió al chat mover $15 a ahorro → el chat ejecutó la acción real en Nessie → **sin ninguna llamada adicional**, la notificación ya estaba disponible en `/notifications` segundos después. Esto es lo más cercano a "tiempo real" que se puede lograr sin un backend de bancos de verdad con webhooks propios.
 
+**El chat tiene memoria real de conversación** — no es solo un endpoint sin estado. Cada mensaje reconstruye el historial visible (lo que Mia escribió + la respuesta final de Centinel, no los pasos internos de qué herramienta se llamó) desde DynamoDB (`sk: CHAT_HISTORY`) antes de mandarlo a Gemini, y lo vuelve a guardar al final. Topado a los últimos 10 intercambios para controlar costo/latencia. `reset=true` también borra la memoria, para que cada ensayo empiece limpio.
+
+Probado en vivo: le pedí al chat "¿cuál sería un monto razonable para ahorrar?", sugirió $30, y en el siguiente mensaje escribí solo "ok, hazlo con ese monto" (sin repetir el número) — ejecutó los $30 correctamente. Después de un reset, la misma frase ambigua sin contexto previo hizo que el modelo preguntara en vez de inventar un monto — la memoria funciona, y su ausencia no produce alucinaciones.
+
 Detalle completo de la historia simulada en [`/seed/README.md`](./seed/README.md).
 
 ## Frontend — qué construir
