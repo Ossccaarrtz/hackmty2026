@@ -24,7 +24,12 @@ function TrendBadge({ trend }) {
   return <span className="trend-badge trend-flat"><Minus size={14} /> Estable</span>;
 }
 const AUTH_KEY = 'centinel:authed';
-function readAuthed() { try { return sessionStorage.getItem(AUTH_KEY) === 'true'; } catch { return false; } }
+function readAuthed() {
+  try {
+    if (localStorage.getItem(AUTH_KEY) === 'true') return true;
+    return sessionStorage.getItem(AUTH_KEY) === 'true';
+  } catch { return false; }
+}
 function PrivacyPolicy() {
   return <>
     <h2 id="privacy-title">Aviso de privacidad (demo)</h2>
@@ -57,16 +62,23 @@ function Footer() {
 function Login({ onLogin }) {
   const [email, setEmail] = useState('mia@centinelone.com');
   const [password, setPassword] = useState('demo1234');
-  function submit(event) { event.preventDefault(); onLogin(); }
-  return <div className="login-screen">
-    <form className="login-card" onSubmit={submit}>
-      <div className="login-brand"><Shield size={28} /><span>Centinel One</span></div>
-      <p className="login-tagline">Agente de autonomía financiera · Track 1, Capital One Hackathon 2026</p>
-      <label className="login-field"><span>Correo</span><input type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} required /></label>
-      <label className="login-field"><span>Contraseña</span><input type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required /></label>
-      <button className="login-cta" type="submit">Iniciar sesión</button>
-      <p className="login-footnote">Acceso de demostración — cuenta de Mia precargada.</p>
-    </form>
+  const [remember, setRemember] = useState(true);
+  function submit(event) { event.preventDefault(); onLogin(remember); }
+  return <div className="login-page">
+    <header className="login-topbar"><span className="login-topbar-brand"><Shield size={20} /> Centinel One</span></header>
+    <div className="login-center">
+      <form className="login-card" onSubmit={submit}>
+        <div className="login-logo"><Shield size={30} /></div>
+        <h1 className="login-title">Iniciar sesión</h1>
+        <p className="login-tagline">Agente de autonomía financiera · Track 1, Capital One Hackathon 2026</p>
+        <label className="login-field"><span>Nombre de usuario</span><input type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} required /></label>
+        <label className="login-field"><span>Contraseña</span><input type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required /></label>
+        <label className="login-remember"><input type="checkbox" checked={remember} onChange={event => setRemember(event.target.checked)} /> Recordarme</label>
+        <button className="login-cta" type="submit">Iniciar sesión</button>
+        <button type="button" className="text-button login-forgot">¿Olvidaste tu usuario o contraseña?</button>
+        <p className="login-footnote">Acceso de demostración — cuenta de Mia precargada.</p>
+      </form>
+    </div>
     <Footer />
   </div>;
 }
@@ -167,7 +179,7 @@ function App() {
   const feed = <div className="agent-feed">{session.feed.length ? session.feed.map(action => <article className={`agent-feed-item ${['error', 'verification_blocked', 'chat_rejected'].includes(action.type) ? 'action-error' : PENDING_TYPES.includes(action.type) || action.requires_confirmation ? 'action-pending' : ''}`} key={action.id}><span>{action.date && dateLabel(action.date)} · {action.type}</span><p>{action.text}</p></article>) : <p className="empty">Todavía no hay acciones recibidas en esta sesión. Avanza la simulación o escríbele a Centinel para ver sus respuestas.</p>}</div>;
   const chatTranscript = <div className="chat-transcript">{session.chatLog.length ? session.chatLog.map(m => <div className={`chat-bubble ${m.role}`} key={m.id}>{m.text}</div>) : <p className="empty">Escríbele a Centinel: puede revisar tu score, detener una suscripción marcada como fuga, mover dinero a tu ahorro, o liberar parte de tu ahorro si esta semana te entró poco.</p>}</div>;
 
-  if (!authed) return <Login onLogin={() => setAuthed(true)} />;
+  if (!authed) return <Login onLogin={remember => { if (remember) { try { localStorage.setItem(AUTH_KEY, 'true'); } catch { /* Storage is optional. */ } } setAuthed(true); }} />;
 
   return <>
   <main className={`dashboard connected-dashboard ${page === 'chat' ? 'chat-layout' : ''}`}>
@@ -206,7 +218,7 @@ function App() {
         <div className="detail-line"><span>Usuario<small>ID de demo</small></span><strong>mia</strong></div>
         <div className="detail-line"><span>Cuentas Nessie<small>Checking + Savings, sandbox</small></span><strong>2</strong></div>
         <div className="detail-line"><span>Colchón de liquidez<small>Días de gasto esencial cubiertos</small></span><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong></div>
-        <button className="outline-button" onClick={() => { setModal(null); setAuthed(false); }}>Cerrar sesión</button>
+        <button className="outline-button" onClick={() => { try { localStorage.removeItem(AUTH_KEY); } catch { /* Storage is optional. */ } setModal(null); setAuthed(false); }}>Cerrar sesión</button>
       </>}
     </section></div>}
   </main>

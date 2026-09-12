@@ -70,17 +70,25 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .transaction-amount.inflow,.detail-line strong.inflow{color:#1a7a4c}
 
 /* Login, footer, profile — Capital One red/navy accents, additive only */
-.login-screen{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px}
-.login-card{width:100%;max-width:380px;background:#fff;border-radius:28px;padding:40px 34px 34px;box-shadow:0 30px 70px -35px #0f172a55;display:flex;flex-direction:column;gap:16px}
-.login-brand{display:flex;align-items:center;gap:10px;color:#004878;font-size:20px;font-weight:650}
-.login-brand svg{color:#d22e1e}
+.login-page{min-height:100vh;display:flex;flex-direction:column}
+.login-topbar{display:flex;align-items:center;padding:18px 32px;background:#fff;border-bottom:1px solid #e2e8f0}
+.login-topbar-brand{display:flex;align-items:center;gap:8px;color:#004878;font-weight:650;font-size:16px}
+.login-topbar-brand svg{color:#d22e1e}
+.login-center{flex:1;display:flex;align-items:center;justify-content:center;padding:32px 24px}
+.login-card{width:100%;max-width:380px;background:#fff;border-radius:20px;padding:40px 34px 34px;box-shadow:0 30px 70px -35px #0f172a55;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
+.login-logo{width:56px;height:56px;border-radius:50%;background:#fdeceb;display:grid;place-items:center;color:#d22e1e;margin-bottom:2px}
+.login-title{font-size:22px;font-weight:650;color:#0b1d2c}
 .login-tagline{font-size:12px;color:#5c6d83;line-height:1.5;margin-bottom:4px}
-.login-field{display:flex;flex-direction:column;gap:6px;font-size:13px;color:#34465e}
-.login-field input{padding:13px 15px;border-radius:12px;border:1px solid #c7d3e0;background:#f7f9fc;font-size:14px}
-.login-cta{margin-top:6px;background:#d22e1e;color:#fff;border-radius:14px;padding:14px;font-weight:600;font-size:15px;text-align:center}
+.login-field{width:100%;display:flex;flex-direction:column;gap:6px;font-size:13px;color:#34465e;text-align:left}
+.login-field input{padding:13px 15px;border-radius:10px;border:1px solid #c7d3e0;background:#f7f9fc;font-size:14px}
+.login-remember{width:100%;display:flex;align-items:center;gap:8px;font-size:13px;color:#34465e;text-align:left}
+.login-remember input{width:16px;height:16px;accent-color:#d22e1e}
+.login-cta{width:100%;margin-top:4px;background:#d22e1e;color:#fff;border-radius:24px;padding:14px;font-weight:600;font-size:15px;text-align:center}
 .login-cta:hover{background:#a82316}
+.login-forgot{font-size:12px;color:#004878;margin-top:2px}
 .login-footnote{font-size:11px;color:#8390a4;text-align:center;margin-top:2px}
 .app-footer{max-width:1600px;margin:18px auto 0;display:flex;justify-content:space-between;align-items:center;padding:0 22px;font-size:12px;color:#5c6d83}
+.login-page .app-footer{margin:0 auto;padding:18px 22px}
 .footer-link{text-decoration:underline;text-underline-offset:3px;font-size:12px;color:#34465e}
 .profile-header{display:flex;align-items:center;gap:14px;margin:6px 0 20px}
 .profile-avatar-lg{width:64px;height:64px;font-size:22px}
