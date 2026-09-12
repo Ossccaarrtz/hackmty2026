@@ -181,6 +181,11 @@ input:focus,select:focus,textarea:focus{outline:0;box-shadow:0 0 0 3px #0048781f
 .statement-summary-item span{font-size:12px;color:#5c6d83}
 .statement-summary-item strong{font-size:18px}
 .statement-summary-item strong.inflow{color:#1a7f4d}
+
+/* Apartados (envelopes) */
+.envelope-form{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin:14px 0 26px}
+.envelope-form .ledger-filter{flex:1;min-width:140px}
+.envelope-form button{white-space:nowrap}
 @media print{
   body *{visibility:hidden}
   .statement-printable,.statement-printable *{visibility:visible}

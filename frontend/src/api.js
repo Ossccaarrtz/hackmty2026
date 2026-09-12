@@ -17,7 +17,11 @@ export function createApi({ baseUrl = DEFAULT_BASE, userId = 'mia', fetchImpl = 
         try { const body = await response.json(); if (body?.reply) msg = body.reply; } catch { /* usa el mensaje por default */ }
         throw new Error(msg);
       }
-      if (!response.ok) throw new Error(`El servidor respondió HTTP ${response.status}.`);
+      if (!response.ok) {
+        let reason = `El servidor respondió HTTP ${response.status}.`;
+        try { const body = await response.json(); if (body?.reason || body?.error) reason = body.reason || body.error; } catch { /* usa el mensaje por default */ }
+        throw new Error(reason);
+      }
       const data = await response.json();
       if (!data || typeof data !== 'object' || data.error) throw new Error(data?.error || 'Respuesta no válida del servidor.');
       return data;
@@ -32,6 +36,10 @@ export function createApi({ baseUrl = DEFAULT_BASE, userId = 'mia', fetchImpl = 
     getTransactions: () => request('/transactions'),
     getNotifications: () => request('/notifications'),
     getTrustReport: () => request('/trust-report'),
+    getEnvelopes: () => request('/envelopes'),
+    createEnvelope: (category, monthlyTarget) => request('/envelopes', { method: 'POST', body: { category, monthly_target: monthlyTarget } }),
+    setIncomePattern: (expectedAmount, frequencyDays) => request('/envelopes/income-pattern', { method: 'POST', body: { expected_amount: expectedAmount, frequency_days: frequencyDays } }),
+    confirmPendingAllocation: () => request('/envelopes/confirm-allocation', { method: 'POST', body: {} }),
     advanceDay: () => request('/simulation/advance-day', { method: 'POST' }),
     resetSimulation: () => request('/simulation/advance-day', { method: 'POST', reset: true }),
     sendChatMessage: (message) => request('/chat/message', { method: 'POST', body: { message, user_id: userId } }),
