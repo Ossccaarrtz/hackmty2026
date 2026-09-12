@@ -8,6 +8,7 @@ import './styles.css';
 import CategorySpending from './CategorySpending.jsx';
 
 const money = value => Number.isFinite(value) ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value) : '—';
+const slugify = category => category.trim().toLowerCase().replaceAll(' ', '_'); // debe calzar con agent_actions._slug() del backend
 const dateLabel = date => new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`));
 const monthLabel = yearMonth => new Intl.DateTimeFormat('es-MX', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${yearMonth}-01T00:00:00Z`));
 const PENDING_TYPES = ['leak_detected', 'anomaly_pause'];
@@ -237,6 +238,7 @@ function App() {
   ).sort((a, b) => b[1] - a[1]);
   const statementOpening = statementTransactions.length ? statementTransactions[0].running_balance - statementTransactions[0].signed_amount : null;
   const statementClosing = statementTransactions.length ? statementTransactions.at(-1).running_balance : null;
+  const editingEnvelope = newEnvelopeCategory.trim() && envelopes?.envelopes.some(env => env.slug === slugify(newEnvelopeCategory));
   const MONEY_MOVING_TYPES = ['bill_stopped', 'savings_moved', 'notification']; // mismo criterio que agent_actions.get_trust_report en el backend
   const trustStats = trustReport ? {
     resolvedLeaks: trustReport.verified_actions.filter(a => a.type === 'bill_stopped').length,
@@ -274,7 +276,7 @@ function App() {
     setEnvelopesError('');
     try {
       const result = await api.createEnvelope(newEnvelopeCategory, newEnvelopeTarget);
-      setEnvelopesNotice(result.message || 'Apartado creado.');
+      setEnvelopesNotice(result.message || 'Apartado guardado.');
       setNewEnvelopeCategory(''); setNewEnvelopeTarget('');
       await loadEnvelopes();
     } catch (err) { setEnvelopesError(err.message); }
@@ -410,7 +412,7 @@ function App() {
           {controls}
           {feed}
         </motion.section>}
-        {page === 'transactions' && <motion.section className="glass page-panel ledger-modal" key="transactions-page"
+        {page === 'transactions' && <motion.section className="glass page-panel transactions-page" key="transactions-page"
           initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
           transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
           <header className="card-heading"><h2>Todos los movimientos</h2>{backToHome}</header>
@@ -496,13 +498,14 @@ function App() {
             </form>
             <h3>Tus apartados ({envelopes.envelopes.length})</h3>
             {envelopes.envelopes.length ? envelopes.envelopes.map(env => <div className="envelope-row" key={env.slug}>
-              <div className="envelope-row-top"><span>{env.category}<small>Meta mensual: {money(env.monthly_target)}</small></span><strong>{money(env.balance)} <span className="muted-copy">de {money(env.monthly_target)}</span></strong></div>
+              <div className="envelope-row-top"><span>{env.category}<small>Meta mensual: {money(env.monthly_target)}</small></span><span className="envelope-row-actions"><strong>{money(env.balance)} <span className="muted-copy">de {money(env.monthly_target)}</span></strong><button type="button" className="text-button envelope-edit-button" onClick={() => { setNewEnvelopeCategory(env.category); setNewEnvelopeTarget(String(env.monthly_target)); }}>Editar</button></span></div>
               <div className="envelope-progress"><progress max={env.monthly_target || 1} value={Math.min(env.balance, env.monthly_target || 1)} aria-label={`Progreso de ${env.category}`} /></div>
             </div>) : <p className="empty">Todavía no hay apartados creados.</p>}
             <form className="envelope-form" onSubmit={submitNewEnvelope}>
-              <label className="ledger-filter"><span>Categoría nueva</span><input type="text" required value={newEnvelopeCategory} onChange={event => setNewEnvelopeCategory(event.target.value)} placeholder="Ej. gasolina" /></label>
+              <label className="ledger-filter"><span>{editingEnvelope ? 'Categoría (editando)' : 'Categoría nueva'}</span><input type="text" required value={newEnvelopeCategory} onChange={event => setNewEnvelopeCategory(event.target.value)} placeholder="Ej. gasolina" /></label>
               <label className="ledger-filter"><span>Meta mensual</span><input type="number" min="0" step="0.01" required value={newEnvelopeTarget} onChange={event => setNewEnvelopeTarget(event.target.value)} /></label>
-              <button className="black-button small" type="submit" disabled={envelopesBusy}>Crear apartado</button>
+              <button className="black-button small" type="submit" disabled={envelopesBusy}>{editingEnvelope ? 'Actualizar apartado' : 'Crear apartado'}</button>
+              {editingEnvelope && <button type="button" className="text-button" onClick={() => { setNewEnvelopeCategory(''); setNewEnvelopeTarget(''); }}>Cancelar edición</button>}
             </form>
             <button className="outline-button" onClick={confirmAllocation} disabled={envelopesBusy}>Confirmar reparto pendiente</button>
             <p className="muted-copy">Si una nómina detectada dejaba tu colchón muy bajo para repartirse sola, la propuesta queda aquí para tu confirmación explícita.</p>

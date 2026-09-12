@@ -369,12 +369,18 @@ def create_envelope(user_id, category, monthly_target):
     if monthly_target <= 0:
         return {"ok": False, "reason": "El monto mensual tiene que ser mayor a cero."}
     slug = _slug(category)
+    # Escritura idempotente por slug -- si ya existe un apartado con el
+    # mismo nombre, esto actualiza su meta mensual en vez de duplicarlo.
+    # Es la misma funcion que usa la UI para "crear" y para "editar" un
+    # apartado existente, sin necesitar un endpoint separado.
+    existing = table.get_item(Key={"user_id": user_id, "sk": f"{ENVELOPE_PREFIX}{slug}"}).get("Item")
     table.put_item(Item=to_decimal({
         "user_id": user_id, "sk": f"{ENVELOPE_PREFIX}{slug}",
         "category": category.strip(), "slug": slug, "monthly_target": monthly_target,
-        "created_at": date.today().isoformat(),
+        "created_at": existing["created_at"] if existing else date.today().isoformat(),
     }))
-    return {"ok": True, "message": f"Apartado '{category.strip()}' creado con meta de ${monthly_target}/mes."}
+    verb = "actualizado" if existing else "creado"
+    return {"ok": True, "message": f"Apartado '{category.strip()}' {verb} con meta de ${monthly_target}/mes."}
 
 
 def get_envelope_balances(user_id, purchases=None):

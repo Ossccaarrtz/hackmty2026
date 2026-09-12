@@ -356,6 +356,37 @@ class TestSetIncomePattern(BaseAgentActionsTest):
         self.assertEqual(float(saved_item["tolerance_pct"]), 0.10)
 
 
+class TestCreateEnvelope(BaseAgentActionsTest):
+    """create_envelope hace upsert por slug -- es la misma funcion que usa
+    la UI tanto para crear un apartado nuevo como para editar uno
+    existente (regresion del hallazgo: no habia forma de editar la meta
+    mensual de un apartado ya creado)."""
+
+    def test_creating_new_envelope_says_creado(self):
+        aa.table.get_item.return_value = {}
+        result = aa.create_envelope("mia", "Gasolina", 2000)
+        self.assertTrue(result["ok"])
+        self.assertIn("creado", result["message"])
+
+    def test_updating_existing_envelope_says_actualizado_not_duplicado(self):
+        aa.table.get_item.return_value = {"Item": {"category": "Gasolina", "slug": "gasolina", "monthly_target": 2000, "created_at": "2026-01-01"}}
+        result = aa.create_envelope("mia", "Gasolina", 2500)
+        self.assertTrue(result["ok"])
+        self.assertIn("actualizado", result["message"])
+        saved_item = aa.table.put_item.call_args.kwargs["Item"]
+        self.assertEqual(float(saved_item["monthly_target"]), 2500)
+        self.assertEqual(saved_item["created_at"], "2026-01-01")  # no se pisa la fecha de creacion original
+
+    def test_rejects_missing_category(self):
+        result = aa.create_envelope("mia", "", 500)
+        self.assertFalse(result["ok"])
+
+    def test_rejects_non_positive_target(self):
+        aa.table.get_item.return_value = {}
+        result = aa.create_envelope("mia", "Gasolina", 0)
+        self.assertFalse(result["ok"])
+
+
 class TestVerifiedActionHistoryDedup(BaseAgentActionsTest):
     def _mock_two_queries(self, action_items, notif_items):
         # get_verified_action_history llama table.query() dos veces en orden
