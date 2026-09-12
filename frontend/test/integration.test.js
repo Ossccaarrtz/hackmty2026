@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApi } from '../src/api.js';
-import { normalizeData, appendCheckpoint, emptySession } from '../src/data.js';
+import { normalizeData, appendCheckpoint, appendChatExchange, emptySession } from '../src/data.js';
 
 const signals = { score: { value: 64, breakdown: [{ key: 'income', label: 'Ingresos', value: 73, weight: 35 }] }, alerts: [], liquidity: { days_covered: 12 } };
 const ledger = { summary: { total_income: 620, total_expense: 114 }, transactions: [
@@ -55,4 +55,38 @@ test('checkpoints preserve backend messages and deduplicate replayed responses',
   assert.equal(twice.feed[0].text, response.new_actions[0].text); assert.equal(twice.feed[0].requires_confirmation, true);
   assert.equal(appendCheckpoint(twice, { done: true }).done, true);
   assert.throws(() => appendCheckpoint(twice, {}), /Checkpoint/);
+});
+test('chat sends a JSON body with the message and user_id, and reads notifications', async () => {
+  const calls = [];
+  const api = createApi({ userId: 'mia', fetchImpl: async (url, options) => {
+    calls.push({ url: new URL(url), method: options.method, body: options.body ? JSON.parse(options.body) : null });
+    return { ok: true, json: async () => ({ reply: 'ok', actions_taken: [] }) };
+  } });
+  await api.sendChatMessage('¿cómo va mi score?');
+  await api.getNotifications();
+  assert.equal(calls[0].url.pathname, '/chat/message'); assert.equal(calls[0].method, 'POST');
+  assert.deepEqual(calls[0].body, { message: '¿cómo va mi score?', user_id: 'mia' });
+  assert.equal(calls[1].url.pathname, '/notifications');
+});
+test('a 429 from the chat surfaces the backend-provided reply instead of a generic error', async () => {
+  const api = createApi({ fetchImpl: async () => ({ ok: false, status: 429, json: async () => ({ reply: 'Centinel esta saturado, intenta en un minuto.' }) }) });
+  await assert.rejects(api.sendChatMessage('hola'), /saturado/);
+});
+test('chat exchanges become a transcript, and only executed actions (not get_status) join the shared feed', () => {
+  const response = { reply: 'Detuve el cargo de Gym Co.', actions_taken: [
+    { tool: 'get_status', result: { score: { value: 64 } } },
+    { tool: 'stop_subscription', result: { ok: true, message: 'Detuve el cargo de Gym Co.' } },
+    { tool: 'move_to_savings', result: { ok: false, reason: 'Supera el limite autonomo.' } },
+  ] };
+  const next = appendChatExchange(emptySession(), 'detén el gimnasio', response);
+  assert.equal(next.chatLog.length, 2);
+  assert.equal(next.chatLog[0].role, 'user'); assert.equal(next.chatLog[0].text, 'detén el gimnasio');
+  assert.equal(next.chatLog[1].role, 'assistant'); assert.equal(next.chatLog[1].text, response.reply);
+  assert.equal(next.feed.length, 2); // get_status no cuenta como accion ejecutada
+  assert.equal(next.feed.some(item => item.type === 'stop_subscription'), true);
+  assert.equal(next.feed.some(item => item.type === 'chat_rejected'), true);
+});
+test('a malformed chat response is rejected instead of silently corrupting the session', () => {
+  assert.throws(() => appendChatExchange(emptySession(), 'hola', { reply: 'ok' }), /incompatible/);
+  assert.throws(() => appendChatExchange(emptySession(), 'hola', { actions_taken: [] }), /incompatible/);
 });
