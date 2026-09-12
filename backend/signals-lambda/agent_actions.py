@@ -115,36 +115,89 @@ def _amount_moved_today(items, category, today):
     )
 
 
-def verified_stop_bill(user_id, bill_title):
-    """Solo detiene un cargo si de verdad esta marcado como fuga ahora mismo.
-    No confia en lo que diga el LLM sobre el bill -- lo vuelve a checar."""
-    if not bill_title:
-        return {"ok": False, "reason": "No especificaste que suscripcion detener."}
+PENDING_STOP_BILL_SK = "PENDING_STOP_BILL"
 
+
+def _find_leak_bill(user_id, bill_title):
+    """Revisa desde cero si bill_title es una fuga real ahora mismo. No
+    ejecuta nada -- lo comparten verified_stop_bill/propose_stop_bill para
+    no duplicar la logica de verificacion."""
+    if not bill_title:
+        return None, {"ok": False, "reason": "No especificaste que suscripcion detener."}
     deposits, purchases, bills_plain = load_data(user_id)
     signals = get_full_signals(deposits, purchases, bills_plain, user_id=user_id, persist=False)
     bill = next((b for b in bills_plain if b["payee"].lower() == bill_title.lower()), None)
-
     if not bill:
-        return {"ok": False, "reason": f"No encontre ningun cargo llamado '{bill_title}'."}
+        return None, {"ok": False, "reason": f"No encontre ningun cargo llamado '{bill_title}'."}
     if bill["status"] != "recurring":
-        return {"ok": False, "reason": f"'{bill_title}' ya no esta activo (estado actual: {bill['status']})."}
+        return None, {"ok": False, "reason": f"'{bill_title}' ya no esta activo (estado actual: {bill['status']})."}
     is_leak = any(a["title"].lower() == bill_title.lower() for a in signals["alerts"])
     if not is_leak:
-        return {"ok": False, "reason": f"'{bill_title}' no esta marcado como fuga en este momento -- no lo voy a detener sin una razon real detectada."}
+        return None, {"ok": False, "reason": f"'{bill_title}' no esta marcado como fuga en este momento -- no lo voy a detener sin una razon real detectada."}
+    return bill, None
 
+
+def _execute_stop_bill(user_id, bill):
     try:
         stop_recurring_bill(bill["bill_id"], bill["payee"], bill["payment_amount"])
     except Exception as e:
         return {"ok": False, "reason": f"No se pudo detener el cargo en Nessie ahorita: {e}. No se hizo ningun cambio."}
-
     table.update_item(
         Key={"user_id": user_id, "sk": f"BILL#{bill['payee']}"},
         UpdateExpression="SET #s = :s",
         ExpressionAttributeNames={"#s": "status"},
         ExpressionAttributeValues={":s": "cancelled"},
     )
-    return {"ok": True, "amount": bill["payment_amount"], "message": f"Detuve el cargo automatico de {bill_title} (${bill['payment_amount']}/mes). Esto no cancela el contrato con el comercio, solo el cargo."}
+    return {"ok": True, "amount": bill["payment_amount"], "message": f"Detuve el cargo automatico de {bill['payee']} (${bill['payment_amount']}/mes). Esto no cancela el contrato con el comercio, solo el cargo."}
+
+
+def verified_stop_bill(user_id, bill_title):
+    """Usado por advance-day: el propio checkpoint (Dia 62 avisa y pausa,
+    Dia 63 ejecuta) YA es el paso de confirmacion humana de dos tiempos, asi
+    que aqui se revalida desde cero y se ejecuta directo."""
+    bill, error = _find_leak_bill(user_id, bill_title)
+    if error:
+        return error
+    return _execute_stop_bill(user_id, bill)
+
+
+def propose_stop_bill(user_id, bill_title):
+    """Usado por el chat, que NO tiene un checkpoint externo que sirva de
+    confirmacion -- NUNCA ejecuta en esta llamada, solo deja la propuesta
+    pendiente. Encontrado en una auditoria propia: antes el chat ejecutaba
+    esto en una sola llamada, y la unica barrera contra una cancelacion
+    prematura era una instruccion de prompt ('no llames esto sin
+    confirmacion explicita') -- exactamente el tipo de seguridad que
+    depende de que el LLM se porte bien, lo que el resto del proyecto evita
+    a proposito."""
+    bill, error = _find_leak_bill(user_id, bill_title)
+    if error:
+        return error
+    table.put_item(Item=to_decimal({
+        "user_id": user_id, "sk": PENDING_STOP_BILL_SK,
+        "bill_id": bill["bill_id"], "payee": bill["payee"], "payment_amount": bill["payment_amount"],
+    }))
+    return {
+        "ok": False, "pending": True,
+        "reason": f"Detecte que '{bill['payee']}' (${bill['payment_amount']}/mes) es una fuga real -- no tiene actividad relacionada. "
+                  f"Si tiene contrato anual, cancelar antes de tiempo podria generarte una penalizacion o mandarte a cobranza. "
+                  f"Confirma explicitamente que ya no lo usas y quieres que lo detenga.",
+    }
+
+
+def confirm_stop_bill(user_id):
+    """Segunda mitad del paso de dos tiempos del chat -- revalida desde
+    cero (no confia en que la propuesta siga siendo valida) antes de tocar
+    Nessie de verdad."""
+    resp = table.get_item(Key={"user_id": user_id, "sk": PENDING_STOP_BILL_SK})
+    pending = resp.get("Item")
+    if not pending:
+        return {"ok": False, "reason": "No hay ninguna cancelacion pendiente de confirmar."}
+    table.delete_item(Key={"user_id": user_id, "sk": PENDING_STOP_BILL_SK})
+    bill, error = _find_leak_bill(user_id, pending["payee"])
+    if error:
+        return {"ok": False, "reason": f"Ya no puedo confirmar esto: {error['reason']}"}
+    return _execute_stop_bill(user_id, bill)
 
 
 def verified_move_to_savings(user_id, amount, reason):
@@ -366,6 +419,22 @@ def verified_allocate_envelopes(user_id, deposit_amount, deposit_date):
     total_allocation = sum(p["amount"] for p in proposals)
 
     signals = get_full_signals(deposits, purchases, bills_plain, user_id=user_id, persist=False)
+    # Esta es la UNICA accion que se dispara 100% sola (webhook de deposito,
+    # sin que nadie del lado humano la inicie) -- por eso necesita las MISMAS
+    # verificaciones que verified_move_to_savings, no un subconjunto. Antes
+    # se calculaba signals["anomaly"] pero nunca se leia, y no habia tope de
+    # monto -- encontrado en una auditoria propia.
+    if signals["anomaly"]["detected"]:
+        return {"ok": False, "reason": f"Pause el reparto de nomina por seguridad: {signals['anomaly']['reason']}"}
+    if total_allocation > MAX_AUTONOMOUS_SAVINGS:
+        table.put_item(Item=to_decimal({
+            "user_id": user_id, "sk": PENDING_ALLOCATION_SK,
+            "proposals": proposals, "deposit_date": deposit_date, "total": total_allocation,
+        }))
+        return {
+            "ok": False, "pending": True, "proposals": proposals,
+            "reason": f"El reparto de ${total_allocation} entre tus apartados supera el limite autonomo de ${MAX_AUTONOMOUS_SAVINGS} -- dejo la propuesta pendiente de confirmar.",
+        }
     current_balance = signals["_debug"]["current_balance"]
     elapsed_days = signals["_debug"]["elapsed_days"]
     projected_liquidity = score_liquidity(current_balance - total_allocation, purchases, elapsed_days)

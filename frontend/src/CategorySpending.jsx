@@ -12,7 +12,7 @@ const money = value => new Intl.NumberFormat('en-US', { style: 'currency', curre
 
 export default function CategorySpending({ summary, loading, variants }) {
   const entries = Object.entries(summary?.by_category || {})
-    .filter(([key, amount]) => !['income', 'savings_transfer'].includes(key) && Number.isFinite(amount) && amount > 0)
+    .filter(([key, amount]) => !['income', 'savings_transfer'].includes(key) && !key.startsWith('envelope:') && Number.isFinite(amount) && amount > 0)
     .sort((a, b) => b[1] - a[1]);
   const total = entries.reduce((sum, [, amount]) => sum + amount, 0);
   let offset = 0;

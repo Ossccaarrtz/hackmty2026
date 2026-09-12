@@ -241,6 +241,19 @@ Probado en vivo: se corrieron los 4 checkpoints de la demo + una acción adicion
 
 **Bug de seguridad real encontrado y corregido mientras se construía esto:** el guardrail de anomalía (`detect_anomaly`) llevaba toda la sesión **apagado fuera de los checkpoints de `advance-day`** — cualquier llamada sin una fecha de referencia explícita (el chat, `verified_move_to_savings`, `verified_release_buffer`, y el uso normal de `/signals` sin `?as_of`) recibía `as_of_date=None` y automáticamente devolvía `detected: false` sin evaluar nada real. Corregido: `agent_actions.get_full_signals` y `lambda_function.py` ahora usan la fecha real de hoy como referencia cuando no se especifica un checkpoint — sin cambiar ningún valor de score/liquidez ya mostrado (verificado en vivo, idéntico antes y después).
 
+## Auditoría propia (agente independiente, solo lectura) — 4 hallazgos reales corregidos
+
+Se lanzó una revisión de código independiente buscando específicamente el mismo patrón que ya se había encontrado una vez (un guardrail que aparenta estar activo pero nunca se ejecuta). Encontró 4 hallazgos reales, ya corregidos y desplegados:
+
+1. **`verified_allocate_envelopes` calculaba el guardrail de anomalía pero nunca lo leía, y no tenía tope de monto** — a diferencia de `move_to_savings`/`release_savings_buffer`. Es la única acción que se dispara 100% sola (webhook de depósito, sin que nadie del lado humano la inicie), así que necesitaba las mismas verificaciones, no un subconjunto. Corregido: ahora respeta `anomaly.detected` y `MAX_AUTONOMOUS_SAVINGS` igual que las otras dos.
+2. **`stop_subscription` en el chat ejecutaba en una sola llamada** — la única barrera contra una cancelación prematura era una instrucción de prompt ("no llames esto sin confirmación explícita"), exactamente el tipo de seguridad que el resto del proyecto evita a propósito ("la seguridad no depende de que el LLM se porte bien"). Corregido: ahora es un proceso de dos tools — `stop_subscription` solo propone (nunca toca Nessie) y `confirm_stop_bill` ejecuta de verdad después de que el usuario confirma explícitamente, revalidando desde cero que sigue siendo una fuga real antes de escribir. `advance-day` no se tocó — su propio checkpoint (Día 62 avisa, Día 63 ejecuta) ya era ese paso de dos tiempos a nivel de código.
+3. **`evaluate_bills` comprobaba "sin actividad jamás", no "sin actividad reciente"** — un bill con una sola compra relacionada hace meses quedaba "sano" para siempre, aunque el texto de la alerta ("sin actividad en N días") diera a entender una ventana de tiempo real. Corregido con una ventana de 60 días.
+4. **Las tools de solo consulta del chat (`get_envelopes_status`, `get_upcoming_expenses`) no traían el campo `ok`** — el frontend las pintaba como "acción rechazada" (tarjeta roja, texto vacío) en el feed, justo en la sección que el propio README describe como "la prueba visual de que el agente actúa, no solo aconseja". Corregido en ambos lados: el backend ahora incluye `ok: true`, y el frontend excluye explícitamente las tools de solo lectura por nombre (no solo por el campo `ok`).
+
+De paso, también se corrigió que los repartos a apartados (`category="envelope:*"`) se colaban al desglose de gasto por categoría de `/transactions` y del dashboard — el fix de `is_neutral()` documentado arriba solo se había aplicado al cálculo del score, no a este endpoint.
+
+Probado en vivo: pedir por chat "cancela el gimnasio" ahora devuelve la propuesta con advertencia de riesgo, sin tocar Nessie; un segundo mensaje de confirmación ejecuta la cancelación real (`confirm_stop_bill`, `ok: true`); preguntar "¿cómo van mis apartados?" ya no aparece como acción rechazada en el feed.
+
 Detalle completo de la historia simulada en [`/seed/README.md`](./seed/README.md).
 
 ## Frontend — qué construir

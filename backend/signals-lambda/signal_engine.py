@@ -87,12 +87,18 @@ def score_essential_ratio(purchases, total_income):
     }
 
 
-def evaluate_bills(bills, purchases):
+LEAK_LOOKBACK_DAYS = 60  # ventana de "actividad reciente" -- antes se comprobaba actividad relacionada en TODA la historia disponible, no en una ventana reciente, asi que un bill con una sola compra relacionada hace meses quedaba "sano" para siempre
+
+
+def evaluate_bills(bills, purchases, as_of_date=None):
+    reference = as_of_date or max((p["date"] for p in purchases), default=None)
     results = []
     for bill in bills:
         merchant_name = bill["payee"]
         related = any(
-            CATEGORY_TO_MERCHANT.get(p["category"]) == merchant_name for p in purchases
+            CATEGORY_TO_MERCHANT.get(p["category"]) == merchant_name
+            and (reference is None or days_between(p["date"], reference) <= LEAK_LOOKBACK_DAYS)
+            for p in purchases
         )
         results.append({**bill, "healthy": bill["status"] != "recurring" or related})
     healthy_count = sum(1 for b in results if b["healthy"])
@@ -259,7 +265,7 @@ def compute_signals(deposits, purchases, bills, total_income=None, total_expense
 
     income_regularity = score_income_regularity(deposits)
     essential_ratio = score_essential_ratio(purchases, real_income)
-    bill_health = evaluate_bills(bills, purchases)
+    bill_health = evaluate_bills(bills, purchases, as_of_date)
     liquidity = score_liquidity(current_balance, purchases, elapsed_days)
     anomaly = detect_anomaly(purchases, as_of_date)
 
