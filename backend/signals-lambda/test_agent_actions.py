@@ -198,6 +198,19 @@ class TestVerifiedAllocateEnvelopes(BaseAgentActionsTest):
         self.assertEqual(result["amount"], 50.0)
         mock_sweep.assert_called_once()
 
+    def test_get_pending_allocation_returns_none_when_nothing_pending(self):
+        aa.table.get_item.return_value = {}
+        self.assertIsNone(aa.get_pending_allocation("mia"))
+
+    def test_get_pending_allocation_returns_stored_proposal(self):
+        aa.table.get_item.return_value = {"Item": {
+            "proposals": [{"category": "Gasolina", "slug": "gasolina", "amount": 50}],
+            "deposit_date": "2026-09-12", "total": 50,
+        }}
+        pending = aa.get_pending_allocation("mia")
+        self.assertEqual(pending["total"], 50.0)
+        self.assertEqual(pending["proposals"][0]["slug"], "gasolina")
+
     def test_confirm_pending_allocation_without_pending_rejects(self):
         aa.table.get_item.return_value = {}
         result = aa.confirm_pending_allocation("mia")

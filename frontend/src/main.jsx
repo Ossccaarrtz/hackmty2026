@@ -316,8 +316,31 @@ function App() {
     setEnvelopesError('');
     try {
       const result = await api.simulateThirdPartyPayroll('Estudio Creativo');
-      setEnvelopesNotice(result.message || 'Nómina de un tercero recibida.');
-      await Promise.all([loadEnvelopes(), refresh()]);
+      if (!result.matches_income_pattern) {
+        setEnvelopesNotice(`${result.message} No se reparte solo a tus apartados.`);
+        await loadEnvelopes();
+        return;
+      }
+      setEnvelopesNotice(`${result.message} Esperando a que el webhook reaccione…`);
+      // El reparto no es sincrono con esta respuesta: lo dispara DynamoDB
+      // Streams -> lambda_notifier unos segundos despues, no esta llamada
+      // HTTP. Sin este sondeo breve, la pantalla se queda mostrando saldos
+      // viejos y parece que el boton "no hizo nada".
+      let updated = null;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        updated = await api.getEnvelopes();
+        if (updated.pending_allocation || updated.envelopes.some(env => env.balance > 0)) break;
+      }
+      if (updated) setEnvelopes(updated);
+      if (updated?.pending_allocation) {
+        setEnvelopesNotice(`${result.message} Quedó un reparto de ${money(updated.pending_allocation.total)} pendiente de confirmar -- tu colchón de liquidez quedaría muy bajo. Usa "Confirmar reparto pendiente" abajo.`);
+      } else if (updated?.envelopes?.some(env => env.balance > 0)) {
+        setEnvelopesNotice(`${result.message} Reparto ejecutado automáticamente -- revisa los saldos abajo.`);
+      } else {
+        setEnvelopesNotice(`${result.message} (El webhook puede tardar unos segundos más -- si los saldos no cambian, vuelve a abrir esta pestaña.)`);
+      }
+      await refresh();
     } catch (err) { setEnvelopesError(err.message); }
     finally { setPayrollBusy(false); }
   }
@@ -520,7 +543,10 @@ function App() {
               <button className="black-button small" type="submit" disabled={envelopesBusy}>{editingEnvelope ? 'Actualizar apartado' : 'Crear apartado'}</button>
               {editingEnvelope && <button type="button" className="text-button" onClick={() => { setNewEnvelopeCategory(''); setNewEnvelopeTarget(''); }}>Cancelar edición</button>}
             </form>
-            <button className="outline-button" onClick={confirmAllocation} disabled={envelopesBusy}>Confirmar reparto pendiente</button>
+            {envelopes.pending_allocation
+              ? <div className="detail-line pending-allocation"><span>Reparto pendiente de confirmar<small>Colchón de liquidez quedaría muy bajo si se repartiera solo</small></span><strong>{money(envelopes.pending_allocation.total)}</strong></div>
+              : <p className="empty">No hay ningún reparto pendiente ahorita.</p>}
+            <button className="outline-button" onClick={confirmAllocation} disabled={envelopesBusy || !envelopes.pending_allocation}>Confirmar reparto pendiente</button>
             <p className="muted-copy">Si una nómina detectada dejaba tu colchón muy bajo para repartirse sola, la propuesta queda aquí para tu confirmación explícita.</p>
             <h3>Simular nómina de un tercero</h3>
             <p className="muted-copy">Mueve dinero real desde una cuenta Nessie que no es la nuestra (el "empleador" de Mia) hasta su cuenta -- el reparto a apartados que veas después ocurre solo, disparado por el mismo webhook que reacciona a cualquier depósito real.</p>

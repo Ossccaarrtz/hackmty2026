@@ -546,6 +546,21 @@ def verified_allocate_envelopes(user_id, deposit_amount, deposit_date):
     return {"ok": True, "amount": total_executed, "proposals": executed, "message": f"Reparti ${total_executed} entre tus apartados."}
 
 
+def get_pending_allocation(user_id):
+    """Expone si hay un reparto de nomina pausado por el guardrail de
+    liquidez -- sin esto, el frontend no tiene forma de distinguir 'la
+    nomina se repartio sola' de 'quedo pendiente de confirmar', y el boton
+    de confirmar aparece igual de disponible este pasivo o no."""
+    resp = table.get_item(Key={"user_id": user_id, "sk": PENDING_ALLOCATION_SK})
+    pending = resp.get("Item")
+    if not pending:
+        return None
+    return {
+        "total": float(pending["total"]), "deposit_date": pending["deposit_date"],
+        "proposals": [{"category": p["category"], "slug": p["slug"], "amount": float(p["amount"])} for p in pending["proposals"]],
+    }
+
+
 def confirm_pending_allocation(user_id):
     resp = table.get_item(Key={"user_id": user_id, "sk": PENDING_ALLOCATION_SK})
     pending = resp.get("Item")

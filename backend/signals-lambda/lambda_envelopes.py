@@ -30,6 +30,7 @@ def lambda_handler(event, context):
         return _response(200, {
             "envelopes": actions.get_envelope_balances(user_id),
             "income_pattern": actions.get_income_pattern(user_id),
+            "pending_allocation": actions.get_pending_allocation(user_id),
         })
 
     if method == "POST" and path.rstrip("/") == "/envelopes":
