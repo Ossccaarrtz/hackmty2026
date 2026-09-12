@@ -57,12 +57,41 @@ Cada uno de esos 4 pasos regresa un objeto `new_actions` con el texto exacto que
 ```
 aws s3 sync build/ s3://centinel-one-frontend --region us-east-1
 ```
-URL en vivo: `http://centinel-one-frontend.s3-website-us-east-1.amazonaws.com`. CloudFront + dominio `.tech` se conectan hasta el final, no antes (ver razones en README, sección Arquitectura).
+**CloudFront ya conectado: `https://d3ebjiymiktpim.cloudfront.net`** (HTTPS real). El bucket de S3 directo sigue vivo para pruebas rápidas: `http://centinel-one-frontend.s3-website-us-east-1.amazonaws.com`. Falta solo el dominio `.tech` propio si el equipo lo tiene.
+
+## 3.5. Auditoría de código (2 agentes, uno por backend/frontend) — todo lo crítico e importante ya resuelto
+
+Se lanzaron dos revisiones independientes buscando bugs reales (no solo estilo). Resultado completo:
+
+**Backend — corregido:**
+- `as_of` inválido o muy anterior a los datos ya no tumba `/signals` con 500 (validación + manejo de listas vacías)
+- Condición de carrera en el checkpoint de Día 90 (doble ejecución del sweep con dos clicks/reintentos simultáneos) — corregida con escritura condicional atómica en DynamoDB, probada matemáticamente: el segundo reclamo del mismo checkpoint es rechazado
+- `GEMINI_MODEL` ya no cae a un modelo roto (`gemini-2.5-flash`) si la variable de entorno se pierde en un redeploy
+- `move_to_savings` ahora valida tope diario acumulado y que no deje el colchón de liquidez por debajo de 7 días — antes solo validaba el monto de una sola transacción
+- Colchón de liquidez ya no divide entre 90 fijo — usa días reales transcurridos (antes inflaba el colchón a la mitad de su valor real en checkpoints parciales)
+- `trend` y `projection` ahora vienen de un historial real de scores persistido (`SCORE#` en DynamoDB) — antes eran literales inventados
+- Fechas hardcodeadas reemplazadas por fecha real; try/except agregado alrededor de las escrituras a Nessie en `agent_actions.py`
+- Nueva alerta `liquidity_warning` cuando el colchón cubre menos de 7 días
+
+**Backend — nueva funcionalidad construida (no solo reportada):**
+- `verified_release_buffer` — el suavizado de ingreso irregular que el README ya prometía como resuelto pero no existía en código. Ya está implementado, expuesto como tool de chat (`release_savings_buffer`), y probado (rechaza sin fondos, rechaza sobre lo disponible, ejecuta un monto legítimo).
+
+**Frontend — corregido:**
+- El chat ya no es un replay del feed de `advance-day` — es un chat real con input libre contra `POST /chat/message`
+- `/notifications` ya se consume (antes: cero referencias en todo el código)
+- `score.trend`, `signals.anomaly` y `projection.weeks_to_ready` ya se muestran (antes: calculados por el backend pero invisibles)
+- Estados visuales distintos para "esperando confirmación" vs "ejecutado" vs "error real" en el feed de acciones
+- Manejo explícito de 429 (cuota de Gemini) con el mensaje real del backend
+- Texto obsoleto sobre "ahorro no sincronizado" eliminado
+- 4 tests nuevos agregados (12/12 pasan), build limpio, desplegado
 
 ## 4. Lo que falta del lado de backend/agente (si alguien tiene tiempo para seguirle)
 
-- **Capa de lenguaje natural real sobre el agente decisor** — hoy los mensajes de `new_actions` son texto fijo por checkpoint. Conectar un LLM (Claude) que redacte la explicación dinámicamente sería el siguiente nivel, pero no es indispensable para que la demo funcione — los mensajes fijos ya cuentan la historia completa.
-- **Sincronizar el sweep de ahorro con `/signals` y `/transactions`** — ahora mismo el `POST /withdrawals` y `POST /deposits` del Día 90 sí quedan reales en Nessie, pero no se reflejan en el balance que regresa `/transactions` (que lee de los datos sembrados originalmente, no de nuevos movimientos). No rompe la demo (el score sí sube por la fuga resuelta), pero si alguien pregunta "¿por qué el balance no cambió" ya sabemos por qué.
+- ~~Capa de lenguaje natural real sobre el agente decisor~~ — **ya resuelto.** `POST /chat/message` usa Gemini (`gemini-3.1-flash-lite`) con tool-calling real sobre `agent_actions.py` — las mismas funciones verificadas de `advance-day`. Probado con casos adversariales (inyección de prompt, alucinación de hechos, bills inexistentes/sanos) — ver tabla de resultados en el README. **Pendiente antes de presentar:** confirmar que la cuota gratuita de la key alcance para la demo en vivo, o habilitar billing — el free tier de `gemini-3.6-flash` (el modelo que Google recomienda) es de solo 20 solicitudes/día, por eso terminamos en el modelo lite.
+- ~~Sincronizar el sweep de ahorro con `/signals` y `/transactions`~~ — **ya resuelto.** `/signals` ahora calcula los totales sumando las transacciones reales (no un registro estático), y el agente registra el sweep como un movimiento real en la tabla. Probado: balance pasa de $506 a $466 automáticamente después de la acción, sin sincronización manual.
+- **Guardrail de anomalía** — ~~prometido en el pitch~~ **ya implementado.** `signal_engine.detect_anomaly()` compara el gasto de los últimos 14 días contra el historial propio de la persona; si es más del doble, el agente no ejecuta la acción autónoma sola, genera un `anomaly_pause` pidiendo confirmación en su lugar. Con los datos normales de Mia se mantiene inactivo (no rompe la demo feliz), pero ya no es solo discurso.
+- ~~Webhook tras cada transacción~~ — **ya resuelto.** DynamoDB Streams habilitado en `jarbis-financiero-data`, dispara `jarbis-financiero-notifier` automáticamente en cada escritura (sin polling). Probado en vivo: se pidió por chat mover $15 a ahorro → sin llamar nada más, la notificación ya estaba en `GET /notifications` segundos después. Funciona igual sin importar si la acción vino del chat o de `advance-day`.
+- **Billing de Gemini** — pendiente de que alguien del equipo active facturación en Google Cloud para dejar de depender del free tier (20 solicitudes/día en el modelo recomendado). No bloquea nada mientras tanto — seguimos con `gemini-3.1-flash-lite`.
 - **Un segundo escenario/persona** (alguien con ingreso estable) — quedó como idea abierta en la pizarra de equipo, útil para demostrar que el score no castiga a todos igual.
 
 ## 5. Notas de seguridad ya resueltas (no hay que volver a decidir esto)

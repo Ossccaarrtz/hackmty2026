@@ -6,70 +6,65 @@
 @media(max-width:1100px){body{padding:16px}.dashboard{grid-template-columns:52px minmax(0,1fr);gap:25px}.sidebar{grid-row:1/3}.right-column{grid-column:2;display:grid;grid-template-columns:1fr 1fr;gap:20px}.transactions{grid-row:span 2}.saving-tip{min-height:0;padding:10px 6px}.quick-transfer{min-height:260px}.transaction-row{font-size:13px;height:66px}.transactions-heading{min-height:76px}.orb{max-width:158px}.balance-bottom{gap:35px}.money-actions{width:185px}.sidebar-bottom{position:sticky;bottom:25px}.main-column{gap:18px}.balance-card{min-height:285px}.page-header{height:84px}.payment-row{font-size:14px}.payments-card{min-height:285px}}
 @media(max-width:700px){body{padding:10px}.dashboard{border-radius:24px;padding:20px 16px;display:flex;flex-direction:column;gap:22px}.sidebar{flex-direction:row;justify-content:space-between;width:100%;padding:0}.brand-mark{height:34px;width:28px}.brand-mark svg{height:32px;width:25px}.sidebar nav{flex-direction:row;margin:0;gap:3px}.nav-button{height:38px;width:38px;border-radius:12px}.sidebar-bottom{margin:0;position:static}.sidebar-bottom>.nav-button{display:none}.profile{height:36px;width:36px;margin:0}.page-header{height:77px;align-items:center;margin-bottom:0}.page-header h1{font-size:27px}.page-header p{font-size:12px}.bank-card{font-size:13px;padding:14px;gap:14px;border-radius:14px}.balance-card{border-radius:26px;padding:23px 20px;min-height:0}.total{font-size:32px}.balance-bottom{flex-direction:column;gap:22px;margin-top:22px}.account-orbs{width:100%}.orb{width:32%;max-width:150px}.orb strong{font-size:18px}.orb span{font-size:13px}.money-actions{width:100%;flex-direction:row;gap:12px}.money-actions button{flex:1;padding:14px 10px;font-size:13px}.stats-grid{gap:12px}.expense-card,.health-card{height:235px;padding:18px 15px;border-radius:25px}.card-heading h2{font-size:13px}.pill{font-size:10px;padding:7px 9px}.bar-chart{height:163px;gap:8px;margin:0}.bar{border-radius:12px}.chart-tooltip{font-size:9px;padding:5px;left:calc(100% - 3px)}.bar-label{font-size:9px}.refresh{width:27px;height:27px}.health-value{font-size:31px;margin-top:20px}.health-card p{font-size:11px}.line-chart{height:125px;left:10px;width:calc(100% - 20px)}.payments-card{padding:19px 10px;min-height:0;border-radius:25px}.payments-card .card-heading{margin:0 9px 14px}.payment-row{grid-template-columns:27px 1fr 54px 60px;font-size:11px;gap:6px;min-height:59px;padding:8px 5px}.payment-plan{display:none}.merchant-icon{width:27px;height:27px}.payment-date{font-size:10px}.payment-row .status{font-size:10px}.right-column{display:flex;gap:0}.transactions-heading h2{font-size:26px}.transactions-heading{min-height:85px;padding-top:5px}.transactions-heading p{font-size:13px}.transaction-row{grid-template-columns:32px minmax(0,1fr) 48px 67px 53px;gap:9px;font-size:13px;height:68px}.saving-tip{padding:27px 5px 30px}.saving-tip h3{margin-bottom:10px}.quick-transfer{border-radius:25px;padding:23px;min-height:275px}.contacts{justify-content:space-between;gap:15px}.contact img,.add-avatar{width:54px;height:54px}.contact{font-size:12px}.transfer-form{margin-top:24px}.modal{padding:28px}.main-column{gap:15px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+.agent-card{padding:24px 26px 20px;margin-bottom:0}
+.agent-alert{display:flex;align-items:center;gap:8px;background:#fff2df;color:#7a4a12;border-radius:12px;padding:10px 14px;font-size:13px;margin:14px 0}
+.agent-controls{display:flex;gap:10px;margin-top:12px}
+.agent-controls button{display:inline-flex;align-items:center;gap:6px}
+.agent-feed{margin-top:16px;max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+.agent-feed-item{border-left:3px solid #6276ff;background:#eef2ff55;border-radius:0 12px 12px 0;padding:10px 14px;font-size:13px;line-height:1.4}
+.agent-feed-item span{display:block;font-size:11px;color:#748197;margin-bottom:3px}
 
-/* Centinel One additions */
-.panel{padding:24px 28px;border-radius:30px}
-.stats-grid.two-col{display:grid;grid-template-columns:1.2fr 1fr;gap:18px;margin:18px 0}
-.empty-note{color:#8390a4;font-size:14px}
-
-.score-hero{display:flex;align-items:center;justify-content:space-between;gap:32px;padding:30px 34px;border-radius:32px}
-.score-hero-main h2{font-size:15px;font-weight:550;color:#5a6a80;text-transform:uppercase;letter-spacing:.05em}
-.score-value-row{display:flex;align-items:baseline;gap:10px;margin-top:10px}
-.score-value-xl{font-size:56px;font-weight:650;letter-spacing:-1.6px;color:#161d24}
-.score-max{color:#8390a4;font-size:18px}
-.score-trend{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;padding:5px 12px;border-radius:999px;margin-left:4px}
-.score-trend.up{color:#1f8f5f;background:#dff5e8}
-.score-trend.down{color:#c14545;background:#fbe3e3}
-.score-caption{max-width:420px;margin-top:12px;font-size:14px;color:#5a6a80}
-.score-sub{margin-top:6px;font-size:13px;color:#8390a4}
-.score-ring{--pct:0;width:126px;height:126px;border-radius:50%;flex-shrink:0;background:conic-gradient(#6c76ff calc(var(--pct)*1%),#e3e9f2 0);display:grid;place-items:center;box-shadow:inset 0 0 0 8px #f4f6fb}
-.score-ring-inner{width:88px;height:88px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:20px;font-weight:650;color:#26394a;box-shadow:inset 0 1px 4px #00000014}
-
-.breakdown-list{display:flex;flex-direction:column;gap:18px;margin-top:16px}
-.breakdown-head{display:flex;justify-content:space-between;font-size:14px;color:#26394a;margin-bottom:7px}
-.breakdown-value{font-weight:600}
-.breakdown-value small{font-weight:400;color:#8390a4}
-.breakdown-track{height:8px;border-radius:999px;background:#e3e9f2;overflow:hidden}
-.breakdown-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#7885ff,#6baefa)}
-.breakdown-detail{font-size:12px;color:#8390a4;margin-top:5px}
-
-.action-feed{margin-top:18px}
-.timeline{display:flex;flex-direction:column;margin-top:14px}
-.timeline-item{display:flex;gap:14px;padding:14px 0;border-bottom:1px solid #dde5ee88}
-.timeline-item:last-child{border-bottom:none}
-.timeline-icon{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;background:#eef1ff;color:#4a55c9;flex-shrink:0}
-.timeline-text{font-size:14px;color:#26394a;line-height:1.45}
-.timeline-date{font-size:12px;color:#8390a4;margin-top:3px;text-transform:uppercase;letter-spacing:.04em}
-
-.alert-card{border-radius:20px;padding:18px 20px;background:#fff6e6;border:1px solid #f3d59a}
-.alert-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
-.alert-detail{font-size:13px;color:#8a6d2f;margin-top:3px}
-.alert-badge{background:#f0a93a;color:#fff;padding:5px 11px;border-radius:999px;font-size:11px;font-weight:650;white-space:nowrap}
-.alert-cost{font-size:13px;font-weight:600;color:#a5721b;margin-top:10px}
-.alert-actions{display:flex;gap:10px;margin-top:14px}
-button.small{padding:10px 16px;font-size:13px;border-radius:12px}
-.view-all{margin-top:14px;width:100%;text-align:center}
-
-/* Full-screen chat */
-.chat-screen{display:flex;flex-direction:column;height:100vh;max-width:720px;margin:0 auto;background:#eef2f8}
-.chat-header{display:flex;align-items:center;gap:12px;padding:18px 20px;background:#fff;border-bottom:1px solid #e3e9f2}
-.chat-back{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;color:#26394a}
-.chat-back:hover{background:#eef1ff}
-.chat-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#7885ff,#6baefa);color:#fff;display:grid;place-items:center;flex-shrink:0}
-.chat-header strong{font-size:15px;display:block}
-.chat-header p{font-size:12px;margin-top:1px}
-.chat-body{flex:1;overflow-y:auto;padding:22px 20px;display:flex;flex-direction:column;gap:14px}
-.chat-bubble{max-width:82%;background:#fff;border-radius:18px 18px 18px 4px;padding:14px 16px;box-shadow:0 1px 6px #23395014}
-.chat-bubble p{color:#26394a;font-size:14px;line-height:1.5;margin:0}
-.chat-bubble-date{display:block;font-size:11px;color:#8390a4;margin-top:6px;text-transform:uppercase;letter-spacing:.04em}
-.chat-controls{padding:16px 20px 22px;background:#fff;border-top:1px solid #e3e9f2}
-.chat-controls .black-button{width:100%}
-.chat-hint{font-size:12px;color:#a5721b;margin-bottom:10px;text-align:center}
-
-.transactions .transaction-row{grid-template-columns:minmax(0,1fr) 60px 64px;height:auto;padding:14px 0}
-.transactions .transaction-row strong{white-space:normal;overflow:visible;text-overflow:clip}
-
-.page-header{align-items:center}
-.balance-chip{display:flex;flex-direction:column;align-items:flex-end;gap:2px;padding:14px 22px;border-radius:20px;background:#fff8;box-shadow:inset 0 0 3px #a0adc633;border:1px solid #8eabc043}
-.balance-chip span{font-size:12px;color:#717f92}
-.balance-chip strong{font-size:22px;letter-spacing:-.5px;color:#161d24}
+/* Connected dashboard: preserve the original glass cards and responsive grid. */
+button:disabled{cursor:not-allowed;opacity:.5;transform:none}
+.connected-dashboard .page-header{height:auto;min-height:78px;gap:16px}
+.connected-dashboard .page-header p{font-size:14px;line-height:1.5}
+.connection-banner,.operation-notice{font-size:12px;line-height:1.5;color:#34465e}
+.error-banner{background:#fff0e7;color:#79331f;border-radius:15px;padding:15px;line-height:1.6;font-size:14px}
+.error-banner button{text-decoration:underline;font-weight:600}
+.score-hero{font-size:64px;font-weight:550}.score-hero>span{font-size:24px;margin-left:5px}
+.muted-copy{font-size:12px;line-height:1.6;color:#536780;margin-top:12px}
+.connected-dashboard .orb span{font-size:12px;text-align:center;max-width:95%}
+.connected-dashboard .orb strong{font-size:19px}
+.connected-dashboard .money-actions{width:185px}
+.breakdown-card{height:auto;min-height:268px}
+.score-component{margin-top:18px;font-size:12px}.score-component>div{display:flex;justify-content:space-between;gap:10px;margin-bottom:7px}
+.score-component strong{white-space:nowrap}
+progress{appearance:none;border:0;display:block;width:100%;height:9px;border-radius:10px;background:#c0d1ee;overflow:hidden}
+progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-value{background:linear-gradient(90deg,#806bff,#83b5ff);border-radius:10px}progress::-moz-progress-bar{background:#7d8eff}
+.health-value small{font-size:18px;margin-left:4px}
+.real-chart{width:100%;height:155px;color:#6276dd;display:block;margin-top:14px}.real-chart text{fill:currentColor;font-family:inherit;font-size:11px}
+.health-card .real-chart{height:120px;color:#e7f9ff;margin-top:5px}
+.chart-empty{font-size:13px;line-height:1.6;margin-top:22px!important}
+.alerts-card{min-height:210px;padding:24px}.alerts-card .card-heading{margin:0 0 20px}
+.live-alert{display:flex;gap:15px;align-items:center;padding:15px;background:#eef5ff60;border-radius:18px}.live-alert>svg{color:#a35f26}.live-alert>div{flex:1;min-width:0}.live-alert p{font-size:13px;margin-top:5px}.live-alert small{display:block;margin-top:8px;font-size:11px;color:#5c6d83}
+.live-transaction{grid-template-columns:34px minmax(0,1fr) 64px 78px;gap:10px}
+.connected-dashboard .agent-card{margin-top:24px;flex:1}.agent-controls{flex-wrap:wrap}
+.agent-feed-item p{color:#314257;line-height:1.65}.agent-feed-item.action-error{border-color:#b84d32;background:#fff0e7}
+.text-button{display:block;font-size:13px;text-decoration:underline;text-underline-offset:4px;margin-top:18px;padding:5px 0}
+.mia-avatar{display:grid;place-items:center;border-radius:50%;background:#e0eaf8;width:46px;height:46px;font-weight:600;color:#6473a3}
+.chat-layout{grid-template-columns:66px minmax(0,1fr)}.chat-panel{padding:30px;min-height:65vh}.chat-panel .agent-feed{max-height:none;min-height:240px;padding:20px 0}.chat-panel .agent-feed-item{max-width:850px}.chat-panel .card-heading h2{font-size:24px}
+.ledger-modal{max-width:760px}.ledger-search{display:flex;align-items:center;gap:10px;margin:20px 0}.ledger-search input{min-width:0}.ledger-modal .detail-line strong{white-space:nowrap}
+.modal .black-button{white-space:normal;line-height:1.5}.modal .agent-alert{align-items:flex-start;line-height:1.6}
+@media(max-width:1350px){.connected-dashboard .money-actions{width:155px}.connected-dashboard .money-actions button{font-size:12px;padding:16px 12px}.connected-dashboard .orb strong{font-size:16px}.connected-dashboard .orb span{font-size:10px}.live-transaction{grid-template-columns:28px minmax(0,1fr) 45px 67px;gap:8px}.score-component{font-size:11px}}
+@media(max-width:1100px){.chat-layout{grid-template-columns:52px minmax(0,1fr)}.connected-dashboard .right-column{align-items:start}.connected-dashboard .agent-card{margin-top:0}.connected-dashboard .orb strong{font-size:20px}}
+@media(max-width:700px){.connected-dashboard .page-header h1{font-size:24px}.connected-dashboard .page-header p{font-size:12px}.connected-dashboard .page-header>.pill{font-size:11px;padding:9px}.score-hero{font-size:54px}.connected-dashboard .balance-top>.pill{font-size:10px;max-width:85px;text-align:center}.connected-dashboard .money-actions{width:100%}.connected-dashboard .orb strong{font-size:16px}.connected-dashboard .stats-grid{grid-template-columns:1fr}.breakdown-card{min-height:270px}.score-component{font-size:13px}.connected-dashboard .health-card{height:275px}.live-alert{flex-wrap:wrap}.live-alert>div{flex-basis:65%}.live-alert .black-button{margin-left:39px}.connected-dashboard .agent-card{margin-top:20px}.chat-panel{padding:22px}.chat-panel .card-heading{align-items:flex-start}.chat-panel .card-heading h2{font-size:20px}.chat-panel .card-heading button{font-size:11px}.mia-avatar{width:36px;height:36px}}
+.trend-badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;margin-top:8px;padding:4px 10px;border-radius:20px}
+.trend-up{color:#1a7a4c;background:#dff3e6}.trend-down{color:#a3341f;background:#fbe4de}.trend-flat{color:#5c6d83;background:#eef2f7}
+.pill-warning{color:#8a4a13;background:#ffe6c2}
+.pill svg{vertical-align:-2px;margin-right:3px}
+.projection-note{font-size:12px;color:#536780;margin-top:14px;line-height:1.5}
+.agent-feed-item.action-pending{border-color:#c98a2e;background:#fff6e8}
+.chat-transcript{display:flex;flex-direction:column;gap:10px;margin-top:16px;max-height:38vh;overflow-y:auto;padding-right:4px}
+.chat-bubble{max-width:78%;padding:12px 16px;border-radius:16px;font-size:14px;line-height:1.55}
+.chat-bubble.user{align-self:flex-end;background:#111317;color:#fff;border-bottom-right-radius:4px}
+.chat-bubble.assistant{align-self:flex-start;background:#eef2ff80;color:#1e2b36;border-bottom-left-radius:4px}
+.chat-form{display:flex;gap:10px;margin-top:16px}
+.chat-form input{flex:1;min-width:0;padding:14px 18px;border-radius:24px;border:1px solid #b4c5d8;background:#fff8}
+.chat-form .black-button{border-radius:50%;width:48px;height:48px;padding:0;flex-shrink:0}
+.notifications-panel{padding:20px 22px;margin-top:20px}
+.notification-item{padding:10px 0;border-bottom:1px solid #d7e2ee66;font-size:13px}
+.notification-item:last-child{border-bottom:0}
+.notification-item span{display:block;font-size:11px;color:#748197;margin-bottom:3px}
+.notification-item p{color:#314257;line-height:1.5}
+.direction.inflow{color:#1a7a4c;border-color:#8fd4ac80}
+.transaction-amount.inflow,.detail-line strong.inflow{color:#1a7a4c}

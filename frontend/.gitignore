@@ -3,3 +3,5 @@ dist/
 *.log
 .npm-cache/
 .env
+.env.*
+!.env.example

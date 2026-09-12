@@ -2,14 +2,18 @@
 Motor de senales: calcula el Cash-Flow Resilience Score, detecta fugas,
 y arma el JSON del contrato de datos que el frontend consume.
 
-Puerto a Python del prototipo original (backend/signal-engine.js) para
-que coincida con el stack real de Jarbis (Lambda en Python 3.12).
+Puro en el sentido de que no toca AWS/DynamoDB directamente -- recibe listas
+de deposits/purchases/bills ya cargadas, y opcionalmente un historial real
+de scores (para trend/proyeccion), y devuelve el objeto de senales. Quien
+llama (lambda_function.py, lambda_advance_day.py, agent_actions.py) es
+responsable de leer/escribir el historial en DynamoDB.
 """
-from datetime import date
+from datetime import date, timedelta
 from statistics import mean, pstdev
 
 ESSENTIAL_CATEGORIES = {"rent", "groceries", "transport", "utilities", "income"}
-WINDOW_DAYS = 90
+NEUTRAL_CATEGORIES = {"income", "savings_transfer"}  # no cuentan como gasto discrecional ni esencial
+LIQUIDITY_WARNING_DAYS = 7  # si el colchon cubre menos de esto, se genera una alerta
 WEIGHTS = {"income": 0.35, "essential": 0.25, "bills": 0.20, "liquidity": 0.20}
 
 CATEGORY_TO_MERCHANT = {
@@ -28,23 +32,47 @@ def days_between(d1, d2):
     return abs((date.fromisoformat(d1) - date.fromisoformat(d2)).days)
 
 
+def compute_elapsed_days(deposits, purchases, as_of_date):
+    """Dias reales cubiertos por los datos disponibles -- nunca una constante fija.
+    Antes se dividia entre 90 sin importar cuantos dias de historia habia
+    realmente (ej. en un checkpoint de Dia 45), lo que inflaba el colchon de
+    liquidez a la mitad de su valor real."""
+    all_dates = [d["date"] for d in deposits] + [p["date"] for p in purchases]
+    if not all_dates:
+        return 1
+    earliest = min(all_dates)
+    latest = as_of_date or max(all_dates)
+    return max(days_between(earliest, latest), 1)
+
+
 def score_income_regularity(deposits):
+    # Los retornos de ahorro (savings_release) son movimientos internos, no
+    # ingreso real -- si se cuentan aqui, inflan artificialmente la
+    # "regularidad de ingreso" de la persona.
+    deposits = [d for d in deposits if d.get("category") != "savings_release"]
+    if not deposits:
+        return {"value": 0, "detail": "sin depositos registrados todavia"}
+
     sorted_deps = sorted(deposits, key=lambda d: d["date"])
     amounts = [float(d["amount"]) for d in sorted_deps]
     gaps = [days_between(sorted_deps[i]["date"], sorted_deps[i - 1]["date"]) for i in range(1, len(sorted_deps))]
 
-    amount_cv = pstdev(amounts) / mean(amounts) if mean(amounts) else 0
+    avg_amount = mean(amounts)
+    amount_cv = pstdev(amounts) / avg_amount if avg_amount else 0
     gap_cv = (pstdev(gaps) / mean(gaps)) if gaps and mean(gaps) else 0
     combined_cv = (amount_cv + gap_cv) / 2
 
     return {
         "value": round(clamp(100 - combined_cv * 100, 0, 100)),
-        "detail": f"{len(deposits)} depositos, promedio ${round(mean(amounts))}, variacion de monto {round(amount_cv * 100)}%",
+        "detail": f"{len(deposits)} depositos, promedio ${round(avg_amount)}, variacion de monto {round(amount_cv * 100)}%",
     }
 
 
 def score_essential_ratio(purchases, total_income):
-    discretionary_spend = sum(float(p["amount"]) for p in purchases if p["category"] not in ESSENTIAL_CATEGORIES)
+    discretionary_spend = sum(
+        float(p["amount"]) for p in purchases
+        if p["category"] not in ESSENTIAL_CATEGORIES and p["category"] not in NEUTRAL_CATEGORIES
+    )
     ratio = discretionary_spend / total_income if total_income else 0
     return {
         "value": round(clamp(100 - ratio * 200, 0, 100)),
@@ -65,9 +93,9 @@ def evaluate_bills(bills, purchases):
     return {"score": score, "bills": results}
 
 
-def score_liquidity(current_balance, purchases, window_days):
+def score_liquidity(current_balance, purchases, elapsed_days):
     essential_spend = sum(float(p["amount"]) for p in purchases if p["category"] in ESSENTIAL_CATEGORIES and p["category"] != "income")
-    avg_daily = essential_spend / window_days if window_days else 0
+    avg_daily = essential_spend / elapsed_days if elapsed_days else 0
     days_covered = int(current_balance / avg_daily) if avg_daily > 0 else 999
     cushion_ratio = (current_balance / (avg_daily * 14)) if avg_daily > 0 else 2
     return {
@@ -76,15 +104,79 @@ def score_liquidity(current_balance, purchases, window_days):
     }
 
 
+def compute_trend(score_history, current_score):
+    """Tendencia real comparada contra el ultimo punto persistido -- antes
+    siempre decia 'up' sin calcular nada."""
+    if not score_history:
+        return "flat"
+    last_value = score_history[-1]["value"]
+    if current_score > last_value:
+        return "up"
+    if current_score < last_value:
+        return "down"
+    return "flat"
+
+
 def project_readiness(score_history, current_score, threshold=75):
-    if len(score_history) < 2:
+    """Proyeccion basada en el historial REAL de scores persistidos -- antes
+    usaba una lista inventada ([45, 52, 58]) sin relacion a datos reales.
+    Devuelve None si todavia no hay suficiente historial (es mas honesto
+    que fabricar un numero)."""
+    points = [h["value"] for h in score_history] + [current_score]
+    if len(points) < 2:
         return None
-    weeks = len(score_history) - 1
-    weekly_rate = (current_score - score_history[0]) / weeks
-    if weekly_rate <= 0:
+    steps = len(points) - 1
+    rate = (current_score - points[0]) / steps
+    if rate <= 0:
         return None
-    weeks_to_ready = -(-(threshold - current_score) // weekly_rate) if weekly_rate else None  # ceil
-    return max(int(weeks_to_ready), 0) if weeks_to_ready is not None else None
+    steps_to_ready = -(-(threshold - current_score) // rate)  # ceil
+    return max(int(steps_to_ready), 0)
+
+
+def detect_anomaly(purchases, as_of_date, window_days=14):
+    """Guardrail de seguridad: compara el gasto reciente contra el propio historial
+    de la persona. Si algo se ve muy fuera de lo normal, el agente no debe actuar
+    solo -- debe escalar a un humano en vez de asumir que todo esta bien."""
+    if not as_of_date:
+        return {"detected": False}
+
+    spend = [p for p in purchases if p["category"] not in NEUTRAL_CATEGORIES and p["date"] <= as_of_date]
+    if len(spend) < 4:
+        return {"detected": False}
+
+    cutoff = (date.fromisoformat(as_of_date) - timedelta(days=window_days)).isoformat()
+    recent = [p for p in spend if p["date"] > cutoff]
+    older = [p for p in spend if p["date"] <= cutoff]
+    if not older or not recent:
+        return {"detected": False}
+
+    recent_daily_avg = sum(float(p["amount"]) for p in recent) / window_days
+    older_span = max(days_between(older[0]["date"], cutoff), 1)
+    older_daily_avg = sum(float(p["amount"]) for p in older) / older_span
+
+    if older_daily_avg > 0 and recent_daily_avg > older_daily_avg * 2:
+        return {
+            "detected": True,
+            "reason": f"Tu gasto de los ultimos {window_days} dias (${round(recent_daily_avg)}/dia) es mas del doble "
+                      f"de tu promedio historico (${round(older_daily_avg)}/dia) -- no se ve como tu patron normal.",
+        }
+    return {"detected": False}
+
+
+def compute_totals(deposits, purchases):
+    """Total de ingreso/gasto para el balance. 'savings_release' se guarda
+    con type=purchase (para que la verificacion en agent_actions.py opere
+    parejo sobre la lista de purchases), pero para el balance es dinero
+    ENTRANDO, no saliendo -- se trata como ingreso aqui pase lo que pase."""
+    income = sum(float(d["amount"]) for d in deposits)
+    expense = 0.0
+    for p in purchases:
+        amt = float(p["amount"])
+        if p.get("category") == "savings_release":
+            income += amt
+        else:
+            expense += amt
+    return income, expense
 
 
 def filter_up_to(items, as_of_date):
@@ -94,19 +186,29 @@ def filter_up_to(items, as_of_date):
     return [i for i in items if i["date"] <= as_of_date]
 
 
-def compute_signals(deposits, purchases, bills, total_income=None, total_expense=None, as_of_date=None):
+def compute_signals(deposits, purchases, bills, total_income=None, total_expense=None, as_of_date=None, score_history=None):
+    """as_of_date debe ser None o una fecha ISO (YYYY-MM-DD) ya validada por
+    quien llama -- este modulo no valida el formato, eso es responsabilidad
+    del Lambda handler (que si conoce el contexto de un request HTTP)."""
+    score_history = score_history or []
     deposits = filter_up_to(deposits, as_of_date)
     purchases = filter_up_to(purchases, as_of_date)
-    if as_of_date:
-        total_income = sum(float(d["amount"]) for d in deposits)
-        total_expense = sum(float(p["amount"]) for p in purchases)
+    if as_of_date or total_income is None or total_expense is None:
+        total_income, total_expense = compute_totals(deposits, purchases)
 
-    current_balance = total_income - total_expense
+    current_balance = (total_income or 0) - (total_expense or 0)
+    elapsed_days = compute_elapsed_days(deposits, purchases, as_of_date)
+
+    # Para el ratio esencial/discrecional, el ingreso "real" excluye
+    # retornos de ahorro -- de lo contrario un release infla el denominador
+    # y hace parecer que gasta menos discrecional de lo real.
+    real_income = sum(float(d["amount"]) for d in deposits if d.get("category") != "savings_release")
 
     income_regularity = score_income_regularity(deposits)
-    essential_ratio = score_essential_ratio(purchases, total_income)
+    essential_ratio = score_essential_ratio(purchases, real_income)
     bill_health = evaluate_bills(bills, purchases)
-    liquidity = score_liquidity(current_balance, purchases, WINDOW_DAYS)
+    liquidity = score_liquidity(current_balance, purchases, elapsed_days)
+    anomaly = detect_anomaly(purchases, as_of_date)
 
     final_score = round(
         income_regularity["value"] * WEIGHTS["income"]
@@ -115,23 +217,33 @@ def compute_signals(deposits, purchases, bills, total_income=None, total_expense
         + liquidity["value"] * WEIGHTS["liquidity"]
     )
 
-    leaks = [
+    alerts = [
         {
             "id": b["bill_id"],
             "type": "leak",
             "severity": "high",
             "title": b["payee"],
-            "detail": f"Sin actividad relacionada en {WINDOW_DAYS} dias",
+            "detail": f"Sin actividad relacionada en {elapsed_days} dias",
             "annual_cost": float(b["payment_amount"]) * 12,
             "status": "detected",
         }
         for b in bill_health["bills"] if not b["healthy"]
     ]
+    if liquidity["days_covered"] < LIQUIDITY_WARNING_DAYS:
+        alerts.append({
+            "id": "liquidity-warning",
+            "type": "liquidity_warning",
+            "severity": "high",
+            "title": "Colchon bajo",
+            "detail": f"Tu balance actual solo cubre {liquidity['days_covered']} dias de gasto esencial -- menos de una semana.",
+            "annual_cost": 0,
+            "status": "detected",
+        })
 
     return {
         "score": {
             "value": final_score,
-            "trend": "up",
+            "trend": compute_trend(score_history, final_score),
             "breakdown": [
                 {"key": "income_regularity", "label": "Regularidad de ingreso", "weight": 35, **income_regularity},
                 {"key": "essential_ratio", "label": "Ratio esencial/discrecional", "weight": 25, **essential_ratio},
@@ -141,8 +253,9 @@ def compute_signals(deposits, purchases, bills, total_income=None, total_expense
                  "detail": f"cubre {liquidity['days_covered']} dias de gasto esencial"},
             ],
         },
-        "alerts": leaks,
+        "alerts": alerts,
+        "anomaly": anomaly,
         "liquidity": {"days_covered": liquidity["days_covered"]},
-        "projection": {"weeks_to_ready": project_readiness([45, 52, 58, final_score], final_score) or 6, "product": "tarjeta secured"},
-        "_debug": {"total_income": total_income, "total_expense": total_expense, "current_balance": current_balance},
+        "projection": {"weeks_to_ready": project_readiness(score_history, final_score), "product": "tarjeta secured"},
+        "_debug": {"total_income": total_income, "total_expense": total_expense, "current_balance": current_balance, "elapsed_days": elapsed_days},
     }

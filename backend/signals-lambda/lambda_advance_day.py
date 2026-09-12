@@ -4,20 +4,24 @@ El "avanzar dia" de la demo: mueve un checkpoint a la vez por la historia de
 Mia, aplicando la politica de riesgo (bills = siempre pregunta; ahorro =
 autonomo) y la verificacion antes de ejecutar cualquier escritura real en
 Nessie. Guarda el estado y el log de acciones en DynamoDB.
+
+La ejecucion de acciones reutiliza las mismas funciones verificadas de
+agent_actions.py que usa el chat -- un solo lugar decide si una accion
+procede o no, sin importar si la disparo un checkpoint programado o un
+mensaje de texto libre.
 """
 import json
 import time
 import boto3
+from botocore.exceptions import ClientError
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 
-from signal_engine import compute_signals
-from nessie_actions import stop_recurring_bill, sweep_to_savings
+from signal_engine import compute_totals
+import agent_actions as actions
 
 REGION = "us-east-1"
 TABLE_NAME = "jarbis-financiero-data"
-CHECKING_ID = "3cbe83c6-e844-48b3-b86a-627b8a6e3028"
-SAVINGS_ID = "f9428a58-dbc4-49b3-9105-e69460a56a9a"
 
 dynamodb = boto3.resource("dynamodb", region_name=REGION)
 table = dynamodb.Table(TABLE_NAME)
@@ -53,6 +57,26 @@ def get_state(user_id):
     return resp.get("Item", {"checkpoint_idx": -1, "gym_bill_stopped": False})
 
 
+def claim_checkpoint(user_id, expected_old_idx, new_idx):
+    """Escritura condicional atomica: si dos invocaciones concurrentes (doble
+    click nervioso, reintento por red lenta) intentan avanzar el mismo
+    checkpoint, solo UNA gana la condicion -- la otra recibe False y no
+    ejecuta ninguna accion. Sin esto, un click doble en el checkpoint de
+    ahorro podria mover el dinero dos veces de verdad en Nessie."""
+    try:
+        table.update_item(
+            Key={"user_id": user_id, "sk": "STATE#simulation"},
+            UpdateExpression="SET checkpoint_idx = :new",
+            ConditionExpression="attribute_not_exists(checkpoint_idx) OR checkpoint_idx = :old",
+            ExpressionAttributeValues={":new": new_idx, ":old": expected_old_idx},
+        )
+        return True
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            return False
+        raise
+
+
 def save_state(user_id, state):
     table.put_item(Item=to_decimal({"user_id": user_id, "sk": "STATE#simulation", **state}))
 
@@ -77,25 +101,7 @@ def lambda_handler(event, context):
     user_id = params.get("user_id", "mia")
 
     if params.get("reset") == "true":
-        table.delete_item(Key={"user_id": user_id, "sk": "STATE#simulation"})
-        try:
-            _, _, bills = load_data(user_id)
-            gym = next((b for b in bills if b["payee"] == "Gym Co"), None)
-            if gym:
-                from nessie_actions import _request
-                _request("PUT", f"/bills/{gym['bill_id']}", {
-                    "status": "recurring", "payee": "Gym Co", "nickname": "Gym membership",
-                    "payment_date": "2026-09-07", "recurring_date": 5, "payment_amount": float(gym["payment_amount"]),
-                })
-                table.update_item(
-                    Key={"user_id": user_id, "sk": "BILL#Gym Co"},
-                    UpdateExpression="SET #s = :s",
-                    ExpressionAttributeNames={"#s": "status"},
-                    ExpressionAttributeValues={":s": "recurring"},
-                )
-        except Exception:
-            pass
-        return _response(200, {"reset": True, "message": "Simulacion reiniciada a Dia 0. Bill de Gym Co reactivado en Nessie para poder re-ensayar."})
+        return _handle_reset(user_id)
 
     state = get_state(user_id)
     idx = int(state["checkpoint_idx"]) + 1
@@ -103,13 +109,16 @@ def lambda_handler(event, context):
     if idx >= len(CHECKPOINTS):
         return _response(200, {"done": True, "message": "No hay mas dias que avanzar en esta demo."})
 
+    if not claim_checkpoint(user_id, idx - 1, idx):
+        return _response(200, {"retry": True, "message": "Ya se esta procesando este paso (otra solicitud llego al mismo tiempo) -- intenta de nuevo en un momento."})
+
     checkpoint = CHECKPOINTS[idx]
     as_of = checkpoint["date"]
 
     deposits, purchases, bills = load_data(user_id)
     bills_plain = [{"payee": b["payee"], "status": b["status"], "payment_amount": float(b["payment_amount"]), "bill_id": b["bill_id"]} for b in bills]
 
-    signals = compute_signals(deposits, purchases, bills_plain, as_of_date=as_of)
+    signals = actions.get_full_signals(deposits, purchases, bills_plain, user_id=user_id, as_of_date=as_of)
     new_actions = []
     gym_bill = next((b for b in bills_plain if b["payee"] == "Gym Co"), None)
 
@@ -133,50 +142,45 @@ def lambda_handler(event, context):
             }))
 
     elif idx == 2:
-        # Dia 63: el humano ya confirmo (asumido en la demo) -> verificacion -> ejecuta de verdad.
-        # Verificacion: re-confirma que el bill sigue existiendo y sigue siendo el que se marco como fuga.
-        if gym_bill and gym_bill["status"] == "recurring":
-            try:
-                stop_recurring_bill(gym_bill["bill_id"], "Gym Co", gym_bill["payment_amount"])
-                table.update_item(
-                    Key={"user_id": user_id, "sk": "BILL#Gym Co"},
-                    UpdateExpression="SET #s = :s",
-                    ExpressionAttributeNames={"#s": "status"},
-                    ExpressionAttributeValues={":s": "cancelled"},
-                )
-                state["gym_bill_stopped"] = True
-                new_actions.append(log_action(user_id, {
-                    "date": as_of, "type": "bill_stopped", "requires_confirmation": False,
-                    "amount": gym_bill["payment_amount"],
-                    "text": "Confirmaste que ya no usas el gimnasio -- detuve el cargo automatico de Gym Co ($40/mes).",
-                }))
-            except Exception as e:
-                new_actions.append(log_action(user_id, {
-                    "date": as_of, "type": "error", "requires_confirmation": False,
-                    "text": f"No se pudo detener el cargo en Nessie: {e}",
-                }))
+        # Dia 63: el humano ya confirmo (asumido en la demo) -> reusa la MISMA
+        # verificacion que el chat -- re-checa que de verdad sea una fuga antes de tocar Nessie.
+        result = actions.verified_stop_bill(user_id, "Gym Co")
+        if result["ok"]:
+            new_actions.append(log_action(user_id, {
+                "date": as_of, "type": "bill_stopped", "requires_confirmation": False,
+                "amount": result["amount"],
+                "text": "Confirmaste que ya no usas el gimnasio -- detuve el cargo automatico de Gym Co ($40/mes).",
+            }))
         else:
             new_actions.append(log_action(user_id, {
                 "date": as_of, "type": "verification_blocked", "requires_confirmation": False,
-                "text": "Verificacion fallida: el bill ya no coincide con lo detectado, no se ejecuta nada por seguridad.",
+                "text": f"No se detuvo el cargo: {result['reason']}",
             }))
 
     elif idx == 3:
         # Dia 90: accion autonoma -- mover a ahorro el dinero liberado de la fuga.
-        # Verificacion: solo se ejecuta SI el bill realmente se detuvo antes (dependencia causal real).
-        if state.get("gym_bill_stopped"):
-            amount = gym_bill["payment_amount"] if gym_bill else 40
-            try:
-                sweep_to_savings(CHECKING_ID, SAVINGS_ID, amount, "Ahorro automatico - fuga de Gym Co resuelta")
+        # verified_move_to_savings ya revisa: monto razonable, tope diario,
+        # anomalia activa, Y que el colchon de liquidez no quede por debajo
+        # del minimo de seguridad despues del movimiento.
+        gym_was_stopped = gym_bill is None or gym_bill["status"] != "recurring"
+        if gym_was_stopped:
+            amount = 40  # lo que se libera mensualmente al dejar de pagar el gimnasio
+            result = actions.verified_move_to_savings(user_id, amount, "Ahorro automatico - fuga de Gym Co resuelta")
+            if result["ok"]:
                 new_actions.append(log_action(user_id, {
                     "date": as_of, "type": "savings_moved", "requires_confirmation": False,
-                    "amount": amount,
-                    "text": f"Como ya no pagas el gimnasio, mande ${amount} a tu ahorro -- ese dinero ya no lo necesitas para gastos fijos.",
+                    "amount": result["amount"],
+                    "text": f"Como ya no pagas el gimnasio, mande ${result['amount']} a tu ahorro -- ese dinero ya no lo necesitas para gastos fijos.",
                 }))
-            except Exception as e:
+            elif "anomalia" in result["reason"].lower() or "Pause" in result["reason"]:
                 new_actions.append(log_action(user_id, {
-                    "date": as_of, "type": "error", "requires_confirmation": False,
-                    "text": f"No se pudo mover el dinero en Nessie: {e}",
+                    "date": as_of, "type": "anomaly_pause", "requires_confirmation": True,
+                    "text": f"Iba a mover ${amount} a tu ahorro, pero {result['reason']} ¿confirmas que todo esta bien antes de que lo mueva?",
+                }))
+            else:
+                new_actions.append(log_action(user_id, {
+                    "date": as_of, "type": "info", "requires_confirmation": False,
+                    "text": result["reason"],
                 }))
         else:
             new_actions.append(log_action(user_id, {
@@ -192,6 +196,35 @@ def lambda_handler(event, context):
         "score": signals["score"], "alerts": signals["alerts"],
         "new_actions": new_actions,
     })
+
+
+def _handle_reset(user_id):
+    table.delete_item(Key={"user_id": user_id, "sk": "STATE#simulation"})
+    try:
+        resp = table.query(KeyConditionExpression=Key("user_id").eq(user_id))
+        for item in resp["Items"]:
+            if item.get("category") in ("savings_transfer", "savings_release") or item["sk"].startswith("ACTION#") or item["sk"].startswith("NOTIFICATION#"):
+                table.delete_item(Key={"user_id": user_id, "sk": item["sk"]})
+    except Exception:
+        pass
+    try:
+        _, _, bills = load_data(user_id)
+        gym = next((b for b in bills if b["payee"] == "Gym Co"), None)
+        if gym:
+            from nessie_actions import _request
+            _request("PUT", f"/bills/{gym['bill_id']}", {
+                "status": "recurring", "payee": "Gym Co", "nickname": "Gym membership",
+                "payment_date": "2026-09-07", "recurring_date": 5, "payment_amount": float(gym["payment_amount"]),
+            })
+            table.update_item(
+                Key={"user_id": user_id, "sk": "BILL#Gym Co"},
+                UpdateExpression="SET #s = :s",
+                ExpressionAttributeNames={"#s": "status"},
+                ExpressionAttributeValues={":s": "recurring"},
+            )
+    except Exception:
+        pass
+    return _response(200, {"reset": True, "message": "Simulacion reiniciada a Dia 0. Bill de Gym Co reactivado en Nessie para poder re-ensayar."})
 
 
 def _response(status, body):
