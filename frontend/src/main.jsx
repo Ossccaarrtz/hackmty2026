@@ -23,8 +23,56 @@ function TrendBadge({ trend }) {
   if (trend === 'down') return <span className="trend-badge trend-down"><ArrowDown size={14} /> Bajando</span>;
   return <span className="trend-badge trend-flat"><Minus size={14} /> Estable</span>;
 }
+const AUTH_KEY = 'centinel:authed';
+function readAuthed() { try { return sessionStorage.getItem(AUTH_KEY) === 'true'; } catch { return false; } }
+function PrivacyPolicy() {
+  return <>
+    <h2 id="privacy-title">Aviso de privacidad (demo)</h2>
+    <p>Centinel One es un proyecto para el Hackathon de Capital One (Track 1) — no procesa datos financieros reales; todos los movimientos vienen del sandbox de Capital One Nessie.</p>
+    <p>El modelo de lenguaje (Gemini) nunca recibe tu historial crudo de transacciones, solo señales ya derivadas por nuestro motor (por ejemplo, "score=64, fuga detectada: Gym Co"). Toda acción que mueve dinero pasa primero por una verificación que confirma que coincide con lo que el motor de señales ya calculó, antes de escribir en Nessie.</p>
+    <p className="muted-copy">Para un producto real, esto requeriría un acuerdo de procesamiento de datos (DPA) con el proveedor del modelo y cumplimiento de GLBA — el mismo proceso que sigue cualquier institución financiera al usar un proveedor de nube.</p>
+  </>;
+}
+function Footer() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = event => event.key === 'Escape' && setOpen(false);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+  return <>
+    <footer className="app-footer">
+      <span>© 2026 Centinel One — Capital One Hackathon</span>
+      <button className="footer-link" onClick={() => setOpen(true)}>Aviso de privacidad</button>
+    </footer>
+    {open && <div className="modal-overlay" onClick={() => setOpen(false)}>
+      <section className="modal glass" role="dialog" aria-modal="true" aria-labelledby="privacy-title" onClick={event => event.stopPropagation()}>
+        <button className="close-modal icon-button" aria-label="Cerrar" onClick={() => setOpen(false)}><X /></button>
+        <PrivacyPolicy />
+      </section>
+    </div>}
+  </>;
+}
+function Login({ onLogin }) {
+  const [email, setEmail] = useState('mia@centinelone.com');
+  const [password, setPassword] = useState('demo1234');
+  function submit(event) { event.preventDefault(); onLogin(); }
+  return <div className="login-screen">
+    <form className="login-card" onSubmit={submit}>
+      <div className="login-brand"><Shield size={28} /><span>Centinel One</span></div>
+      <p className="login-tagline">Agente de autonomía financiera · Track 1, Capital One Hackathon 2026</p>
+      <label className="login-field"><span>Correo</span><input type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} required /></label>
+      <label className="login-field"><span>Contraseña</span><input type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required /></label>
+      <button className="login-cta" type="submit">Iniciar sesión</button>
+      <p className="login-footnote">Acceso de demostración — cuenta de Mia precargada.</p>
+    </form>
+    <Footer />
+  </div>;
+}
 
 function App() {
+  const [authed, setAuthed] = useState(readAuthed);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -61,6 +109,7 @@ function App() {
   }
   useEffect(() => { refresh(); return () => { requestId.current++; }; }, []);
   useEffect(() => { try { sessionStorage.setItem(sessionKey, JSON.stringify(session)); } catch { /* Storage is optional. */ } }, [session]);
+  useEffect(() => { try { sessionStorage.setItem(AUTH_KEY, authed ? 'true' : 'false'); } catch { /* Storage is optional. */ } }, [authed]);
   useEffect(() => {
     if (!modal) return;
     const previous = document.activeElement;
@@ -118,8 +167,11 @@ function App() {
   const feed = <div className="agent-feed">{session.feed.length ? session.feed.map(action => <article className={`agent-feed-item ${['error', 'verification_blocked', 'chat_rejected'].includes(action.type) ? 'action-error' : PENDING_TYPES.includes(action.type) || action.requires_confirmation ? 'action-pending' : ''}`} key={action.id}><span>{action.date && dateLabel(action.date)} · {action.type}</span><p>{action.text}</p></article>) : <p className="empty">Todavía no hay acciones recibidas en esta sesión. Avanza la simulación o escríbele a Centinel para ver sus respuestas.</p>}</div>;
   const chatTranscript = <div className="chat-transcript">{session.chatLog.length ? session.chatLog.map(m => <div className={`chat-bubble ${m.role}`} key={m.id}>{m.text}</div>) : <p className="empty">Escríbele a Centinel: puede revisar tu score, detener una suscripción marcada como fuga, mover dinero a tu ahorro, o liberar parte de tu ahorro si esta semana te entró poco.</p>}</div>;
 
-  return <main className={`dashboard connected-dashboard ${page === 'chat' ? 'chat-layout' : ''}`}>
-    <aside className="sidebar" aria-label="Navegación principal"><button className="brand-mark" aria-label="Centinel One inicio" onClick={() => setPage('home')}><Shield size={34} /></button><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Centinel', 'chat'], [Wallet, 'Movimientos', 'transactions']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => destination === 'transactions' ? setModal('transactions') : setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><span className="mia-avatar" aria-label="Perfil de Mia">M</span></div></aside>
+  if (!authed) return <Login onLogin={() => setAuthed(true)} />;
+
+  return <>
+  <main className={`dashboard connected-dashboard ${page === 'chat' ? 'chat-layout' : ''}`}>
+    <aside className="sidebar" aria-label="Navegación principal"><button className="brand-mark" aria-label="Centinel One inicio" onClick={() => setPage('home')}><Shield size={34} /></button><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Centinel', 'chat'], [Wallet, 'Movimientos', 'transactions']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => destination === 'transactions' ? setModal('transactions') : setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="mia-avatar" aria-label="Perfil de Mia" onClick={() => setModal('profile')}>M</button></div></aside>
     <section className="main-column">
       <header className="page-header"><div><h1>Centinel One</h1><p>Hola, Mia. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></header>
       <div className="connection-banner" role="status">Sandbox Nessie · USD · {loading ? 'Consultando backend…' : error ? 'Sin conexión · datos anteriores si están disponibles' : 'Datos del backend'}{session.label && ` · Último checkpoint: ${session.label}`}</div>
@@ -148,7 +200,17 @@ function App() {
       {modal === 'notifications' && <><h2 id="dialog-title">Avisos en tiempo real</h2><p className="muted-copy">Generados automáticamente por un webhook (DynamoDB Streams) cada vez que el agente hace un movimiento real — sin que nadie los pida.</p>{notifications.length ? notifications.map(n => <div className="detail-line" key={n.sk}><span>{n.text}<small>{dateLabel(n.date)}</small></span></div>) : <p>Sin avisos todavía.</p>}</>}
       {modal === 'advance' && <><h2 id="dialog-title">Avanzar la simulación</h2><p>El siguiente checkpoint puede observar la cuenta, detectar una fuga, detener el cargo de Gym Co, o mover dinero a ahorro en el sandbox Nessie.</p><p>El backend no permite consultar el checkpoint actual. Si el próximo paso es detener Gym Co, al continuar confirmas que ya no lo usas y autorizas detener ese cargo de demostración.</p><div className="agent-alert"><ShieldAlert size={20} /><span>Un contrato anual puede generar penalizaciones o cobranza. Bloquear el cargo no cancela la suscripción con el comercio.</span></div><button className="black-button" disabled={busy || uncertain || !data || !!error || session.done} onClick={() => mutate('advance')}>Confirmo y autorizo el siguiente paso</button><button className="text-button" onClick={() => setModal(null)}>Volver sin avanzar</button></>}
       {modal === 'reset' && <><h2 id="dialog-title">Reiniciar demo</h2><p>Solicitará al backend volver al día 0 y reactivar Gym Co en el sandbox compartido. Borrará el feed y el chat de esta pestaña, pero no revierte los depósitos o retiros anteriores de Nessie.</p><button className="black-button" disabled={busy} onClick={() => mutate('reset')}>Reiniciar simulación</button></>}
+      {modal === 'profile' && <>
+        <h2 id="dialog-title">Perfil</h2>
+        <div className="profile-header"><span className="mia-avatar profile-avatar-lg">M</span><div><strong>Mia</strong><p className="muted-copy">Ingreso freelance / gig · Sin historial en Buró</p></div></div>
+        <div className="detail-line"><span>Usuario<small>ID de demo</small></span><strong>mia</strong></div>
+        <div className="detail-line"><span>Cuentas Nessie<small>Checking + Savings, sandbox</small></span><strong>2</strong></div>
+        <div className="detail-line"><span>Colchón de liquidez<small>Días de gasto esencial cubiertos</small></span><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong></div>
+        <button className="outline-button" onClick={() => { setModal(null); setAuthed(false); }}>Cerrar sesión</button>
+      </>}
     </section></div>}
-  </main>;
+  </main>
+  <Footer />
+  </>;
 }
 createRoot(document.getElementById('root')).render(<App />);
