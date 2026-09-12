@@ -237,6 +237,12 @@ function App() {
   ).sort((a, b) => b[1] - a[1]);
   const statementOpening = statementTransactions.length ? statementTransactions[0].running_balance - statementTransactions[0].signed_amount : null;
   const statementClosing = statementTransactions.length ? statementTransactions.at(-1).running_balance : null;
+  const MONEY_MOVING_TYPES = ['bill_stopped', 'savings_moved', 'notification']; // mismo criterio que agent_actions.get_trust_report en el backend
+  const trustStats = trustReport ? {
+    resolvedLeaks: trustReport.verified_actions.filter(a => a.type === 'bill_stopped').length,
+    moneyActions: trustReport.verified_actions.filter(a => MONEY_MOVING_TYPES.includes(a.type)).length,
+    confirmations: trustReport.verified_actions.filter(a => a.requires_confirmation).length,
+  } : null;
 
   async function loadTrustReport() {
     setSummaryCopied(false);
@@ -409,7 +415,10 @@ function App() {
           transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
           <header className="card-heading"><h2>Todos los movimientos</h2>{backToHome}</header>
           <p>{transactions.length} movimientos · Saldo: {money(data?.balance)}</p>
-          <LineChart values={transactions.map(tx => tx.running_balance)} label="Balance histórico calculado por el backend" />
+          <div className="transactions-charts">
+            <div><h3 className="chart-block-title">Balance histórico</h3><LineChart values={transactions.map(tx => tx.running_balance)} label="Balance histórico calculado por el backend" /></div>
+            <CategorySpending summary={data?.summary} loading={loading} />
+          </div>
           <label className="ledger-search"><Search size={18} /><input aria-label="Buscar movimientos" placeholder="Buscar comercio o categoría" value={query} onChange={event => setQuery(event.target.value)} /></label>
           <div className="ledger-filters">
             <label className="ledger-filter"><span>Categoría</span><select aria-label="Filtrar por categoría" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}><option value="">Todas</option>{categoryOptions.map(opt => <option key={opt.key} value={opt.key}>{opt.label}</option>)}</select></label>
@@ -428,6 +437,11 @@ function App() {
           {trustLoading && <p className="empty">Generando reporte…</p>}
           {trustError && <div className="error-banner" role="alert">{trustError} <button onClick={loadTrustReport}>Reintentar</button></div>}
           {trustReport && <>
+            <div className="trust-stats">
+              <div className="trust-stat"><strong>{trustStats.resolvedLeaks}</strong><span>Fugas resueltas</span></div>
+              <div className="trust-stat"><strong>{trustStats.moneyActions}</strong><span>Acciones reales sobre el dinero</span></div>
+              <div className="trust-stat"><strong>{trustStats.confirmations}</strong><span>Confirmaciones pedidas antes de actuar</span></div>
+            </div>
             <div className="detail-line"><span>Score actual<small>Tendencia</small></span><strong><TrendBadge trend={trustReport.score.trend} /> {trustReport.score.value}/100</strong></div>
             <LineChart values={trustReport.score_history.map(point => point.value)} label="Historial completo de score" />
             <div className="detail-line"><span>Colchón de liquidez</span><strong>{trustReport.liquidity.days_covered} días</strong></div>
@@ -481,7 +495,10 @@ function App() {
               <button className="outline-button small" type="submit" disabled={envelopesBusy}>{envelopes.income_pattern ? 'Actualizar patrón' : 'Declarar patrón'}</button>
             </form>
             <h3>Tus apartados ({envelopes.envelopes.length})</h3>
-            {envelopes.envelopes.length ? envelopes.envelopes.map(env => <div className="detail-line" key={env.slug}><span>{env.category}<small>Meta mensual: {money(env.monthly_target)}</small></span><strong>{money(env.balance)}</strong></div>) : <p className="empty">Todavía no hay apartados creados.</p>}
+            {envelopes.envelopes.length ? envelopes.envelopes.map(env => <div className="envelope-row" key={env.slug}>
+              <div className="envelope-row-top"><span>{env.category}<small>Meta mensual: {money(env.monthly_target)}</small></span><strong>{money(env.balance)} <span className="muted-copy">de {money(env.monthly_target)}</span></strong></div>
+              <div className="envelope-progress"><progress max={env.monthly_target || 1} value={Math.min(env.balance, env.monthly_target || 1)} aria-label={`Progreso de ${env.category}`} /></div>
+            </div>) : <p className="empty">Todavía no hay apartados creados.</p>}
             <form className="envelope-form" onSubmit={submitNewEnvelope}>
               <label className="ledger-filter"><span>Categoría nueva</span><input type="text" required value={newEnvelopeCategory} onChange={event => setNewEnvelopeCategory(event.target.value)} placeholder="Ej. gasolina" /></label>
               <label className="ledger-filter"><span>Meta mensual</span><input type="number" min="0" step="0.01" required value={newEnvelopeTarget} onChange={event => setNewEnvelopeTarget(event.target.value)} /></label>

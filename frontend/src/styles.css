@@ -213,3 +213,22 @@ input:focus,select:focus,textarea:focus{outline:0;box-shadow:0 0 0 3px #0048781f
 .upcoming-expenses h3{font-size:13px;font-weight:600;color:#5c6d83;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px}
 .upcoming-expense-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;font-size:14px}
 .upcoming-expense-row .muted-copy{font-size:12px}
+
+/* Paginas propias (antes modales): grafica de categorias en Movimientos,
+   estadisticas y barras de progreso en Reporte de confianza/Apartados --
+   para que cada seccion se sienta distinta, no la misma lista repetida. */
+.transactions-charts{display:grid;grid-template-columns:1.3fr 1fr;gap:24px;align-items:start;margin:18px 0 26px}
+.transactions-charts .category-spending{margin-top:0}
+.chart-block-title{font-size:13px;font-weight:600;color:#5c6d83;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px}
+@media(max-width:900px){.transactions-charts{grid-template-columns:1fr}}
+.trust-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px 0 24px}
+.trust-stat{background:#f3f6fa;border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.trust-stat strong{font-size:26px;color:var(--c1-navy)}
+.trust-stat span{font-size:12px;color:#5c6d83}
+@media(max-width:700px){.trust-stats{grid-template-columns:1fr 1fr}}
+.envelope-progress{margin-top:6px}
+.envelope-progress progress{margin-top:6px}
+.envelope-row{padding:14px 0;border-bottom:1px solid #becddb75}
+.envelope-row:last-child{border-bottom:0}
+.envelope-row-top{display:flex;align-items:center;justify-content:space-between;gap:20px;font-size:14px}
+.envelope-row-top small{display:block;margin-top:4px;color:#748197}
