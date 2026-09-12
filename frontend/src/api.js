@@ -31,6 +31,7 @@ export function createApi({ baseUrl = DEFAULT_BASE, userId = 'mia', fetchImpl = 
     getSignals: () => request('/signals'),
     getTransactions: () => request('/transactions'),
     getNotifications: () => request('/notifications'),
+    getTrustReport: () => request('/trust-report'),
     advanceDay: () => request('/simulation/advance-day', { method: 'POST' }),
     resetSimulation: () => request('/simulation/advance-day', { method: 'POST', reset: true }),
     sendChatMessage: (message) => request('/chat/message', { method: 'POST', body: { message, user_id: userId } }),

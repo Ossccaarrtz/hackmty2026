@@ -151,3 +151,9 @@ button:active{transform:scale(.98)}
 input,select,textarea{transition:box-shadow .18s ease,border-color .18s ease}
 input:focus,select:focus,textarea:focus{outline:0;box-shadow:0 0 0 3px #0048781f;border-color:#004878}
 .login-input-wrap input:focus{box-shadow:none}
+
+/* Upcoming expenses forecast (alerts card) and the trust-report modal */
+.upcoming-expenses{margin:18px 16px 0;padding-top:16px;border-top:1px solid #becddb60}
+.upcoming-expenses h3{font-size:13px;font-weight:600;color:#5c6d83;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px}
+.upcoming-expense-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;font-size:14px}
+.upcoming-expense-row .muted-copy{font-size:12px}
