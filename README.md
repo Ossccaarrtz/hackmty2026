@@ -131,8 +131,9 @@ Se descubrió que la infraestructura de Jarbis ya vive en esta cuenta (`jarbis-*
 | Recurso | Detalle |
 |---|---|
 | Tabla DynamoDB | `jarbis-financiero-data` — PK `user_id`, SK `sk` (mismo patrón que las tablas `jarbis-*` existentes). También guarda `STATE#simulation` y el log de `ACTION#...` |
-| Lambdas | `jarbis-financiero-signals`, `jarbis-financiero-transactions`, `jarbis-financiero-advance-day` — todas Python 3.12, todas usan el rol ya existente `job-search-lambda-role` |
-| API Gateway | Rutas `GET /signals`, `GET /transactions`, `POST /simulation/advance-day` agregadas al API `jarbis` ya existente |
+| Lambdas | `jarbis-financiero-signals`, `jarbis-financiero-transactions`, `jarbis-financiero-advance-day`, `jarbis-financiero-chat`, `jarbis-financiero-notifier`, `jarbis-financiero-notifications` — todas Python 3.12, todas usan el rol ya existente `job-search-lambda-role` |
+| API Gateway | Rutas `GET /signals`, `GET /transactions`, `POST /simulation/advance-day`, `POST /chat/message`, `GET /notifications` agregadas al API `jarbis` ya existente. CORS configurado a nivel de API (necesario para el POST con JSON body del chat) |
+| DynamoDB Streams | Habilitado en `jarbis-financiero-data` (`NEW_AND_OLD_IMAGES`) — dispara `jarbis-financiero-notifier` en cada escritura, sin polling |
 | Nessie API key | Variable de entorno `NESSIE_API_KEY` en el Lambda `jarbis-financiero-advance-day` (no hardcodeada) |
 
 El frontend ya puede apuntar a este endpoint real en vez del mock del README — el shape es idéntico al contrato definido abajo (le falta `actions`, que se agrega cuando el agente decisor esté conectado).
@@ -185,6 +186,15 @@ El LLM entiende el mensaje en lenguaje natural y decide que herramienta llamar (
 | Acción legítima: mover $20 a ahorro | Ejecutado de verdad, dentro del límite |
 
 La seguridad no depende de que el LLM "se porte bien" — depende de que las funciones de `agent_actions.py` vuelven a verificar todo desde cero cada vez, sin importar lo que el modelo crea o el usuario le diga.
+
+**Quinto endpoint en vivo — notificaciones reales, disparadas por un webhook (DynamoDB Streams), no por polling:**
+```
+GET https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/notifications?user_id=mia
+```
+
+Nessie no puede mandarnos webhooks (es una API estática, no push). El equivalente nativo de AWS es **DynamoDB Streams**: cada vez que se escribe algo en `jarbis-financiero-data` (un `savings_transfer` nuevo, un bill que pasa de `recurring` a `cancelled`), se dispara automáticamente `jarbis-financiero-notifier` — sin que nadie llame nada, sin importar si la acción vino del chat o de `advance-day`, porque ambos escriben en la misma tabla.
+
+Probado en vivo de punta a punta: se le pidió al chat mover $15 a ahorro → el chat ejecutó la acción real en Nessie → **sin ninguna llamada adicional**, la notificación ya estaba disponible en `/notifications` segundos después. Esto es lo más cercano a "tiempo real" que se puede lograr sin un backend de bancos de verdad con webhooks propios.
 
 Detalle completo de la historia simulada en [`/seed/README.md`](./seed/README.md).
 
