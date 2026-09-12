@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ShieldCheck, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, Search, Bell, Send, User, Lock, Eye, EyeOff, FileText, Copy, Check, Receipt, Download } from 'lucide-react';
+import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ShieldCheck, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, Search, Bell, Send, User, Lock, Eye, EyeOff, FileText, Copy, Check, Receipt, Download, PiggyBank } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { api, sessionKey } from './api.js';
 import { appendCheckpoint, appendChatExchange, emptySession, normalizeData } from './data.js';
@@ -204,6 +204,15 @@ function App() {
   const [trustError, setTrustError] = useState('');
   const [summaryCopied, setSummaryCopied] = useState(false);
   const [statementMonth, setStatementMonth] = useState('');
+  const [envelopes, setEnvelopes] = useState(null);
+  const [envelopesLoading, setEnvelopesLoading] = useState(false);
+  const [envelopesError, setEnvelopesError] = useState('');
+  const [envelopesNotice, setEnvelopesNotice] = useState('');
+  const [envelopesBusy, setEnvelopesBusy] = useState(false);
+  const [newEnvelopeCategory, setNewEnvelopeCategory] = useState('');
+  const [newEnvelopeTarget, setNewEnvelopeTarget] = useState('');
+  const [incomeAmount, setIncomeAmount] = useState('');
+  const [incomeFrequency, setIncomeFrequency] = useState('');
   const [chatInput, setChatInput] = useState('');
   const locked = useRef(false), requestId = useRef(0), closeRef = useRef(null);
   const signals = data?.signals;
@@ -244,6 +253,58 @@ function App() {
       setSummaryCopied(true);
       window.setTimeout(() => setSummaryCopied(false), 2000);
     }).catch(() => { /* clipboard is best-effort */ });
+  }
+  async function loadEnvelopes() {
+    setEnvelopesLoading(true);
+    setEnvelopesError('');
+    try { setEnvelopes(await api.getEnvelopes()); }
+    catch (err) { setEnvelopesError(err.message); }
+    finally { setEnvelopesLoading(false); }
+  }
+  function openEnvelopes() {
+    setModal('envelopes');
+    setEnvelopesNotice('');
+    loadEnvelopes();
+  }
+  async function submitNewEnvelope(event) {
+    event.preventDefault();
+    if (envelopesBusy) return;
+    setEnvelopesBusy(true);
+    setEnvelopesNotice('');
+    setEnvelopesError('');
+    try {
+      const result = await api.createEnvelope(newEnvelopeCategory, newEnvelopeTarget);
+      setEnvelopesNotice(result.message || 'Apartado creado.');
+      setNewEnvelopeCategory(''); setNewEnvelopeTarget('');
+      await loadEnvelopes();
+    } catch (err) { setEnvelopesError(err.message); }
+    finally { setEnvelopesBusy(false); }
+  }
+  async function submitIncomePattern(event) {
+    event.preventDefault();
+    if (envelopesBusy) return;
+    setEnvelopesBusy(true);
+    setEnvelopesNotice('');
+    setEnvelopesError('');
+    try {
+      const result = await api.setIncomePattern(incomeAmount, incomeFrequency);
+      setEnvelopesNotice(result.message || 'Patrón de nómina guardado.');
+      setIncomeAmount(''); setIncomeFrequency('');
+      await loadEnvelopes();
+    } catch (err) { setEnvelopesError(err.message); }
+    finally { setEnvelopesBusy(false); }
+  }
+  async function confirmAllocation() {
+    if (envelopesBusy) return;
+    setEnvelopesBusy(true);
+    setEnvelopesNotice('');
+    setEnvelopesError('');
+    try {
+      const result = await api.confirmPendingAllocation();
+      setEnvelopesNotice(result.message || 'Reparto confirmado.');
+      await loadEnvelopes();
+    } catch (err) { setEnvelopesError(err.message); }
+    finally { setEnvelopesBusy(false); }
   }
   async function refresh() {
     const id = ++requestId.current;
@@ -325,7 +386,7 @@ function App() {
 
   return <>
   <motion.main className={`dashboard connected-dashboard ${page === 'chat' ? 'chat-layout chat-active' : ''}`} variants={dashboardContainer} initial="hidden" animate="visible">
-    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><button className="brand-mark" aria-label="Centinel One inicio" onClick={() => setPage('home')}><img src="/capital-one-logo.svg" alt="Capital One" /></button><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Centinel', 'chat'], [Wallet, 'Movimientos', 'transactions'], [FileText, 'Reporte de confianza', 'trust'], [Receipt, 'Estado de cuenta', 'statement']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => destination === 'trust' ? openTrustReport() : ['transactions', 'statement'].includes(destination) ? setModal(destination) : setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="mia-avatar" aria-label="Perfil de Mia" onClick={() => setModal('profile')}>M</button></div></motion.aside>
+    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><button className="brand-mark" aria-label="Centinel One inicio" onClick={() => setPage('home')}><img src="/capital-one-logo.svg" alt="Capital One" /></button><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Centinel', 'chat'], [Wallet, 'Movimientos', 'transactions'], [FileText, 'Reporte de confianza', 'trust'], [Receipt, 'Estado de cuenta', 'statement'], [PiggyBank, 'Apartados', 'envelopes']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => destination === 'trust' ? openTrustReport() : destination === 'envelopes' ? openEnvelopes() : ['transactions', 'statement'].includes(destination) ? setModal(destination) : setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="mia-avatar" aria-label="Perfil de Mia" onClick={() => setModal('profile')}>M</button></div></motion.aside>
     <section className="main-column">
       <motion.header className="page-header" variants={dashboardItem}><div><h1>Centinel One</h1><p>Hola, Mia. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></motion.header>
       {error && <div className="error-banner" role="alert">{error} <button disabled={loading || busy} onClick={refresh}>Reintentar lectura</button></div>}
@@ -350,7 +411,7 @@ function App() {
       </AnimatePresence>
     </section>
     {page === 'home' && <section className="right-column"><motion.section className="transactions" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="transactions-heading"><div><h2>Movimientos</h2><p>Historial de Mia</p></div><button className="black-button small" onClick={() => setModal('transactions')}>Ver todos</button></header><div className="transaction-list">{transactions.slice(-3).reverse().map(tx => <div className="transaction-row live-transaction" key={tx.id}><span className={`direction ${tx.signed_amount > 0 ? 'inflow' : 'outflow'}`}>{tx.signed_amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={tx.name}>{tx.name}</strong><span className="transaction-date">{dateLabel(tx.date)}</span><span className={`transaction-amount ${tx.signed_amount > 0 ? 'inflow' : ''}`}>{money(tx.signed_amount)}</span></div>)}{!transactions.length && <p className="empty">{loading ? 'Cargando movimientos…' : data ? 'No hay movimientos registrados.' : 'Historial no disponible.'}</p>}</div></motion.section><CategorySpending summary={data?.summary} loading={loading} variants={dashboardItem} /></section>}
-    {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className={`modal glass ${['transactions', 'statement'].includes(modal) ? 'ledger-modal' : ''} ${modal === 'statement' ? 'statement-printable' : ''}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={event => event.stopPropagation()}><button ref={closeRef} className="close-modal icon-button" aria-label="Cerrar" onClick={() => setModal(null)}><X /></button>
+    {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className={`modal glass ${['transactions', 'statement', 'envelopes'].includes(modal) ? 'ledger-modal' : ''} ${modal === 'statement' ? 'statement-printable' : ''}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={event => event.stopPropagation()}><button ref={closeRef} className="close-modal icon-button" aria-label="Cerrar" onClick={() => setModal(null)}><X /></button>
       {modal === 'score' && <><h2 id="dialog-title">Tu score, explicado</h2><p>Indicador propio de resiliencia financiera; no es un score de Buró ni garantiza aprobación de crédito.</p>{signals?.score.breakdown.map(item => <div className="detail-line" key={item.key}><span>{item.label}<small>{item.detail} · Peso: {item.weight}%</small></span><strong>{item.value}/100</strong></div>)}</>}
       {modal === 'transactions' && <><h2 id="dialog-title">Todos los movimientos</h2><p>{transactions.length} movimientos · Saldo: {money(data?.balance)}</p><LineChart values={transactions.map(tx => tx.running_balance)} label="Balance histórico calculado por el backend" /><label className="ledger-search"><Search size={18} /><input aria-label="Buscar movimientos" placeholder="Buscar comercio o categoría" value={query} onChange={event => setQuery(event.target.value)} /></label>
         <div className="ledger-filters">
@@ -399,6 +460,31 @@ function App() {
           {statementBreakdown.map(([label, amount]) => <div className="detail-line" key={label}><span>{label}</span><strong>{money(amount)}</strong></div>)}
           <h3>Movimientos del mes ({statementTransactions.length})</h3>
           {statementTransactions.map(tx => <div className="detail-line" key={tx.id}><span>{tx.name}<small>{dateLabel(tx.date)} · {tx.category_label}</small></span><strong className={tx.signed_amount > 0 ? 'inflow' : ''}>{money(tx.signed_amount)}</strong></div>)}
+        </>}
+      </>}
+      {modal === 'envelopes' && <>
+        <h2 id="dialog-title">Apartados</h2>
+        <p className="muted-copy">Gastos fijos mensuales con reparto proporcional automático cada vez que llega tu nómina -- gasolina, comida, lo que definas.</p>
+        {envelopesLoading && <p className="empty">Cargando apartados…</p>}
+        {envelopesError && <div className="error-banner" role="alert">{envelopesError}</div>}
+        {envelopesNotice && <p className="operation-notice" role="status">{envelopesNotice}</p>}
+        {envelopes && <>
+          <h3>Patrón de nómina</h3>
+          {envelopes.income_pattern ? <div className="detail-line"><span>Declarado<small>Tolerancia {Math.round(envelopes.income_pattern.tolerance_pct * 100)}%</small></span><strong>{money(envelopes.income_pattern.expected_amount)} cada {envelopes.income_pattern.frequency_days} días</strong></div> : <p className="empty">Sin declarar -- los depósitos no se repartirán a tus apartados hasta que definas esto.</p>}
+          <form className="envelope-form" onSubmit={submitIncomePattern}>
+            <label className="ledger-filter"><span>Monto esperado</span><input type="number" min="0" step="0.01" required value={incomeAmount} onChange={event => setIncomeAmount(event.target.value)} /></label>
+            <label className="ledger-filter"><span>Frecuencia (días)</span><input type="number" min="1" step="1" required value={incomeFrequency} onChange={event => setIncomeFrequency(event.target.value)} /></label>
+            <button className="outline-button small" type="submit" disabled={envelopesBusy}>{envelopes.income_pattern ? 'Actualizar patrón' : 'Declarar patrón'}</button>
+          </form>
+          <h3>Tus apartados ({envelopes.envelopes.length})</h3>
+          {envelopes.envelopes.length ? envelopes.envelopes.map(env => <div className="detail-line" key={env.slug}><span>{env.category}<small>Meta mensual: {money(env.monthly_target)}</small></span><strong>{money(env.balance)}</strong></div>) : <p className="empty">Todavía no hay apartados creados.</p>}
+          <form className="envelope-form" onSubmit={submitNewEnvelope}>
+            <label className="ledger-filter"><span>Categoría nueva</span><input type="text" required value={newEnvelopeCategory} onChange={event => setNewEnvelopeCategory(event.target.value)} placeholder="Ej. gasolina" /></label>
+            <label className="ledger-filter"><span>Meta mensual</span><input type="number" min="0" step="0.01" required value={newEnvelopeTarget} onChange={event => setNewEnvelopeTarget(event.target.value)} /></label>
+            <button className="black-button small" type="submit" disabled={envelopesBusy}>Crear apartado</button>
+          </form>
+          <button className="outline-button" onClick={confirmAllocation} disabled={envelopesBusy}>Confirmar reparto pendiente</button>
+          <p className="muted-copy">Si una nómina detectada dejaba tu colchón muy bajo para repartirse sola, la propuesta queda aquí para tu confirmación explícita.</p>
         </>}
       </>}
       {modal === 'advance' && <><h2 id="dialog-title">Avanzar la simulación</h2><p>El siguiente checkpoint puede observar la cuenta, detectar una fuga, detener el cargo de Gym Co, o mover dinero a ahorro en el sandbox Nessie.</p><p>El backend no permite consultar el checkpoint actual. Si el próximo paso es detener Gym Co, al continuar confirmas que ya no lo usas y autorizas detener ese cargo de demostración.</p><div className="agent-alert"><ShieldAlert size={20} /><span>Un contrato anual puede generar penalizaciones o cobranza. Bloquear el cargo no cancela la suscripción con el comercio.</span></div><button className="black-button" disabled={busy || uncertain || !data || !!error || session.done} onClick={() => mutate('advance')}>Confirmo y autorizo el siguiente paso</button><button className="text-button" onClick={() => setModal(null)}>Volver sin avanzar</button></>}
