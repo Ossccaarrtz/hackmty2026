@@ -298,6 +298,64 @@ class TestDepositMatchesIncomePattern(unittest.TestCase):
         self.assertFalse(aa.deposit_matches_income_pattern(pattern, 100))  # un deposito random tipo "amigo te presta $100"
 
 
+class TestSuggestedIncomeTolerance(BaseAgentActionsTest):
+    """Regresion directa del hallazgo: con +-25% fijo, 4 de los 8 depositos
+    reales de Mia (ingreso freelance real: 300, 380, 450, 620, 650, 690,
+    710, 720) quedaban FUERA de su propio patron de nomina -- justo el
+    perfil de ingreso irregular que el proyecto dice servir, rechazado por
+    su propia verificacion."""
+
+    MIA_DEPOSITS = [{"amount": a, "category": "income"} for a in [300, 380, 450, 620, 650, 690, 710, 720]]
+
+    def test_default_floor_with_insufficient_history(self):
+        with patch.object(aa, "load_data", return_value=([{"amount": 500, "category": "income"}], [], [])):
+            self.assertEqual(aa.suggested_income_tolerance("mia"), aa.DEFAULT_INCOME_TOLERANCE)
+
+    def test_derived_tolerance_covers_all_of_mias_real_deposits(self):
+        with patch.object(aa, "load_data", return_value=(self.MIA_DEPOSITS, [], [])):
+            tolerance = aa.suggested_income_tolerance("mia")
+        mean = sum(d["amount"] for d in self.MIA_DEPOSITS) / len(self.MIA_DEPOSITS)
+        pattern = {"expected_amount": mean, "tolerance_pct": tolerance}
+        for d in self.MIA_DEPOSITS:
+            self.assertTrue(aa.deposit_matches_income_pattern(pattern, d["amount"]), f"deposito real ${d['amount']} deberia matchear su propio patron")
+
+    def test_derived_tolerance_still_rejects_random_deposit(self):
+        with patch.object(aa, "load_data", return_value=(self.MIA_DEPOSITS, [], [])):
+            tolerance = aa.suggested_income_tolerance("mia")
+        mean = sum(d["amount"] for d in self.MIA_DEPOSITS) / len(self.MIA_DEPOSITS)
+        pattern = {"expected_amount": mean, "tolerance_pct": tolerance}
+        self.assertFalse(aa.deposit_matches_income_pattern(pattern, 100))  # el amigo prestando $100 sigue sin colar
+
+    def test_fixed_25_percent_would_have_missed_half_of_mias_deposits(self):
+        """No es un test del codigo actual -- documenta el bug original
+        para que nadie baje la tolerancia derivada de vuelta a un 25% fijo
+        sin darse cuenta de lo que rompe."""
+        mean = sum(d["amount"] for d in self.MIA_DEPOSITS) / len(self.MIA_DEPOSITS)
+        pattern = {"expected_amount": mean, "tolerance_pct": 0.25}
+        missed = [d["amount"] for d in self.MIA_DEPOSITS if not aa.deposit_matches_income_pattern(pattern, d["amount"])]
+        self.assertEqual(len(missed), 4)
+
+
+class TestSetIncomePattern(BaseAgentActionsTest):
+    def test_rejects_invalid_amount(self):
+        result = aa.set_income_pattern("mia", "no-es-numero", 15)
+        self.assertFalse(result["ok"])
+
+    def test_uses_derived_tolerance_when_not_specified(self):
+        with patch.object(aa, "load_data", return_value=([{"amount": a, "category": "income"} for a in [300, 720]] * 2, [], [])):
+            result = aa.set_income_pattern("mia", 500, 15)
+        self.assertTrue(result["ok"])
+        saved_item = aa.table.put_item.call_args.kwargs["Item"]
+        self.assertNotEqual(float(saved_item["tolerance_pct"]), 0.25)
+
+    def test_explicit_tolerance_overrides_derived_one(self):
+        with patch.object(aa, "load_data", return_value=([{"amount": a, "category": "income"} for a in [300, 720]] * 2, [], [])):
+            result = aa.set_income_pattern("mia", 500, 15, tolerance_pct=0.10)
+        self.assertTrue(result["ok"])
+        saved_item = aa.table.put_item.call_args.kwargs["Item"]
+        self.assertEqual(float(saved_item["tolerance_pct"]), 0.10)
+
+
 class TestVerifiedActionHistoryDedup(BaseAgentActionsTest):
     def _mock_two_queries(self, action_items, notif_items):
         # get_verified_action_history llama table.query() dos veces en orden

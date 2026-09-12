@@ -7,6 +7,7 @@ El LLM del chat nunca decide montos ni ejecuta directo: solo puede invocar
 estas funciones, y estas funciones son las que deciden si procede o no.
 """
 import time
+import statistics
 import boto3
 from datetime import date
 from decimal import Decimal
@@ -299,7 +300,30 @@ def get_income_pattern(user_id):
     return resp.get("Item")
 
 
-def set_income_pattern(user_id, expected_amount, frequency_days, tolerance_pct=0.25):
+DEFAULT_INCOME_TOLERANCE = 0.30  # piso minimo cuando no hay suficiente historial de depositos para derivar uno propio
+
+
+def suggested_income_tolerance(user_id):
+    """Deriva la tolerancia del patron de nomina del propio historial real
+    de depositos en vez de un porcentaje fijo arbitrario. Con Mia: un
+    +-25% fijo dejaba fuera 4 de sus 8 depositos reales (ingreso freelance
+    real: $300-$720, CV ~27% sobre la media de $565) -- exactamente el
+    perfil de ingreso irregular que el proyecto dice servir, rechazado por
+    su propia verificacion. +-2 desviaciones estandar sobre el historial
+    real cubre las 8 ocurrencias de Mia y sigue rechazando un deposito
+    random fuera de rango (ej. un amigo mandando $100)."""
+    deposits, _, _ = load_data(user_id)
+    amounts = [float(d["amount"]) for d in deposits if d.get("category") != "savings_release"]
+    if len(amounts) < 3:
+        return DEFAULT_INCOME_TOLERANCE
+    mean = statistics.mean(amounts)
+    if mean <= 0:
+        return DEFAULT_INCOME_TOLERANCE
+    stdev = statistics.pstdev(amounts)
+    return max(DEFAULT_INCOME_TOLERANCE, round((2 * stdev) / mean, 2))
+
+
+def set_income_pattern(user_id, expected_amount, frequency_days, tolerance_pct=None):
     try:
         expected_amount = float(expected_amount)
         frequency_days = int(frequency_days)
@@ -307,12 +331,16 @@ def set_income_pattern(user_id, expected_amount, frequency_days, tolerance_pct=0
         return {"ok": False, "reason": "El monto o la frecuencia no son numeros validos."}
     if expected_amount <= 0 or frequency_days <= 0:
         return {"ok": False, "reason": "El monto y la frecuencia tienen que ser mayores a cero."}
+    if tolerance_pct is None:
+        tolerance_pct = suggested_income_tolerance(user_id)
+    else:
+        tolerance_pct = float(tolerance_pct)
     table.put_item(Item=to_decimal({
         "user_id": user_id, "sk": INCOME_PATTERN_SK,
         "expected_amount": expected_amount, "frequency_days": frequency_days,
-        "tolerance_pct": float(tolerance_pct),
+        "tolerance_pct": tolerance_pct,
     }))
-    return {"ok": True, "message": f"Guarde tu patron de ingreso: ~${expected_amount} cada {frequency_days} dias. Los depositos que no coincidan con esto no van a repartirse a tus apartados."}
+    return {"ok": True, "message": f"Guarde tu patron de ingreso: ~${expected_amount} cada {frequency_days} dias, con una tolerancia de {round(tolerance_pct * 100)}% derivada de tu historial real de depositos. Los depositos que no coincidan con esto no van a repartirse a tus apartados."}
 
 
 def deposit_matches_income_pattern(pattern, deposit_amount):
