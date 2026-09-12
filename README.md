@@ -137,6 +137,10 @@ Se descubrió que la infraestructura de Jarbis ya vive en esta cuenta (`jarbis-*
 
 El frontend ya puede apuntar a este endpoint real en vez del mock del README — el shape es idéntico al contrato definido abajo (le falta `actions`, que se agrega cuando el agente decisor esté conectado).
 
+`/signals` ahora también trae un campo `anomaly` — `{ detected: bool, reason?: string }`. Es el guardrail de seguridad: compara el gasto reciente (14 días) contra el propio historial de la persona. Con los datos normales de Mia siempre sale `detected: false` — solo se activa si alguien altera el seed para simular un gasto atípico. El agente decisor ya lo consulta antes de ejecutar la acción autónoma de ahorro (ver más abajo).
+
+Los totales (`_debug.total_income`/`total_expense`) ya se calculan sumando las transacciones reales en la tabla, no un registro estático — cualquier movimiento nuevo que el agente escriba se refleja solo en la siguiente consulta, sin necesitar sincronización manual.
+
 **Segundo endpoint en vivo — todos los movimientos crudos, sin filtrar (para la vista de detalle y para que el frontend tenga con qué jugar libremente):**
 ```
 GET https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/transactions?user_id=mia
@@ -155,9 +159,9 @@ Cada llamada avanza un checkpoint de la historia de Mia (Día 45 → 62 → 63 �
 | Día 45 | Solo observación — reporta el score | N/A, no hay acción |
 | Día 62 | Detecta la fuga de Gym Co | **No** — genera un `leak_detected` con `requires_confirmation: true` y la advertencia de riesgo contractual, no toca nada |
 | Día 63 | Confirmación asumida → verificación → `PUT /bills` real en Nessie (`status: cancelled`) | Solo después de "confirmar", nunca antes |
-| Día 90 | Verifica que el bill de arriba sí se detuvo (dependencia causal real) → `POST /withdrawals` + `POST /deposits` reales en Nessie | Autónomo — es reversible, no depende de terceros |
+| Día 90 | Verifica que el bill de arriba sí se detuvo (dependencia causal real) **y** que el guardrail de anomalía esté en `detected: false` → `POST /withdrawals` + `POST /deposits` reales en Nessie | Autónomo — solo si ambas verificaciones pasan. Si el guardrail detecta algo raro, genera un `anomaly_pause` con `requires_confirmation: true` en su lugar y no toca el dinero |
 
-Probado en vivo: el bill queda `cancelled` de verdad en Nessie, aparecen el withdrawal y el deposit de $40 reales, y el score sube de 64 a **74** una vez resuelta la fuga — la causa→efecto es real, no simulada en el frontend.
+Probado en vivo: el bill queda `cancelled` de verdad en Nessie, aparecen el withdrawal y el deposit de $40 reales, el score sube de 64 a **74** una vez resuelta la fuga, y el nuevo movimiento se refleja solo en `/transactions` (balance $506 → $466) — la causa→efecto es real de punta a punta, no simulada en el frontend.
 
 Detalle completo de la historia simulada en [`/seed/README.md`](./seed/README.md).
 
