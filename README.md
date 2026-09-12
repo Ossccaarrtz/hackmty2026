@@ -137,6 +137,12 @@ Se descubrió que la infraestructura de Jarbis ya vive en esta cuenta (`jarbis-*
 
 El frontend ya puede apuntar a este endpoint real en vez del mock del README — el shape es idéntico al contrato definido abajo (le falta `actions`, que se agrega cuando el agente decisor esté conectado).
 
+**Segundo endpoint en vivo — todos los movimientos crudos, sin filtrar (para la vista de detalle y para que el frontend tenga con qué jugar libremente):**
+```
+GET https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/transactions?user_id=mia
+```
+Devuelve `{ transactions: [...], summary: {...} }` — cada transacción con `date`, `type` (deposit/purchase), `category`, `category_label`, `merchant_name`, `amount`, `signed_amount`, y `running_balance` ya calculado (para graficar balance en el tiempo sin re-derivar nada). `summary` trae totales y gasto por categoría. 62 movimientos reales de los 90 días de Mia.
+
 Detalle completo de la historia simulada en [`/seed/README.md`](./seed/README.md).
 
 ## Frontend — qué construir
