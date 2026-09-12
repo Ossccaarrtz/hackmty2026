@@ -4,6 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": { "dev": "vite --host 0.0.0.0", "build": "vite build", "preview": "vite preview --host 0.0.0.0" },
-  "dependencies": { "react": "^19.1.1", "react-dom": "^19.1.1", "lucide-react": "^0.468.0" },
+  "dependencies": { "react": "^19.1.1", "react-dom": "^19.1.1", "react-router-dom": "^6.26.2", "lucide-react": "^0.468.0" },
   "devDependencies": { "vite": "^7.1.5" }
 }
