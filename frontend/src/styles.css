@@ -121,6 +121,11 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .transactions-summary .outline-button{width:100%;text-align:center}
 @media(max-width:700px){.balance-stats{gap:18px;flex-wrap:wrap}.balance-bottom{flex-direction:column;align-items:stretch;gap:16px}.balance-bottom .black-button{width:100%}}
 
+/* Sidebar chatbot launcher: small Capital One mark instead of a generic bubble icon */
+.nav-chatbot{background:#fff;box-shadow:0 1px 4px #0f172a1a}
+.nav-chatbot.active{background:#e6edfa}
+.nav-chatbot-icon{width:30px;height:auto}
+
 /* Card titles: small brand-gradient accent mark for a more designed, premium feel */
 .card-heading h2,.transactions-heading h2{display:inline-flex;align-items:center;gap:9px}
 .card-heading h2::before,.transactions-heading h2::before{content:'';width:4px;height:15px;border-radius:2px;background:#d03027;flex-shrink:0}
