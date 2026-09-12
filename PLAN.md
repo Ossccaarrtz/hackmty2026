@@ -149,3 +149,19 @@ Detalle completo con ejemplos de request/response en el [README](./README.md#bac
 
 - La política de riesgo real ya está en código, no es una promesa de pitch: mover a ahorro es autónomo, detener un bill SIEMPRE requiere el paso de confirmación antes de ejecutar, y el paso de "ahorro" en Día 90 **verifica que el bill realmente se haya detenido antes** de mover el dinero — si no, no hace nada. Eso es la "verificación anti-alucinación" aplicada en código real, no solo en el discurso del pitch.
 - La key de Nessie vive como variable de entorno del Lambda (`NESSIE_API_KEY`), no hardcodeada en código nuevo.
+
+## 6. Pendientes (para retomar el trabajo sin tener que releer todo el documento)
+
+**Frontend — no consume nada de esto todavía:**
+- `GET/POST /envelopes`, `POST /envelopes/income-pattern`, `POST /envelopes/confirm-allocation` — no hay pantalla para crear apartados, declarar el patrón de nómina, ni ver los saldos. Hoy solo se puede hacer por chat o llamando el endpoint REST directo.
+- `GET /trust-report` — no hay pantalla que lo muestre ni forma de exportarlo (PDF/link compartible). Es el endpoint más nuevo y el que más valor de pitch tiene sin UI todavía — buen candidato a priorizar si hay tiempo de frontend.
+- El tipo de acción `partial_allocation_pause` (cuando un reparto de apartados queda pendiente de confirmar) no está entre los estados visuales que ya maneja el feed (`action-pending` en `styles.css` cubre `requires_confirmation`/`anomaly_pause`/`leak_detected`, falta agregar este).
+
+**Backend — decisiones/detalles menores, no bloqueantes:**
+- `_handle_reset` (usado para reiniciar la demo a Día 0) no limpia los apartados ni el patrón de nómina declarado — es intencional (son independientes de la simulación de checkpoints), pero vale confirmarlo con el equipo antes de una demo en vivo para que no sorprenda a nadie en el escenario.
+- La tolerancia default del patrón de nómina es 25% — no se ha validado si es muy laxa o muy estricta más allá de los datos de prueba usados en esta sesión.
+
+**Producto / pitch — ideas abiertas, no comprometidas a construirse:**
+- Segundo escenario/persona con ingreso estable — útil para demostrar que el score no castiga a todos igual, pero no hay código ni seed para esto todavía.
+- Dominio `.tech` propio para el frontend — CloudFront ya funciona con su URL default (`https://d3ebjiymiktpim.cloudfront.net`), falta solo conectar un dominio si el equipo tiene uno.
+- Convertir "consistencia de comportamiento en el tiempo" en un quinto factor real del score (discutido como alternativa más ambiciosa a Apartados para que sí mueva el score) — solo es una idea mencionada, no se ha diseñado.
