@@ -300,6 +300,7 @@ def compute_signals(deposits, purchases, bills, total_income=None, total_expense
             "severity": "high",
             "title": b["payee"],
             "detail": f"Sin actividad relacionada en {elapsed_days} dias",
+            "monthly_amount": float(b["payment_amount"]),
             "annual_cost": float(b["payment_amount"]) * 12,
             "status": "detected",
         }

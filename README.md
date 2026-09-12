@@ -190,6 +190,14 @@ El LLM entiende el mensaje en lenguaje natural y decide que herramienta llamar (
 
 La seguridad no depende de que el LLM "se porte bien" — depende de que las funciones de `agent_actions.py` vuelven a verificar todo desde cero cada vez, sin importar lo que el modelo crea o el usuario le diga.
 
+**Hallazgo real en producción — alucinación en el TEXTO de la respuesta, no en una acción ejecutada.** Reportado por un miembro del equipo probando el chat en vivo: al preguntar *"¿cómo ha ido evolucionando mi salud financiera?"*, el modelo llamaba `get_status` correctamente, pero la tool solo traía `annual_cost` (costo anual) de la fuga de Gym Co, nunca un monto mensual — y el modelo **inventaba** un monto mensual plausible ($299) en la narrativa en vez de admitir que no tenía ese dato exacto. Ninguna acción real de dinero se vio afectada (el patrón de verificación de escritura sigue intacto), pero la respuesta le "mintió" a la usuaria sobre una cifra de su propia cuenta — justo lo que el proyecto dice prevenir.
+
+Corregido en dos capas:
+1. **Causa raíz:** las alertas ahora incluyen `monthly_amount` explícito (antes solo `annual_cost`) — se le da al modelo el dato real en vez de dejarle un hueco que tiene que "rellenar".
+2. **Verificación anti-alucinación aplicada al texto, no solo a las acciones:** `find_unverified_amounts()` extrae cada cifra en dólares que el modelo menciona en su respuesta final y la compara contra el conjunto real de números que regresaron las herramientas invocadas en ese turno. Si menciona un monto que no está ahí, se le da **una oportunidad de corregirse** señalándole la cifra exacta que inventó; si la corrección tampoco pasa la verificación, se reemplaza automáticamente por `[monto no confirmado]` antes de que la respuesta salga — nunca se le miente a la usuaria sobre un número real de su cuenta.
+
+Probado en vivo reproduciendo el mismo prompt 5 veces seguidas: el modelo alucinó en el primer intento 4 de 5 veces, pero **0 de 5 respuestas finales** contenían un monto inventado — se autocorrigió con el dato real en algunos casos, cayó al reemplazo seguro en otros. 10 tests nuevos en `test_lambda_chat.py` (81 tests automatizados en total en el backend).
+
 **Quinto endpoint en vivo — notificaciones reales, disparadas por un webhook (DynamoDB Streams), no por polling:**
 ```
 GET https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/notifications?user_id=mia

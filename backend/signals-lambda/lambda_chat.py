@@ -17,6 +17,7 @@ ese historial antes de mandarla a Gemini.
 """
 import json
 import os
+import re
 import urllib.request
 import urllib.error
 from decimal import Decimal
@@ -131,7 +132,7 @@ SYSTEM_INSTRUCTION = (
     "Eres el asistente de Centinel One, un agente financiero para Mia (freelancer, ingreso irregular, "
     "sin historial de credito). Tienes memoria real de esta conversacion -- los mensajes anteriores estan "
     "incluidos abajo, usalos para entender referencias como 'eso' o 'el mismo monto'. Reglas estrictas: "
-    "1) Nunca inventes numeros de su cuenta -- si necesitas datos reales, llama a get_status primero, o a get_score_history si pregunta por una fecha o mes pasado. "
+    "1) Nunca inventes NI DERIVES numeros de su cuenta que no aparezcan literalmente en el resultado de una herramienta -- si necesitas datos reales, llama a get_status primero, o a get_score_history si pregunta por una fecha o mes pasado. Si una herramienta no te da un monto especifico (ej. solo te da el costo anual de una fuga, no el mensual), NO calcules ni asumas ese monto -- di explicitamente que no tienes ese dato exacto en vez de inventar una cifra que suene razonable. "
     "2) Nunca llames move_to_savings o release_savings_buffer sin que el usuario lo haya pedido o confirmado explicitamente en la conversacion. "
     "3) stop_subscription SIEMPRE es un proceso de dos pasos: la primera llamada solo propone (nunca detiene nada de verdad) y te va a devolver una advertencia de riesgo contractual para que se la muestres a Mia tal cual. Si Mia confirma explicitamente despues de leer esa advertencia, llama confirm_stop_bill -- no vuelvas a llamar stop_subscription. "
     "4) Si una herramienta rechaza la accion, explicale a Mia por que en lenguaje simple, no insistas ni la reintentes con otros valores. "
@@ -149,6 +150,51 @@ def sanitize(obj):
     if isinstance(obj, list):
         return [sanitize(v) for v in obj]
     return obj
+
+
+DOLLAR_AMOUNT_RE = re.compile(r"\$\s*([\d,]+(?:\.\d+)?)")
+
+
+def extract_dollar_amounts(text):
+    return {round(float(m.replace(",", "")), 2) for m in DOLLAR_AMOUNT_RE.findall(text or "")}
+
+
+def collect_verified_numbers(actions_taken):
+    """Aplana todos los numeros que de verdad vinieron de una tool en este
+    turno -- la lista blanca contra la que se valida cualquier cifra en
+    dolares que el modelo mencione en el texto de su respuesta final."""
+    numbers = set()
+
+    def walk(value):
+        if isinstance(value, bool):
+            return
+        if isinstance(value, (int, float)):
+            numbers.add(round(float(value), 2))
+        elif isinstance(value, dict):
+            for v in value.values():
+                walk(v)
+        elif isinstance(value, list):
+            for v in value:
+                walk(v)
+
+    for action in actions_taken:
+        walk(action.get("result"))
+    return numbers
+
+
+def find_unverified_amounts(reply, actions_taken):
+    """Verificacion anti-alucinacion sobre el TEXTO de la respuesta, no solo
+    sobre las acciones que mueven dinero. Encontrado en produccion: el
+    modelo llamaba get_status correctamente (la tool solo trae
+    'annual_cost' para una fuga, nunca un monto mensual) y luego inventaba
+    un monto mensual plausible ('$299/mes') en la narrativa en vez de decir
+    que no tenia ese dato exacto -- ninguna accion real se vio afectada,
+    pero la respuesta le mintio a la usuaria sobre un numero de su cuenta."""
+    if not actions_taken:
+        return set()
+    verified = collect_verified_numbers(actions_taken)
+    mentioned = extract_dollar_amounts(reply)
+    return {n for n in mentioned if not any(abs(n - v) < 0.5 for v in verified)}
 
 
 def get_chat_history(user_id):
@@ -260,6 +306,29 @@ def lambda_handler(event, context):
         })
     else:
         visible_reply = "Esto necesito mas pasos de los permitidos, intenta reformular tu mensaje."
+
+    bad_amounts = find_unverified_amounts(visible_reply, actions_taken)
+    if bad_amounts:
+        # Se le da UNA oportunidad de corregirse antes de sanitizar a la
+        # fuerza -- casi siempre basta con señalarle la cifra exacta que
+        # invento para que responda de nuevo sin ella.
+        contents.append({"role": "model", "parts": [{"text": visible_reply}]})
+        contents.append({"role": "user", "parts": [{"text": (
+            f"Tu respuesta menciona ${sorted(bad_amounts)[0]:.0f}, pero ese monto no aparece en ninguna "
+            "herramienta que llamaste en esta conversacion. No inventes ni derives cifras en dolares -- usa "
+            "unicamente los numeros que regresaron las herramientas, o di explicitamente que no tienes ese "
+            "dato exacto. Responde de nuevo corrigiendo esto."
+        )}]})
+        try:
+            retry = call_gemini(contents)
+            retry_parts = retry.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+            retry_text = "".join(p.get("text", "") for p in retry_parts).strip()
+        except Exception:
+            retry_text = ""
+        if retry_text and not find_unverified_amounts(retry_text, actions_taken):
+            visible_reply = retry_text
+        else:
+            visible_reply = DOLLAR_AMOUNT_RE.sub("[monto no confirmado]", visible_reply)
 
     save_chat_history(user_id, history + [
         {"role": "user", "parts": [{"text": user_message}]},
