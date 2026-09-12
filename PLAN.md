@@ -95,6 +95,7 @@ Se lanzaron dos revisiones independientes buscando bugs reales (no solo estilo).
 - ~~Billing de Gemini~~ — **ya resuelto.** Cloud Prepay activado (MXN 100). Probado en vivo: 8 solicitudes seguidas en menos de un minuto, todas exitosas (el límite gratuito era 5/minuto). Modelo de vuelta a `gemini-3.6-flash`.
 - **Un segundo escenario/persona** (alguien con ingreso estable) — quedó como idea abierta en la pizarra de equipo, útil para demostrar que el score no castiga a todos igual.
 - ~~Apartados de gastos fijos con reparto proporcional~~ — **ya resuelto** (ver sección 4.5). Falta la UI de frontend para crear apartados / declarar el patrón de nómina — hoy solo funciona por chat o por el endpoint REST directo.
+- ~~Reporte de confiabilidad exportable~~ — **ya resuelto.** `GET /trust-report` — score + historial real + el historial COMPLETO de acciones verificadas (deduplicado entre `ACTION#` y `NOTIFICATION#`, así no importa si la acción vino del chat, de `advance-day`, o del reparto de apartados) + resumen narrativo determinístico (no generado por LLM). Ver [PITCH.md](./PITCH.md) para el porqué de este endpoint y el framing de negocio (señal para Capital One sobre sus propios clientes de secured card, no un producto que se vende a bancos externos). Probado en vivo end-to-end. Falta: UI de frontend para presentarlo/exportarlo.
 
 ## 4.5. Apartados (envelope budgeting con reparto proporcional de nómina) — ✅ construido, desplegado y probado en vivo
 

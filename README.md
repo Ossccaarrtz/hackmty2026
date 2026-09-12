@@ -131,8 +131,8 @@ Se descubrió que la infraestructura de Jarbis ya vive en esta cuenta (`jarbis-*
 | Recurso | Detalle |
 |---|---|
 | Tabla DynamoDB | `jarbis-financiero-data` — PK `user_id`, SK `sk` (mismo patrón que las tablas `jarbis-*` existentes). También guarda `STATE#simulation` y el log de `ACTION#...` |
-| Lambdas | `jarbis-financiero-signals`, `jarbis-financiero-transactions`, `jarbis-financiero-advance-day`, `jarbis-financiero-chat`, `jarbis-financiero-notifier`, `jarbis-financiero-notifications`, `jarbis-financiero-envelopes` — todas Python 3.12, todas usan el rol ya existente `job-search-lambda-role` |
-| API Gateway | Rutas `GET /signals`, `GET /transactions`, `POST /simulation/advance-day`, `POST /chat/message`, `GET /notifications`, `GET/POST /envelopes`, `POST /envelopes/income-pattern`, `POST /envelopes/confirm-allocation` agregadas al API `jarbis` ya existente. CORS configurado a nivel de API (necesario para el POST con JSON body del chat) |
+| Lambdas | `jarbis-financiero-signals`, `jarbis-financiero-transactions`, `jarbis-financiero-advance-day`, `jarbis-financiero-chat`, `jarbis-financiero-notifier`, `jarbis-financiero-notifications`, `jarbis-financiero-envelopes`, `jarbis-financiero-trust-report` — todas Python 3.12, todas usan el rol ya existente `job-search-lambda-role` |
+| API Gateway | Rutas `GET /signals`, `GET /transactions`, `POST /simulation/advance-day`, `POST /chat/message`, `GET /notifications`, `GET/POST /envelopes`, `POST /envelopes/income-pattern`, `POST /envelopes/confirm-allocation`, `GET /trust-report` agregadas al API `jarbis` ya existente. CORS configurado a nivel de API (necesario para el POST con JSON body del chat) |
 | DynamoDB Streams | Habilitado en `jarbis-financiero-data` (`NEW_AND_OLD_IMAGES`) — dispara `jarbis-financiero-notifier` en cada escritura, sin polling |
 | Nessie API key | Variable de entorno `NESSIE_API_KEY` en el Lambda `jarbis-financiero-advance-day` (no hardcodeada) |
 
@@ -222,6 +222,19 @@ Probado en vivo end-to-end: se crearon apartados de gasolina ($2000/mes) y comid
 - Un depósito de $580 (dentro de tolerancia) disparó el reparto solo: $266.67 a gasolina y $400 a comida (proporcional a 4 días reales transcurridos), notificación automática en `/notifications` sin llamar nada más.
 - Un depósito de $100 inmediatamente después **no movió nada** — no coincide con el patrón, cero notificación, cero reparto.
 - Hallazgo de una auditoría propia durante esta prueba: los repartos a apartados se contaban como "gasto discrecional" en el score (`essential_ratio` cayó de 79 a 56), porque `signal_engine.py` no sabía que `category="envelope:*"` es una reasignación interna de dinero, no un gasto. Corregido tratándolo igual que `savings_transfer` (ni esencial ni discrecional, no dispara el guardrail de anomalía).
+
+**Séptimo endpoint en vivo — reporte de confiabilidad exportable:**
+```
+GET https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/trust-report?user_id=mia
+```
+
+Convierte el score interno en un artefacto de confiabilidad: score actual + historial real (`score_history`) + **el historial completo de acciones verificadas**, sin importar si las disparó un checkpoint de `advance-day`, el chat, o el reparto automático de apartados, + un resumen narrativo generado de forma **determinística, no por un LLM** (cada número está respaldado por una transacción real en Nessie o un registro real en DynamoDB).
+
+Ver [PITCH.md](./PITCH.md) para el porqué de este endpoint y a quién se lo ofrecemos (spoiler: no es un producto que se le vende a "bancos" en general — es la señal que le damos a Capital One sobre sus propios clientes de secured card).
+
+**Cómo evita el problema de las fuentes incompletas:** el log `ACTION#` solo lo escribe `advance-day` (tiene la narrativa más rica, incluye los momentos de "pedí confirmar antes de actuar"), pero si el reporte se basara solo en eso, se perdería cualquier acción ejecutada por el chat o por el reparto automático de apartados. La solución: también se lee `NOTIFICATION#`, que el webhook de DynamoDB Streams escribe sobre **cualquier** escritura real sin importar el origen — y se deduplica por cercanía de timestamp (~5 segundos) para no contar el mismo evento real dos veces cuando ambas fuentes lo capturan.
+
+Probado en vivo: se corrieron los 4 checkpoints de la demo + una acción adicional por chat (mover $15 a ahorro, fuera del flujo de `advance-day`) — el reporte final mostró correctamente las 5 acciones (1 fuga resuelta, 3 movimientos reales de dinero, 1 confirmación pedida), sin duplicados, con el resumen: *"En 88 días de historial verificado, el agente detectó y resolvió 1 fuga(s) de gasto, ejecutó 3 acción(es) real(es) sobre el dinero de mia, y pidió confirmación humana en 1 ocasión(es) antes de actuar cuando el riesgo lo ameritaba. Su score de resiliencia pasó de 54 a 73."*
 
 Detalle completo de la historia simulada en [`/seed/README.md`](./seed/README.md).
 
