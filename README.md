@@ -124,6 +124,56 @@ Validación real: Capital One ya tiene en su app la función "Block Future Charg
 
 Detalle completo de la historia simulada en [`/seed/README.md`](./seed/README.md).
 
+## Frontend — qué construir
+
+**Una sola pantalla.** El dashboard ES la página de inicio (así funciona cualquier app bancaria real — abres y ves tu situación, no una pantalla de bienvenida). Login/onboarding: mockeado o saltado, no le gastes tiempo, no aporta nada al pitch. El chat vive embebido en la misma pantalla (panel lateral o inferior), no es una ruta aparte — cada navegación extra es un riesgo en la demo en vivo.
+
+**Qué mostrar, en orden de importancia:**
+
+1. **Score como número hero** — grande, arriba, con flecha de tendencia (↑/↓) y una frase de qué significa.
+2. **Desglose del score en 4 barras** (no tabla) — regularidad de ingreso, ratio esencial/discrecional, recurrencia sana, colchón de liquidez. Esto es lo que prueba "no es caja negra".
+3. **Feed de acciones del agente** — timeline, más reciente arriba. Esta es la sección más importante de toda la pantalla: es la prueba visual de que el agente actúa, no solo aconseja.
+4. **Alertas activas** — tarjeta simple, solo lo que necesita atención ahora. Se resuelve → desaparece o se marca resuelta.
+5. **Chat embebido** — para confirmaciones y para preguntarle algo al agente directo.
+
+**Nice-to-have si alcanza el tiempo:** sparkline del score en el tiempo, una línea de "te alcanza para los próximos N días", una línea de proyección ("listo para un producto de crédito en ~5 semanas").
+
+**Qué NO mostrar:** tabla completa de las 52 transacciones sembradas (si acaso, detrás de un "ver detalle" colapsado, nunca visible por default), pie chart de categorías con muchas rebanadas, métricas de vanidad (fecha de creación de cuenta, conteo total de transacciones). Antes de meter un dato nuevo, pregúntate: ¿esto prueba que el agente decide y actúa, o solo describe datos? Si es lo segundo, no va en la pantalla principal.
+
+**Contrato de datos — empieza con esto hardcodeado, no esperes al backend:**
+
+```json
+{
+  "score": {
+    "value": 62,
+    "trend": "up",
+    "breakdown": [
+      { "key": "income_regularity", "label": "Regularidad de ingreso", "weight": 35, "value": 70 },
+      { "key": "essential_ratio", "label": "Ratio esencial/discrecional", "weight": 25, "value": 55 },
+      { "key": "bill_health", "label": "Recurrencia sana", "weight": 20, "value": 40 },
+      { "key": "liquidity_cushion", "label": "Colchón de liquidez", "weight": 20, "value": 75 }
+    ]
+  },
+  "alerts": [
+    { "id": "a1", "type": "leak", "severity": "high", "title": "Gym Co", "detail": "Sin actividad relacionada hace 60 días", "annual_cost": 480, "status": "detected" }
+  ],
+  "liquidity": { "days_covered": 12 },
+  "projection": { "weeks_to_ready": 5, "product": "tarjeta secured" },
+  "actions": [
+    { "id": "t1", "date": "2026-08-25", "type": "leak_detected", "text": "Detecté que Gym Co ($40/mes) no tiene actividad relacionada hace 60 días" },
+    { "id": "t2", "date": "2026-08-26", "type": "bill_stopped", "text": "Detuve el cargo de Gym Co, confirmaste que ya no lo usas", "amount": 40 },
+    { "id": "t3", "date": "2026-09-08", "type": "savings_moved", "text": "Moví $40 a tu ahorro porque tu ingreso llegó antes y tu gasto esencial ya está cubierto", "amount": 40 }
+  ]
+}
+```
+
+**Endpoints que vas a consumir cuando el backend esté listo** (mismo shape que el mock de arriba):
+- `GET /signals?customer_id=...` → el objeto completo de arriba
+- `POST /chat/message { message }` → `{ reply, actions_taken }`
+- `POST /simulation/advance-day` → `{ date, new_actions, score }` — el botón de "avanzar día"
+
+Si el shape real cambia, avisa al resto del equipo antes de romperlo — es el contrato que todos están usando en paralelo.
+
 ## Estado actual
 
 - [x] Definición de score, política de riesgo y arquitectura
