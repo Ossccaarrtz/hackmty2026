@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 
 const categories = {
   rent: { label: 'Renta', color: '#7469e8' },
@@ -11,12 +11,13 @@ const categories = {
 const money = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 
 export default function CategorySpending({ summary, loading, variants }) {
+  const reduceMotion = useReducedMotion();
   const entries = Object.entries(summary?.by_category || {})
     .filter(([key, amount]) => !['income', 'savings_transfer'].includes(key) && !key.startsWith('envelope:') && Number.isFinite(amount) && amount > 0)
     .sort((a, b) => b[1] - a[1]);
   const total = entries.reduce((sum, [, amount]) => sum + amount, 0);
   let offset = 0;
-  return <motion.section className="glass category-spending" aria-labelledby="category-title" variants={variants} whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
+  return <motion.section className="glass category-spending" aria-labelledby="category-title" variants={variants} whileHover={reduceMotion ? undefined : { y: -4 }} transition={{ duration: 0.2 }}>
     <header className="card-heading"><h2 id="category-title">Gasto por categoría</h2></header>
     {!summary ? <p className="empty">{loading ? 'Cargando gastos…' : 'Gastos no disponibles.'}</p> : total === 0 ? <p className="empty">No hay gastos registrados en este periodo.</p> : <div className="category-content">
       <div className="category-donut">
