@@ -305,12 +305,27 @@
         "date": "2026-08-05",
         "amount": 24,
         "category": "discretionary"
+      },
+      {
+        "date": "2026-07-03",
+        "amount": 45,
+        "category": "utilities"
+      },
+      {
+        "date": "2026-08-03",
+        "amount": 45,
+        "category": "utilities"
+      },
+      {
+        "date": "2026-09-03",
+        "amount": 45,
+        "category": "utilities"
       }
     ]
   },
   "totals": {
     "totalIn": 4520,
-    "totalOut": 3879,
-    "computedBalance": 641
+    "totalOut": 4014,
+    "computedBalance": 506
   }
 }
