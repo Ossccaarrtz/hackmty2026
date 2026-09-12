@@ -1,10 +1,11 @@
 """
-Acciones reales sobre Nessie: las unicas dos cosas que el agente puede
-ejecutar de verdad, siguiendo la politica de riesgo definida en el README.
+Acciones reales sobre Nessie: lo unico que el agente puede ejecutar de
+verdad, siguiendo la politica de riesgo definida en el README.
 """
 import os
 import urllib.request
 import json
+from datetime import date
 
 NESSIE_KEY = os.environ.get("NESSIE_API_KEY", "")
 BASE = "https://api.nessieisreal.com"
@@ -18,26 +19,44 @@ def _request(method, path, body=None):
         return json.loads(resp.read().decode())
 
 
-def stop_recurring_bill(bill_id, payee, payment_amount, recurring_date=1):
+def stop_recurring_bill(bill_id, payee, payment_amount, recurring_date=1, on_date=None):
     """Detiene un cargo recurrente. SOLO se llama despues de que el humano confirmo (politica de riesgo)."""
+    on_date = on_date or date.today().isoformat()
     return _request("PUT", f"/bills/{bill_id}", {
         "status": "cancelled",
         "payee": payee,
         "nickname": payee,
-        "payment_date": "2026-09-12",
+        "payment_date": on_date,
         "recurring_date": recurring_date,
         "payment_amount": payment_amount,
     })
 
 
-def sweep_to_savings(checking_id, savings_id, amount, reason):
+def sweep_to_savings(checking_id, savings_id, amount, reason, on_date=None):
     """Mueve dinero de checking a ahorro. Autonomo (reversible, sin terceros) segun la politica de riesgo."""
+    on_date = on_date or date.today().isoformat()
     withdrawal = _request("POST", f"/accounts/{checking_id}/withdrawals", {
-        "medium": "balance", "transaction_date": "2026-09-12", "status": "completed",
+        "medium": "balance", "transaction_date": on_date, "status": "completed",
         "amount": amount, "description": reason,
     })
     deposit = _request("POST", f"/accounts/{savings_id}/deposits", {
-        "medium": "balance", "transaction_date": "2026-09-12", "status": "completed",
+        "medium": "balance", "transaction_date": on_date, "status": "completed",
+        "amount": amount, "description": reason,
+    })
+    return {"withdrawal": withdrawal, "deposit": deposit}
+
+
+def release_from_savings(checking_id, savings_id, amount, reason, on_date=None):
+    """Libera dinero de ahorro de vuelta a checking -- el lado inverso del
+    suavizado de ingreso: en una semana flaca, se libera parte de lo
+    acumulado en semanas buenas para mantener un ingreso mas estable."""
+    on_date = on_date or date.today().isoformat()
+    withdrawal = _request("POST", f"/accounts/{savings_id}/withdrawals", {
+        "medium": "balance", "transaction_date": on_date, "status": "completed",
+        "amount": amount, "description": reason,
+    })
+    deposit = _request("POST", f"/accounts/{checking_id}/deposits", {
+        "medium": "balance", "transaction_date": on_date, "status": "completed",
         "amount": amount, "description": reason,
     })
     return {"withdrawal": withdrawal, "deposit": deposit}

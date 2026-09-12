@@ -36,7 +36,11 @@ def lambda_handler(event, context):
     enriched = []
     for t in transactions:
         amount = float(t["amount"])
-        signed = amount if t["type"] == "deposit" else -amount
+        # savings_release se guarda como type=purchase (para que la logica de
+        # verificacion opere pareja sobre esa lista), pero es dinero
+        # ENTRANDO a checking, no saliendo -- el signo tiene que reflejarlo.
+        is_inflow = t["type"] == "deposit" or t.get("category") == "savings_release"
+        signed = amount if is_inflow else -amount
         running_balance += signed
         enriched.append({
             "id": t["sk"],
@@ -53,12 +57,12 @@ def lambda_handler(event, context):
 
     summary = {
         "count": len(enriched),
-        "total_income": sum(t["amount"] for t in enriched if t["type"] == "deposit"),
-        "total_expense": sum(t["amount"] for t in enriched if t["type"] == "purchase"),
+        "total_income": sum(t["amount"] for t in enriched if t["type"] == "deposit" or t["category"] == "savings_release"),
+        "total_expense": sum(t["amount"] for t in enriched if t["type"] == "purchase" and t["category"] != "savings_release"),
         "by_category": {},
     }
     for t in enriched:
-        if t["type"] == "purchase":
+        if t["type"] == "purchase" and t["category"] != "savings_release":
             summary["by_category"].setdefault(t["category"], 0)
             summary["by_category"][t["category"]] += t["amount"]
 

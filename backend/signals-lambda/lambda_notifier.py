@@ -70,6 +70,13 @@ def lambda_handler(event, context):
                 new_image.get("date", "")
             )
 
+        elif event_name == "INSERT" and new_image.get("type") == "purchase" and new_image.get("category") == "savings_release":
+            write_notification(
+                user_id,
+                f"Nuevo movimiento detectado: se liberaron ${new_image.get('amount')} de tu ahorro a tu cuenta corriente ({new_image.get('description', '')}).",
+                new_image.get("date", "")
+            )
+
         elif event_name == "MODIFY" and old_image.get("status") == "recurring" and new_image.get("status") == "cancelled":
             write_notification(
                 user_id,
