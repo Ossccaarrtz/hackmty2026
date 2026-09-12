@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ShieldCheck, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, Search, Bell, Send, User, Lock, Eye, EyeOff } from 'lucide-react';
+import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ShieldCheck, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, Search, Bell, Send, User, Lock, Eye, EyeOff, TrendingUp, Ban, PiggyBank, CircleCheck, BadgeAlert } from 'lucide-react';
 import { api, sessionKey } from './api.js';
 import { appendCheckpoint, appendChatExchange, emptySession, normalizeData } from './data.js';
 import './styles.css';
@@ -10,27 +10,47 @@ const dateLabel = date => new Intl.DateTimeFormat('es-MX', { day: 'numeric', mon
 const PENDING_TYPES = ['leak_detected', 'anomaly_pause'];
 const CATEGORY_LABELS = { rent: 'Renta', groceries: 'Supermercado', transport: 'Transporte', utilities: 'Servicios', discretionary: 'Discrecional', income: 'Ingreso' };
 const CATEGORY_COLORS = { rent: '#004977', groceries: '#d03027', transport: '#1c74a6', utilities: '#4f95c4', discretionary: '#8390a4', income: '#5ca2fc' };
-function polarPoint(cx, cy, r, angleDeg) {
-  const rad = (angleDeg - 90) * Math.PI / 180;
-  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+const ACTION_META = {
+  score_check: { icon: TrendingUp, label: 'Revisión de score' },
+  leak_detected: { icon: Search, label: 'Fuga detectada' },
+  bill_stopped: { icon: Ban, label: 'Cargo detenido' },
+  stop_subscription: { icon: Ban, label: 'Suscripción detenida' },
+  savings_moved: { icon: PiggyBank, label: 'Ahorro automático' },
+  move_to_savings: { icon: PiggyBank, label: 'Movido a ahorro' },
+  release_savings_buffer: { icon: PiggyBank, label: 'Colchón liberado' },
+  anomaly_pause: { icon: BadgeAlert, label: 'Anomalía detectada' },
+  verification_blocked: { icon: BadgeAlert, label: 'Verificación bloqueada' },
+  chat_rejected: { icon: BadgeAlert, label: 'Acción rechazada' },
+  error: { icon: BadgeAlert, label: 'Error' },
+  info: { icon: CircleCheck, label: 'Información' },
+};
+function actionMeta(type) {
+  return ACTION_META[type] || { icon: CircleCheck, label: type };
 }
 function CategoryPie({ data, size = 128 }) {
   const total = data.reduce((sum, d) => sum + d.value, 0);
   if (!total) return <p className="empty">Sin gastos por categoría todavía.</p>;
-  const r = size / 2, cx = r, cy = r;
-  let angle = 0;
+  const stroke = size * 0.26;
+  const r = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * r;
+  let offset = 0;
   const slices = data.map(d => {
-    const start = polarPoint(cx, cy, r, angle);
-    const sliceAngle = (d.value / total) * 360;
-    angle += sliceAngle;
-    const end = polarPoint(cx, cy, r, angle);
-    const largeArc = sliceAngle > 180 ? 1 : 0;
-    return { ...d, pct: (d.value / total) * 100, path: `M ${cx},${cy} L ${start.x},${start.y} A ${r},${r} 0 ${largeArc} 1 ${end.x},${end.y} Z` };
+    const pct = d.value / total;
+    const dash = pct * circumference;
+    const slice = { ...d, pct: pct * 100, dash, dashOffset: -offset };
+    offset += dash;
+    return slice;
   });
   return <div className="category-chart-row">
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label="Gasto por categoría">
-      {slices.map(s => <path key={s.label} d={s.path} fill={s.color} />)}
-    </svg>
+    <div className="category-donut" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label="Gasto por categoría">
+        <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e3e9f2" strokeWidth={stroke} />
+          {slices.map(s => <circle key={s.label} cx={size / 2} cy={size / 2} r={r} fill="none" stroke={s.color} strokeWidth={stroke} strokeDasharray={`${s.dash} ${circumference - s.dash}`} strokeDashoffset={s.dashOffset} />)}
+        </g>
+      </svg>
+      <div className="category-donut-center"><strong>{money(total)}</strong><span>Total</span></div>
+    </div>
     <ul className="category-legend">
       {slices.map(s => <li key={s.label}><span className="category-swatch" style={{ background: s.color }} />{s.label}<strong>{Math.round(s.pct)}%</strong><small>{money(s.value)}</small></li>)}
     </ul>
@@ -223,7 +243,7 @@ function App() {
   }
 
   const controls = <div className="agent-controls"><button className="black-button small" disabled={busy || loading || !!error || !data || session.done || uncertain} onClick={() => setModal('advance')}><Play size={15} />{busy ? 'Procesando…' : session.done ? 'Demo completada' : 'Avanzar día'}</button><button className="outline-button small" disabled={busy || loading} onClick={() => setModal('reset')}><RotateCcw size={15} /> Reiniciar</button></div>;
-  const feed = <div className="agent-feed">{session.feed.length ? session.feed.map(action => <article className={`agent-feed-item ${['error', 'verification_blocked', 'chat_rejected'].includes(action.type) ? 'action-error' : PENDING_TYPES.includes(action.type) || action.requires_confirmation ? 'action-pending' : ''}`} key={action.id}><span>{action.date && dateLabel(action.date)} · {action.type}</span><p>{action.text}</p></article>) : <p className="empty">Todavía no hay acciones recibidas en esta sesión. Avanza la simulación o escríbele a Centinel para ver sus respuestas.</p>}</div>;
+  const feed = <div className="agent-feed">{session.feed.length ? session.feed.map(action => { const meta = actionMeta(action.type); const Icon = meta.icon; const pending = PENDING_TYPES.includes(action.type) || action.requires_confirmation; const isError = ['error', 'verification_blocked', 'chat_rejected'].includes(action.type); return <article className={`agent-feed-item ${isError ? 'action-error' : pending ? 'action-pending' : ''}`} key={action.id}><span className="agent-feed-icon"><Icon size={16} /></span><div className="agent-feed-body"><span className="agent-feed-meta">{action.date && dateLabel(action.date)} · {meta.label}{pending && <em className="agent-feed-flag">Requiere confirmación</em>}</span><p>{action.text}</p></div></article>; }) : <p className="empty">Todavía no hay acciones recibidas en esta sesión. Avanza la simulación o escríbele a Centinel para ver sus respuestas.</p>}</div>;
   const chatTranscript = <div className="chat-transcript">{session.chatLog.length ? session.chatLog.map(m => <div className={`chat-bubble ${m.role}`} key={m.id}>{m.text}</div>) : <p className="empty">Escríbele a Centinel: puede revisar tu score, detener una suscripción marcada como fuga, mover dinero a tu ahorro, o liberar parte de tu ahorro si esta semana te entró poco.</p>}</div>;
 
   if (!authed) return <Login onLogin={remember => { if (remember) { try { localStorage.setItem(AUTH_KEY, 'true'); } catch { /* Storage is optional. */ } } setAuthed(true); }} />;
@@ -247,8 +267,8 @@ function App() {
         {controls}
         {feed}
       </section> : <>
-        <section className="balance-card glass"><div className="balance-top"><div><h2>Score de resiliencia financiera</h2><div className="total score-hero">{signals?.score.value ?? '—'}<span>/100</span></div>{signals && <TrendBadge trend={signals.score.trend} />}<p className="muted-copy">Tu flujo de efectivo cuenta tu historia.</p></div><span className={`pill ${signals?.anomaly?.detected ? 'pill-warning' : ''}`}>{signals ? (signals.anomaly?.detected ? <><ShieldAlert size={14} /> Anomalía detectada</> : <><ShieldCheck size={14} /> Sin anomalías</>) : 'Sin datos'}</span></div><div className="balance-bottom"><dl className="balance-stats"><div><dt>Saldo</dt><dd>{money(data?.balance)}</dd></div><div><dt>Cobertura</dt><dd>{signals ? `${signals.liquidity.days_covered} días` : '—'}</dd></div><div><dt>Ingreso registrado</dt><dd>{money(data?.summary.total_income)}</dd></div></dl><button className="black-button" onClick={() => setPage('chat')}>Hablar con Centinel</button></div>{signals?.projection?.weeks_to_ready != null && <p className="projection-note">A este ritmo, listo para {signals.projection.product} en ~{signals.projection.weeks_to_ready} {signals.projection.weeks_to_ready === 1 ? 'checkpoint' : 'checkpoints'}.</p>}</section>
-        <div className="stats-grid"><section className="expense-card glass breakdown-card"><header className="card-heading"><h2>Qué compone tu score</h2></header>{signals ? signals.score.breakdown.map(item => <div className="score-component" key={item.key} title={item.detail}><div><span>{item.label}</span><strong>{item.value}/100</strong></div><progress max="100" value={item.value} aria-label={item.label} /></div>) : <p className="empty">{loading ? 'Cargando componentes…' : 'Sin datos disponibles.'}</p>}</section><section className="health-card"><header className="card-heading"><h2>Tu progreso</h2><span className="pill">Checkpoints</span></header><div className="health-value">{session.history.at(-1)?.value ?? '—'}<small>/100</small></div><p>Último checkpoint recibido</p><LineChart values={session.history.map(point => point.value)} label="Evolución del score en los checkpoints recibidos" /></section></div>
+        <section className="balance-card glass"><div className="balance-top"><div><h2>Score de resiliencia financiera</h2><div className="total score-hero">{signals?.score.value ?? '—'}<span>/100</span></div>{signals && <TrendBadge trend={signals.score.trend} />}<p className="muted-copy">Tu flujo de efectivo cuenta tu historia{signals?._debug?.elapsed_days ? ` · basado en ${signals._debug.elapsed_days} días de actividad real` : ''}.</p></div><span className={`pill ${signals?.anomaly?.detected ? 'pill-warning' : ''}`}>{signals ? (signals.anomaly?.detected ? <><ShieldAlert size={14} /> Anomalía detectada</> : <><ShieldCheck size={14} /> Sin anomalías</>) : 'Sin datos'}</span></div><div className="balance-bottom"><dl className="balance-stats"><div><dt>Saldo</dt><dd>{money(data?.balance)}</dd></div><div><dt>Cobertura</dt><dd>{signals ? `${signals.liquidity.days_covered} días` : '—'}</dd></div><div><dt>Ingreso registrado</dt><dd>{money(data?.summary.total_income)}</dd></div></dl><button className="black-button" onClick={() => setPage('chat')}>Hablar con Centinel</button></div>{signals?.projection?.weeks_to_ready != null && <p className="projection-note">A este ritmo, listo para {signals.projection.product} en ~{signals.projection.weeks_to_ready} {signals.projection.weeks_to_ready === 1 ? 'checkpoint' : 'checkpoints'}.</p>}</section>
+        <div className="stats-grid"><section className="expense-card glass breakdown-card"><header className="card-heading"><h2>Qué compone tu score</h2></header>{signals ? signals.score.breakdown.map(item => <div className="score-component" key={item.key}><div><span>{item.label}</span><strong>{item.value}/100</strong></div><progress max="100" value={item.value} aria-label={item.label} />{item.detail && <small className="score-component-detail">{item.detail}</small>}</div>) : <p className="empty">{loading ? 'Cargando componentes…' : 'Sin datos disponibles.'}</p>}</section><section className="health-card"><header className="card-heading"><h2>Tu progreso</h2><span className="pill">Checkpoints</span></header><div className="health-value">{session.history.at(-1)?.value ?? '—'}<small>/100</small></div><p>Último checkpoint recibido</p><LineChart values={session.history.map(point => point.value)} label="Evolución del score en los checkpoints recibidos" /></section></div>
         <section className="payments-card glass alerts-card"><header className="card-heading"><h2>Lo que necesita tu atención</h2><span className="pill">{signals?.alerts.length ?? '—'} alertas</span></header>{signals ? signals.alerts.length ? signals.alerts.map(alert => <article className="live-alert" key={alert.id}><ShieldAlert size={24} /><div><strong>{alert.title}</strong><p>{alert.detail}</p>{alert.annual_cost > 0 && <small>{money(alert.annual_cost)} al año · potencial, no ahorro realizado</small>}</div><button className="black-button small" onClick={() => setPage('chat')}>Revisar</button></article>) : <p className="empty">Todo al día: el backend no reporta alertas activas.</p> : <p className="empty">{loading ? 'Consultando alertas…' : 'Alertas no disponibles.'}</p>}<p className="muted-copy">Detener un cargo no cancela el contrato con el comercio.</p></section>
         <section className="glass action-feed-card"><header className="card-heading"><h2>Feed de acciones del agente</h2>{controls}</header>{feed}<button className="text-button" onClick={() => setPage('chat')}>Abrir conversación <ChevronRight size={16} /></button></section>
       </>}

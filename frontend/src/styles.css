@@ -120,3 +120,21 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .transactions-summary .muted-copy{margin:10px 0 16px}
 .transactions-summary .outline-button{width:100%;text-align:center}
 @media(max-width:700px){.balance-stats{gap:18px;flex-wrap:wrap}.balance-bottom{flex-direction:column;align-items:stretch;gap:16px}.balance-bottom .black-button{width:100%}}
+
+/* Feed items: icon + friendly label instead of raw type strings */
+.agent-feed-item{display:flex;gap:12px;align-items:flex-start}
+.agent-feed-icon{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9px;background:#eef2ff;color:#004977;flex-shrink:0}
+.action-error .agent-feed-icon{background:#fde3d9;color:#b84d32}
+.action-pending .agent-feed-icon{background:#fff2d9;color:#a5721b}
+.agent-feed-body{min-width:0;flex:1}
+.agent-feed-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.agent-feed-flag{font-style:normal;font-size:10px;font-weight:650;text-transform:uppercase;letter-spacing:.04em;color:#a5721b;background:#fff2d9;padding:2px 7px;border-radius:999px}
+
+/* Score breakdown: show the "why", not just a hover tooltip */
+.score-component-detail{display:block;margin-top:6px;color:#8390a4;font-size:11px;line-height:1.4}
+
+/* Category donut with a center total */
+.category-donut{position:relative;flex-shrink:0}
+.category-donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.category-donut-center strong{font-size:15px;color:#14191c;line-height:1.2}
+.category-donut-center span{font-size:10px;color:#8390a4;text-transform:uppercase;letter-spacing:.04em}
