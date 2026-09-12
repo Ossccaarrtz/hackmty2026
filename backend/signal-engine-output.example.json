@@ -1,0 +1,60 @@
+{
+  "score": {
+    "value": 65,
+    "trend": "up",
+    "breakdown": [
+      {
+        "key": "income_regularity",
+        "label": "Regularidad de ingreso",
+        "weight": 35,
+        "value": 73,
+        "detail": "8 depositos, promedio $565, variacion de monto 27%"
+      },
+      {
+        "key": "essential_ratio",
+        "label": "Ratio esencial/discrecional",
+        "weight": 25,
+        "value": 79,
+        "detail": "gasto discrecional es 11% del ingreso total"
+      },
+      {
+        "key": "bill_health",
+        "label": "Recurrencia sana",
+        "weight": 20,
+        "value": 50,
+        "detail": "1/2 bills sanos"
+      },
+      {
+        "key": "liquidity_cushion",
+        "label": "Colchon de liquidez",
+        "weight": 20,
+        "value": 46,
+        "detail": "cubre 12 dias de gasto esencial"
+      }
+    ]
+  },
+  "alerts": [
+    {
+      "id": "6811f340-284b-48c9-b588-f1f8c6469a9e",
+      "type": "leak",
+      "severity": "high",
+      "title": "Gym Co",
+      "detail": "Sin actividad relacionada en 90 dias",
+      "annual_cost": 480,
+      "status": "detected"
+    }
+  ],
+  "liquidity": {
+    "days_covered": 12
+  },
+  "projection": {
+    "weeks_to_ready": 2,
+    "product": "tarjeta secured"
+  },
+  "_debug": {
+    "totalIncome": 4520,
+    "totalExpense": 4014,
+    "currentBalance": 506,
+    "avgDailyEssential": 39.21
+  }
+}
