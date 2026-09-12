@@ -10,6 +10,37 @@ import CategorySpending from './CategorySpending.jsx';
 const money = value => Number.isFinite(value) ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value) : '—';
 const dateLabel = date => new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`));
 const PENDING_TYPES = ['leak_detected', 'anomaly_pause'];
+
+// El chat manda markdown ligero (negritas con **, listas con *) que Gemini
+// genera de forma natural -- sin esto se veian los asteriscos literales en
+// vez de negritas reales. Deliberadamente no se usa una libreria de markdown
+// completa (react-markdown, etc.): solo negrita y listas, que es todo lo que
+// el prompt del backend realmente produce.
+function renderInlineBold(text, keyPrefix) {
+  return text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, i) =>
+    part.startsWith('**') && part.endsWith('**')
+      ? <strong key={`${keyPrefix}-${i}`}>{part.slice(2, -2)}</strong>
+      : <React.Fragment key={`${keyPrefix}-${i}`}>{part}</React.Fragment>
+  );
+}
+function renderChatText(text) {
+  const lines = text.split(/\n+/).map(line => line.trim()).filter(Boolean);
+  const blocks = [];
+  lines.forEach((line, i) => {
+    const bulletMatch = line.match(/^[*-]\s+(.*)/);
+    const inline = renderInlineBold(bulletMatch ? bulletMatch[1] : line, `l${i}`);
+    const last = blocks.at(-1);
+    if (bulletMatch && last?.type === 'ul') last.items.push(inline);
+    else if (bulletMatch) blocks.push({ type: 'ul', items: [inline] });
+    else blocks.push({ type: 'p', content: inline });
+  });
+  return blocks.map((block, i) => block.type === 'ul'
+    ? <ul className="chat-bullet-list" key={i}>{block.items.map((item, j) => <li key={j}>{item}</li>)}</ul>
+    : <p key={i}>{block.content}</p>);
+}
+function TypingIndicator() {
+  return <div className="chat-bubble assistant typing-indicator" aria-label="Centinel está escribiendo"><span /><span /><span /></div>;
+}
 function readSession() {
   try { const saved = JSON.parse(sessionStorage.getItem(sessionKey)); if (Array.isArray(saved?.feed) && Array.isArray(saved?.history)) return { ...emptySession(), ...saved }; } catch { /* Storage is optional. */ }
   return emptySession();
@@ -155,6 +186,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [chatBusy, setChatBusy] = useState(false); // separado de `busy` para no disparar el indicador de escritura en acciones que no son del chat (ej. "avanzar dia")
   const [operationError, setOperationError] = useState('');
   const [uncertain, setUncertain] = useState(false);
   const [session, setSession] = useState(readSession);
@@ -239,7 +271,7 @@ function App() {
     event.preventDefault();
     const text = chatInput.trim();
     if (!text || locked.current) return;
-    locked.current = true; setBusy(true); setOperationError('');
+    locked.current = true; setBusy(true); setChatBusy(true); setOperationError('');
     setChatInput('');
     try {
       const result = await api.sendChatMessage(text);
@@ -248,12 +280,12 @@ function App() {
       await refresh(); // cualquier accion real que el chat haya ejecutado ya debe reflejarse en signals/transactions
     } catch (err) {
       setSession(s => ({ ...s, chatLog: [...s.chatLog, { id: `chat-err-${Date.now()}`, role: 'assistant', text: `No pude enviar tu mensaje: ${err.message}` }] }));
-    } finally { locked.current = false; setBusy(false); }
+    } finally { locked.current = false; setBusy(false); setChatBusy(false); }
   }
 
   const controls = <div className="agent-controls"><button className="black-button small" disabled={busy || loading || !!error || !data || session.done || uncertain} onClick={() => setModal('advance')}><Play size={15} />{busy ? 'Procesando…' : session.done ? 'Demo completada' : 'Avanzar día'}</button><button className="outline-button small" disabled={busy || loading} onClick={() => setModal('reset')}><RotateCcw size={15} /> Reiniciar</button></div>;
   const feed = <div className="agent-feed">{session.feed.length ? session.feed.map(action => <article className={`agent-feed-item ${['error', 'verification_blocked', 'chat_rejected'].includes(action.type) ? 'action-error' : PENDING_TYPES.includes(action.type) || action.requires_confirmation ? 'action-pending' : ''}`} key={action.id}><span>{action.date && dateLabel(action.date)} · {action.type}</span><p>{action.text}</p></article>) : <p className="empty">Todavía no hay acciones recibidas en esta sesión. Avanza la simulación o escríbele a Centinel para ver sus respuestas.</p>}</div>;
-  const chatTranscript = <div className="chat-transcript">{session.chatLog.length ? session.chatLog.map(m => <div className={`chat-bubble ${m.role}`} key={m.id}>{m.text}</div>) : <p className="empty">Escríbele a Centinel: puede revisar tu score, detener una suscripción marcada como fuga, mover dinero a tu ahorro, o liberar parte de tu ahorro si esta semana te entró poco.</p>}</div>;
+  const chatTranscript = <div className="chat-transcript">{session.chatLog.length ? session.chatLog.map(m => <div className={`chat-bubble ${m.role}`} key={m.id}>{renderChatText(m.text)}</div>) : <p className="empty">Escríbele a Centinel: puede revisar tu score, detener una suscripción marcada como fuga, mover dinero a tu ahorro, o liberar parte de tu ahorro si esta semana te entró poco.</p>}{chatBusy && <TypingIndicator />}</div>;
 
   if (!authed) return <Login onLogin={remember => { if (remember) { try { localStorage.setItem(AUTH_KEY, 'true'); } catch { /* Storage is optional. */ } } setAuthed(true); }} />;
 
