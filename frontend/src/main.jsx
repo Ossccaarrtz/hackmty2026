@@ -68,7 +68,7 @@ function Login({ onLogin }) {
   return <div className="login-page">
     <header className="login-topbar">
       <img src="/capital-one-logo.svg" alt="Capital One" className="login-topbar-logo" />
-      <span className="login-topbar-brand"><Shield size={16} /> Centinel One</span>
+      <span className="login-topbar-brand">Centinel One</span>
     </header>
     <div className="login-center">
       <form className="login-card" onSubmit={submit}>
