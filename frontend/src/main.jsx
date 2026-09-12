@@ -238,8 +238,7 @@ function App() {
   const statementOpening = statementTransactions.length ? statementTransactions[0].running_balance - statementTransactions[0].signed_amount : null;
   const statementClosing = statementTransactions.length ? statementTransactions.at(-1).running_balance : null;
 
-  async function openTrustReport() {
-    setModal('trust');
+  async function loadTrustReport() {
     setSummaryCopied(false);
     setTrustLoading(true);
     setTrustError('');
@@ -260,11 +259,6 @@ function App() {
     try { setEnvelopes(await api.getEnvelopes()); }
     catch (err) { setEnvelopesError(err.message); }
     finally { setEnvelopesLoading(false); }
-  }
-  function openEnvelopes() {
-    setModal('envelopes');
-    setEnvelopesNotice('');
-    loadEnvelopes();
   }
   async function submitNewEnvelope(event) {
     event.preventDefault();
@@ -323,6 +317,8 @@ function App() {
     finally { if (id === requestId.current) setLoading(false); }
   }
   useEffect(() => { refresh(); return () => { requestId.current++; }; }, []);
+  useEffect(() => { if (page === 'trust') loadTrustReport(); }, [page]);
+  useEffect(() => { if (page === 'envelopes') { setEnvelopesNotice(''); loadEnvelopes(); } }, [page]);
   useEffect(() => { try { sessionStorage.setItem(sessionKey, JSON.stringify(session)); } catch { /* Storage is optional. */ } }, [session]);
   useEffect(() => { try { sessionStorage.setItem(AUTH_KEY, authed ? 'true' : 'false'); } catch { /* Storage is optional. */ } }, [authed]);
   useEffect(() => {
@@ -384,9 +380,12 @@ function App() {
 
   if (!authed) return <Login onLogin={remember => { if (remember) { try { localStorage.setItem(AUTH_KEY, 'true'); } catch { /* Storage is optional. */ } } setAuthed(true); }} />;
 
+  const isFullPage = page !== 'home';
+  const backToHome = <button className="pill" onClick={() => setPage('home')}>Volver al inicio</button>;
+
   return <>
-  <motion.main className={`dashboard connected-dashboard ${page === 'chat' ? 'chat-layout chat-active' : ''}`} variants={dashboardContainer} initial="hidden" animate="visible">
-    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><button className="brand-mark" aria-label="Centinel One inicio" onClick={() => setPage('home')}><img src="/capital-one-logo.svg" alt="Capital One" /></button><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Centinel', 'chat'], [Wallet, 'Movimientos', 'transactions'], [FileText, 'Reporte de confianza', 'trust'], [Receipt, 'Estado de cuenta', 'statement'], [PiggyBank, 'Apartados', 'envelopes']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => destination === 'trust' ? openTrustReport() : destination === 'envelopes' ? openEnvelopes() : ['transactions', 'statement'].includes(destination) ? setModal(destination) : setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="mia-avatar" aria-label="Perfil de Mia" onClick={() => setModal('profile')}>M</button></div></motion.aside>
+  <motion.main className={`dashboard connected-dashboard ${isFullPage ? 'full-page-layout page-focused' : ''}`} variants={dashboardContainer} initial="hidden" animate="visible">
+    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><button className="brand-mark" aria-label="Centinel One inicio" onClick={() => setPage('home')}><img src="/capital-one-logo.svg" alt="Capital One" /></button><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Centinel', 'chat'], [Wallet, 'Movimientos', 'transactions'], [FileText, 'Reporte de confianza', 'trust'], [Receipt, 'Estado de cuenta', 'statement'], [PiggyBank, 'Apartados', 'envelopes']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="mia-avatar" aria-label="Perfil de Mia" onClick={() => setModal('profile')}>M</button></div></motion.aside>
     <section className="main-column">
       <motion.header className="page-header" variants={dashboardItem}><div><h1>Centinel One</h1><p>Hola, Mia. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></motion.header>
       {error && <div className="error-banner" role="alert">{error} <button disabled={loading || busy} onClick={refresh}>Reintentar lectura</button></div>}
@@ -405,88 +404,102 @@ function App() {
           {controls}
           {feed}
         </motion.section>}
-        {page !== 'chat' && <motion.section className="balance-card glass" key="balance-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><div className="balance-top"><div><h2>Score de resiliencia financiera</h2><div className="total score-hero">{signals?.score.value ?? '—'}<span>/100</span></div>{signals && <TrendBadge trend={signals.score.trend} />}<p className="muted-copy">Tu flujo de efectivo cuenta tu historia.</p></div><span className={`pill ${signals?.anomaly?.detected ? 'pill-warning' : ''}`}>{signals ? (signals.anomaly?.detected ? <><ShieldAlert size={14} /> Anomalía detectada</> : <><ShieldCheck size={14} /> Sin anomalías</>) : 'Sin datos'}</span></div><div className="balance-bottom"><div className="account-orbs"><div className="orb-bridge" /><button className="orb" onClick={() => setModal('transactions')}><strong>{money(data?.balance)}</strong><span>Saldo del ledger</span></button><button className="orb purple" onClick={() => setModal('score')}><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong><span>Gastos cubiertos</span></button><button className="orb" onClick={() => setModal('transactions')}><strong>{money(data?.summary.total_income)}</strong><span>Ingresos registrados</span></button></div></div>{signals?.projection?.weeks_to_ready != null && <p className="projection-note">A este ritmo, listo para {signals.projection.product} en ~{signals.projection.weeks_to_ready} {signals.projection.weeks_to_ready === 1 ? 'checkpoint' : 'checkpoints'}.</p>}</motion.section>}
-        {page !== 'chat' && <div className="stats-grid" key="stats-grid"><motion.section className="expense-card glass breakdown-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Qué compone tu score</h2></header>{signals ? signals.score.breakdown.map(item => <div className="score-component" key={item.key} title={item.detail}><div><span>{item.label}</span><strong>{item.value}/100</strong></div><progress max="100" value={item.value} aria-label={item.label} /></div>) : <p className="empty">{loading ? 'Cargando componentes…' : 'Sin datos disponibles.'}</p>}<button className="outline-button score-details-button" onClick={() => setModal('score')}>Entender mi score</button></motion.section><motion.section className="health-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Tu progreso</h2><span className="pill">Checkpoints</span></header><div className="health-value">{session.history.at(-1)?.value ?? '—'}<small>/100</small></div><p>Último checkpoint recibido</p><LineChart values={session.history.map(point => point.value)} label="Evolución del score en los checkpoints recibidos" /></motion.section></div>}
-        {page !== 'chat' && <motion.section className="payments-card glass alerts-card" key="alerts-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Lo que necesita tu atención</h2><span className="pill">{signals?.alerts.length ?? '—'} alertas</span></header>{signals ? signals.alerts.length ? signals.alerts.map(alert => <article className="live-alert" key={alert.id}><ShieldAlert size={24} /><div><strong>{alert.title}</strong><p>{alert.detail}</p>{alert.annual_cost > 0 && <small>{money(alert.annual_cost)} al año · potencial, no ahorro realizado</small>}</div><button className="black-button small" onClick={() => setPage('chat')}>Revisar</button></article>) : <p className="empty">Todo al día: el backend no reporta alertas activas.</p> : <p className="empty">{loading ? 'Consultando alertas…' : 'Alertas no disponibles.'}</p>}{signals?.upcoming_expenses?.length > 0 && <div className="upcoming-expenses"><h3>Próximos gastos esperados</h3>{signals.upcoming_expenses.map(item => <div className="upcoming-expense-row" key={item.category}><span>{item.category_label}</span><span className="muted-copy">{item.days_until === 0 ? 'Hoy' : item.days_until === 1 ? 'Mañana' : `En ${item.days_until} días`} · {dateLabel(item.expected_date)} · {item.confidence}% confianza</span><strong>{money(item.expected_amount)}</strong></div>)}</div>}<p className="muted-copy">Detener un cargo no cancela el contrato con el comercio.</p></motion.section>}
+        {page === 'transactions' && <motion.section className="glass page-panel ledger-modal" key="transactions-page"
+          initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
+          transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
+          <header className="card-heading"><h2>Todos los movimientos</h2>{backToHome}</header>
+          <p>{transactions.length} movimientos · Saldo: {money(data?.balance)}</p>
+          <LineChart values={transactions.map(tx => tx.running_balance)} label="Balance histórico calculado por el backend" />
+          <label className="ledger-search"><Search size={18} /><input aria-label="Buscar movimientos" placeholder="Buscar comercio o categoría" value={query} onChange={event => setQuery(event.target.value)} /></label>
+          <div className="ledger-filters">
+            <label className="ledger-filter"><span>Categoría</span><select aria-label="Filtrar por categoría" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}><option value="">Todas</option>{categoryOptions.map(opt => <option key={opt.key} value={opt.key}>{opt.label}</option>)}</select></label>
+            <label className="ledger-filter"><span>Desde</span><input type="date" aria-label="Fecha desde" value={dateFrom} onChange={event => setDateFrom(event.target.value)} /></label>
+            <label className="ledger-filter"><span>Hasta</span><input type="date" aria-label="Fecha hasta" value={dateTo} onChange={event => setDateTo(event.target.value)} /></label>
+            {(categoryFilter || dateFrom || dateTo) && <button type="button" className="text-button ledger-filter-clear" onClick={() => { setCategoryFilter(''); setDateFrom(''); setDateTo(''); }}>Limpiar filtros</button>}
+          </div>
+          <p className="muted-copy ledger-filter-count">{filtered.length} de {transactions.length} movimientos</p>
+          {filtered.map(tx => <div className="detail-line" key={tx.id}><span>{tx.name}<small>{dateLabel(tx.date)} · {tx.category_label}</small></span><strong className={tx.signed_amount > 0 ? 'inflow' : ''}>{money(tx.signed_amount)}</strong></div>)}{!filtered.length && <p>No hay movimientos que coincidan.</p>}
+        </motion.section>}
+        {page === 'trust' && <motion.section className="glass page-panel" key="trust-page"
+          initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
+          transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
+          <header className="card-heading"><h2>Reporte de confianza</h2>{backToHome}</header>
+          <p className="muted-copy">Evidencia verificada del comportamiento del agente, no una proyección: cada acción listada aquí ocurrió de verdad.</p>
+          {trustLoading && <p className="empty">Generando reporte…</p>}
+          {trustError && <div className="error-banner" role="alert">{trustError} <button onClick={loadTrustReport}>Reintentar</button></div>}
+          {trustReport && <>
+            <div className="detail-line"><span>Score actual<small>Tendencia</small></span><strong><TrendBadge trend={trustReport.score.trend} /> {trustReport.score.value}/100</strong></div>
+            <LineChart values={trustReport.score_history.map(point => point.value)} label="Historial completo de score" />
+            <div className="detail-line"><span>Colchón de liquidez</span><strong>{trustReport.liquidity.days_covered} días</strong></div>
+            {trustReport.projection?.weeks_to_ready != null && <div className="detail-line"><span>Proyección</span><strong>~{trustReport.projection.weeks_to_ready} {trustReport.projection.weeks_to_ready === 1 ? 'checkpoint' : 'checkpoints'} para {trustReport.projection.product}</strong></div>}
+            <p className="tip-detail">{trustReport.summary}</p>
+            <h3>Acciones verificadas ({trustReport.verified_actions.length})</h3>
+            {trustReport.verified_actions.length ? trustReport.verified_actions.map((action, index) => <div className="detail-line" key={index}><span>{action.text}<small>{action.date && dateLabel(action.date)} · {action.type}</small></span></div>) : <p className="empty">Sin acciones verificadas todavía.</p>}
+            <button className="outline-button" onClick={copyTrustSummary}>{summaryCopied ? <><Check size={16} /> Copiado</> : <><Copy size={16} /> Copiar resumen</>}</button>
+          </>}
+        </motion.section>}
+        {page === 'statement' && <motion.section className="glass page-panel statement-printable" key="statement-page"
+          initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
+          transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
+          <div className="statement-header">
+            <div><h2>Estado de cuenta</h2><p className="muted-copy">Libro financiero mensual de Mia: en qué se fue el dinero y de dónde vino.</p></div>
+            <div className="statement-header-actions">
+              <select aria-label="Mes del estado de cuenta" value={activeStatementMonth} onChange={event => setStatementMonth(event.target.value)}>
+                {statementMonths.map(ym => <option key={ym} value={ym}>{monthLabel(ym)}</option>)}
+              </select>
+              <button className="black-button small" onClick={() => window.print()}><Download size={15} /> Descargar PDF</button>
+              {backToHome}
+            </div>
+          </div>
+          {!statementTransactions.length ? <p className="empty">Sin movimientos en {activeStatementMonth ? monthLabel(activeStatementMonth) : 'este periodo'}.</p> : <>
+            <div className="statement-summary">
+              <div className="statement-summary-item"><span>Saldo inicial</span><strong>{money(statementOpening)}</strong></div>
+              <div className="statement-summary-item"><span>Ingresos</span><strong className="inflow">+{money(statementIncome)}</strong></div>
+              <div className="statement-summary-item"><span>Gastos</span><strong>-{money(statementExpense)}</strong></div>
+              <div className="statement-summary-item"><span>Saldo final</span><strong>{money(statementClosing)}</strong></div>
+            </div>
+            <h3>En qué se fue el dinero</h3>
+            {statementBreakdown.map(([label, amount]) => <div className="detail-line" key={label}><span>{label}</span><strong>{money(amount)}</strong></div>)}
+            <h3>Movimientos del mes ({statementTransactions.length})</h3>
+            {statementTransactions.map(tx => <div className="detail-line" key={tx.id}><span>{tx.name}<small>{dateLabel(tx.date)} · {tx.category_label}</small></span><strong className={tx.signed_amount > 0 ? 'inflow' : ''}>{money(tx.signed_amount)}</strong></div>)}
+          </>}
+        </motion.section>}
+        {page === 'envelopes' && <motion.section className="glass page-panel" key="envelopes-page"
+          initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
+          transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
+          <header className="card-heading"><h2>Apartados</h2>{backToHome}</header>
+          <p className="muted-copy">Gastos fijos mensuales con reparto proporcional automático cada vez que llega tu nómina -- gasolina, comida, lo que definas.</p>
+          {envelopesLoading && <p className="empty">Cargando apartados…</p>}
+          {envelopesError && <div className="error-banner" role="alert">{envelopesError}</div>}
+          {envelopesNotice && <p className="operation-notice" role="status">{envelopesNotice}</p>}
+          {envelopes && <>
+            <h3>Patrón de nómina</h3>
+            {envelopes.income_pattern ? <div className="detail-line"><span>Declarado<small>Tolerancia {Math.round(envelopes.income_pattern.tolerance_pct * 100)}%</small></span><strong>{money(envelopes.income_pattern.expected_amount)} cada {envelopes.income_pattern.frequency_days} días</strong></div> : <p className="empty">Sin declarar -- los depósitos no se repartirán a tus apartados hasta que definas esto.</p>}
+            <form className="envelope-form" onSubmit={submitIncomePattern}>
+              <label className="ledger-filter"><span>Monto esperado</span><input type="number" min="0" step="0.01" required value={incomeAmount} onChange={event => setIncomeAmount(event.target.value)} /></label>
+              <label className="ledger-filter"><span>Frecuencia (días)</span><input type="number" min="1" step="1" required value={incomeFrequency} onChange={event => setIncomeFrequency(event.target.value)} /></label>
+              <button className="outline-button small" type="submit" disabled={envelopesBusy}>{envelopes.income_pattern ? 'Actualizar patrón' : 'Declarar patrón'}</button>
+            </form>
+            <h3>Tus apartados ({envelopes.envelopes.length})</h3>
+            {envelopes.envelopes.length ? envelopes.envelopes.map(env => <div className="detail-line" key={env.slug}><span>{env.category}<small>Meta mensual: {money(env.monthly_target)}</small></span><strong>{money(env.balance)}</strong></div>) : <p className="empty">Todavía no hay apartados creados.</p>}
+            <form className="envelope-form" onSubmit={submitNewEnvelope}>
+              <label className="ledger-filter"><span>Categoría nueva</span><input type="text" required value={newEnvelopeCategory} onChange={event => setNewEnvelopeCategory(event.target.value)} placeholder="Ej. gasolina" /></label>
+              <label className="ledger-filter"><span>Meta mensual</span><input type="number" min="0" step="0.01" required value={newEnvelopeTarget} onChange={event => setNewEnvelopeTarget(event.target.value)} /></label>
+              <button className="black-button small" type="submit" disabled={envelopesBusy}>Crear apartado</button>
+            </form>
+            <button className="outline-button" onClick={confirmAllocation} disabled={envelopesBusy}>Confirmar reparto pendiente</button>
+            <p className="muted-copy">Si una nómina detectada dejaba tu colchón muy bajo para repartirse sola, la propuesta queda aquí para tu confirmación explícita.</p>
+          </>}
+        </motion.section>}
+        {page === 'home' && <motion.section className="balance-card glass" key="balance-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><div className="balance-top"><div><h2>Score de resiliencia financiera</h2><div className="total score-hero">{signals?.score.value ?? '—'}<span>/100</span></div>{signals && <TrendBadge trend={signals.score.trend} />}<p className="muted-copy">Tu flujo de efectivo cuenta tu historia.</p></div><span className={`pill ${signals?.anomaly?.detected ? 'pill-warning' : ''}`}>{signals ? (signals.anomaly?.detected ? <><ShieldAlert size={14} /> Anomalía detectada</> : <><ShieldCheck size={14} /> Sin anomalías</>) : 'Sin datos'}</span></div><div className="balance-bottom"><div className="account-orbs"><div className="orb-bridge" /><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.balance)}</strong><span>Saldo del ledger</span></button><button className="orb purple" onClick={() => setModal('score')}><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong><span>Gastos cubiertos</span></button><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.summary.total_income)}</strong><span>Ingresos registrados</span></button></div></div>{signals?.projection?.weeks_to_ready != null && <p className="projection-note">A este ritmo, listo para {signals.projection.product} en ~{signals.projection.weeks_to_ready} {signals.projection.weeks_to_ready === 1 ? 'checkpoint' : 'checkpoints'}.</p>}</motion.section>}
+        {page === 'home' && <div className="stats-grid" key="stats-grid"><motion.section className="expense-card glass breakdown-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Qué compone tu score</h2></header>{signals ? signals.score.breakdown.map(item => <div className="score-component" key={item.key} title={item.detail}><div><span>{item.label}</span><strong>{item.value}/100</strong></div><progress max="100" value={item.value} aria-label={item.label} /></div>) : <p className="empty">{loading ? 'Cargando componentes…' : 'Sin datos disponibles.'}</p>}<button className="outline-button score-details-button" onClick={() => setModal('score')}>Entender mi score</button></motion.section><motion.section className="health-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Tu progreso</h2><span className="pill">Checkpoints</span></header><div className="health-value">{session.history.at(-1)?.value ?? '—'}<small>/100</small></div><p>Último checkpoint recibido</p><LineChart values={session.history.map(point => point.value)} label="Evolución del score en los checkpoints recibidos" /></motion.section></div>}
+        {page === 'home' && <motion.section className="payments-card glass alerts-card" key="alerts-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Lo que necesita tu atención</h2><span className="pill">{signals?.alerts.length ?? '—'} alertas</span></header>{signals ? signals.alerts.length ? signals.alerts.map(alert => <article className="live-alert" key={alert.id}><ShieldAlert size={24} /><div><strong>{alert.title}</strong><p>{alert.detail}</p>{alert.annual_cost > 0 && <small>{money(alert.annual_cost)} al año · potencial, no ahorro realizado</small>}</div><button className="black-button small" onClick={() => setPage('chat')}>Revisar</button></article>) : <p className="empty">Todo al día: el backend no reporta alertas activas.</p> : <p className="empty">{loading ? 'Consultando alertas…' : 'Alertas no disponibles.'}</p>}{signals?.upcoming_expenses?.length > 0 && <div className="upcoming-expenses"><h3>Próximos gastos esperados</h3>{signals.upcoming_expenses.map(item => <div className="upcoming-expense-row" key={item.category}><span>{item.category_label}</span><span className="muted-copy">{item.days_until === 0 ? 'Hoy' : item.days_until === 1 ? 'Mañana' : `En ${item.days_until} días`} · {dateLabel(item.expected_date)} · {item.confidence}% confianza</span><strong>{money(item.expected_amount)}</strong></div>)}</div>}<p className="muted-copy">Detener un cargo no cancela el contrato con el comercio.</p></motion.section>}
       </AnimatePresence>
     </section>
-    {page === 'home' && <section className="right-column"><motion.section className="transactions" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="transactions-heading"><div><h2>Movimientos</h2><p>Historial de Mia</p></div><button className="black-button small" onClick={() => setModal('transactions')}>Ver todos</button></header><div className="transaction-list">{transactions.slice(-3).reverse().map(tx => <div className="transaction-row live-transaction" key={tx.id}><span className={`direction ${tx.signed_amount > 0 ? 'inflow' : 'outflow'}`}>{tx.signed_amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={tx.name}>{tx.name}</strong><span className="transaction-date">{dateLabel(tx.date)}</span><span className={`transaction-amount ${tx.signed_amount > 0 ? 'inflow' : ''}`}>{money(tx.signed_amount)}</span></div>)}{!transactions.length && <p className="empty">{loading ? 'Cargando movimientos…' : data ? 'No hay movimientos registrados.' : 'Historial no disponible.'}</p>}</div></motion.section><CategorySpending summary={data?.summary} loading={loading} variants={dashboardItem} /></section>}
-    {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className={`modal glass ${['transactions', 'statement', 'envelopes'].includes(modal) ? 'ledger-modal' : ''} ${modal === 'statement' ? 'statement-printable' : ''}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={event => event.stopPropagation()}><button ref={closeRef} className="close-modal icon-button" aria-label="Cerrar" onClick={() => setModal(null)}><X /></button>
+    {page === 'home' && <section className="right-column"><motion.section className="transactions" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="transactions-heading"><div><h2>Movimientos</h2><p>Historial de Mia</p></div><button className="black-button small" onClick={() => setPage('transactions')}>Ver todos</button></header><div className="transaction-list">{transactions.slice(-3).reverse().map(tx => <div className="transaction-row live-transaction" key={tx.id}><span className={`direction ${tx.signed_amount > 0 ? 'inflow' : 'outflow'}`}>{tx.signed_amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={tx.name}>{tx.name}</strong><span className="transaction-date">{dateLabel(tx.date)}</span><span className={`transaction-amount ${tx.signed_amount > 0 ? 'inflow' : ''}`}>{money(tx.signed_amount)}</span></div>)}{!transactions.length && <p className="empty">{loading ? 'Cargando movimientos…' : data ? 'No hay movimientos registrados.' : 'Historial no disponible.'}</p>}</div></motion.section><CategorySpending summary={data?.summary} loading={loading} variants={dashboardItem} /></section>}
+    {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className="modal glass" role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={event => event.stopPropagation()}><button ref={closeRef} className="close-modal icon-button" aria-label="Cerrar" onClick={() => setModal(null)}><X /></button>
       {modal === 'score' && <><h2 id="dialog-title">Tu score, explicado</h2><p>Indicador propio de resiliencia financiera; no es un score de Buró ni garantiza aprobación de crédito.</p>{signals?.score.breakdown.map(item => <div className="detail-line" key={item.key}><span>{item.label}<small>{item.detail} · Peso: {item.weight}%</small></span><strong>{item.value}/100</strong></div>)}</>}
-      {modal === 'transactions' && <><h2 id="dialog-title">Todos los movimientos</h2><p>{transactions.length} movimientos · Saldo: {money(data?.balance)}</p><LineChart values={transactions.map(tx => tx.running_balance)} label="Balance histórico calculado por el backend" /><label className="ledger-search"><Search size={18} /><input aria-label="Buscar movimientos" placeholder="Buscar comercio o categoría" value={query} onChange={event => setQuery(event.target.value)} /></label>
-        <div className="ledger-filters">
-          <label className="ledger-filter"><span>Categoría</span><select aria-label="Filtrar por categoría" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}><option value="">Todas</option>{categoryOptions.map(opt => <option key={opt.key} value={opt.key}>{opt.label}</option>)}</select></label>
-          <label className="ledger-filter"><span>Desde</span><input type="date" aria-label="Fecha desde" value={dateFrom} onChange={event => setDateFrom(event.target.value)} /></label>
-          <label className="ledger-filter"><span>Hasta</span><input type="date" aria-label="Fecha hasta" value={dateTo} onChange={event => setDateTo(event.target.value)} /></label>
-          {(categoryFilter || dateFrom || dateTo) && <button type="button" className="text-button ledger-filter-clear" onClick={() => { setCategoryFilter(''); setDateFrom(''); setDateTo(''); }}>Limpiar filtros</button>}
-        </div>
-        <p className="muted-copy ledger-filter-count">{filtered.length} de {transactions.length} movimientos</p>
-        {filtered.map(tx => <div className="detail-line" key={tx.id}><span>{tx.name}<small>{dateLabel(tx.date)} · {tx.category_label}</small></span><strong className={tx.signed_amount > 0 ? 'inflow' : ''}>{money(tx.signed_amount)}</strong></div>)}{!filtered.length && <p>No hay movimientos que coincidan.</p>}</>}
       {modal === 'notifications' && <><h2 id="dialog-title">Avisos en tiempo real</h2><p className="muted-copy">Generados automáticamente por un webhook (DynamoDB Streams) cada vez que el agente hace un movimiento real — sin que nadie los pida.</p>{notifications.length ? notifications.map(n => <div className="detail-line" key={n.sk}><span>{n.text}<small>{dateLabel(n.date)}</small></span></div>) : <p>Sin avisos todavía.</p>}</>}
-      {modal === 'trust' && <>
-        <h2 id="dialog-title">Reporte de confianza</h2>
-        <p className="muted-copy">Evidencia verificada del comportamiento del agente, no una proyección: cada acción listada aquí ocurrió de verdad.</p>
-        {trustLoading && <p className="empty">Generando reporte…</p>}
-        {trustError && <div className="error-banner" role="alert">{trustError} <button onClick={openTrustReport}>Reintentar</button></div>}
-        {trustReport && <>
-          <div className="detail-line"><span>Score actual<small>Tendencia</small></span><strong><TrendBadge trend={trustReport.score.trend} /> {trustReport.score.value}/100</strong></div>
-          <LineChart values={trustReport.score_history.map(point => point.value)} label="Historial completo de score" />
-          <div className="detail-line"><span>Colchón de liquidez</span><strong>{trustReport.liquidity.days_covered} días</strong></div>
-          {trustReport.projection?.weeks_to_ready != null && <div className="detail-line"><span>Proyección</span><strong>~{trustReport.projection.weeks_to_ready} {trustReport.projection.weeks_to_ready === 1 ? 'checkpoint' : 'checkpoints'} para {trustReport.projection.product}</strong></div>}
-          <p className="tip-detail">{trustReport.summary}</p>
-          <h3>Acciones verificadas ({trustReport.verified_actions.length})</h3>
-          {trustReport.verified_actions.length ? trustReport.verified_actions.map((action, index) => <div className="detail-line" key={index}><span>{action.text}<small>{action.date && dateLabel(action.date)} · {action.type}</small></span></div>) : <p className="empty">Sin acciones verificadas todavía.</p>}
-          <button className="outline-button" onClick={copyTrustSummary}>{summaryCopied ? <><Check size={16} /> Copiado</> : <><Copy size={16} /> Copiar resumen</>}</button>
-        </>}
-      </>}
-      {modal === 'statement' && <>
-        <div className="statement-header">
-          <div><h2 id="dialog-title">Estado de cuenta</h2><p className="muted-copy">Libro financiero mensual de Mia: en qué se fue el dinero y de dónde vino.</p></div>
-          <div className="statement-header-actions">
-            <select aria-label="Mes del estado de cuenta" value={activeStatementMonth} onChange={event => setStatementMonth(event.target.value)}>
-              {statementMonths.map(ym => <option key={ym} value={ym}>{monthLabel(ym)}</option>)}
-            </select>
-            <button className="black-button small" onClick={() => window.print()}><Download size={15} /> Descargar PDF</button>
-          </div>
-        </div>
-        {!statementTransactions.length ? <p className="empty">Sin movimientos en {activeStatementMonth ? monthLabel(activeStatementMonth) : 'este periodo'}.</p> : <>
-          <div className="statement-summary">
-            <div className="statement-summary-item"><span>Saldo inicial</span><strong>{money(statementOpening)}</strong></div>
-            <div className="statement-summary-item"><span>Ingresos</span><strong className="inflow">+{money(statementIncome)}</strong></div>
-            <div className="statement-summary-item"><span>Gastos</span><strong>-{money(statementExpense)}</strong></div>
-            <div className="statement-summary-item"><span>Saldo final</span><strong>{money(statementClosing)}</strong></div>
-          </div>
-          <h3>En qué se fue el dinero</h3>
-          {statementBreakdown.map(([label, amount]) => <div className="detail-line" key={label}><span>{label}</span><strong>{money(amount)}</strong></div>)}
-          <h3>Movimientos del mes ({statementTransactions.length})</h3>
-          {statementTransactions.map(tx => <div className="detail-line" key={tx.id}><span>{tx.name}<small>{dateLabel(tx.date)} · {tx.category_label}</small></span><strong className={tx.signed_amount > 0 ? 'inflow' : ''}>{money(tx.signed_amount)}</strong></div>)}
-        </>}
-      </>}
-      {modal === 'envelopes' && <>
-        <h2 id="dialog-title">Apartados</h2>
-        <p className="muted-copy">Gastos fijos mensuales con reparto proporcional automático cada vez que llega tu nómina -- gasolina, comida, lo que definas.</p>
-        {envelopesLoading && <p className="empty">Cargando apartados…</p>}
-        {envelopesError && <div className="error-banner" role="alert">{envelopesError}</div>}
-        {envelopesNotice && <p className="operation-notice" role="status">{envelopesNotice}</p>}
-        {envelopes && <>
-          <h3>Patrón de nómina</h3>
-          {envelopes.income_pattern ? <div className="detail-line"><span>Declarado<small>Tolerancia {Math.round(envelopes.income_pattern.tolerance_pct * 100)}%</small></span><strong>{money(envelopes.income_pattern.expected_amount)} cada {envelopes.income_pattern.frequency_days} días</strong></div> : <p className="empty">Sin declarar -- los depósitos no se repartirán a tus apartados hasta que definas esto.</p>}
-          <form className="envelope-form" onSubmit={submitIncomePattern}>
-            <label className="ledger-filter"><span>Monto esperado</span><input type="number" min="0" step="0.01" required value={incomeAmount} onChange={event => setIncomeAmount(event.target.value)} /></label>
-            <label className="ledger-filter"><span>Frecuencia (días)</span><input type="number" min="1" step="1" required value={incomeFrequency} onChange={event => setIncomeFrequency(event.target.value)} /></label>
-            <button className="outline-button small" type="submit" disabled={envelopesBusy}>{envelopes.income_pattern ? 'Actualizar patrón' : 'Declarar patrón'}</button>
-          </form>
-          <h3>Tus apartados ({envelopes.envelopes.length})</h3>
-          {envelopes.envelopes.length ? envelopes.envelopes.map(env => <div className="detail-line" key={env.slug}><span>{env.category}<small>Meta mensual: {money(env.monthly_target)}</small></span><strong>{money(env.balance)}</strong></div>) : <p className="empty">Todavía no hay apartados creados.</p>}
-          <form className="envelope-form" onSubmit={submitNewEnvelope}>
-            <label className="ledger-filter"><span>Categoría nueva</span><input type="text" required value={newEnvelopeCategory} onChange={event => setNewEnvelopeCategory(event.target.value)} placeholder="Ej. gasolina" /></label>
-            <label className="ledger-filter"><span>Meta mensual</span><input type="number" min="0" step="0.01" required value={newEnvelopeTarget} onChange={event => setNewEnvelopeTarget(event.target.value)} /></label>
-            <button className="black-button small" type="submit" disabled={envelopesBusy}>Crear apartado</button>
-          </form>
-          <button className="outline-button" onClick={confirmAllocation} disabled={envelopesBusy}>Confirmar reparto pendiente</button>
-          <p className="muted-copy">Si una nómina detectada dejaba tu colchón muy bajo para repartirse sola, la propuesta queda aquí para tu confirmación explícita.</p>
-        </>}
-      </>}
       {modal === 'advance' && <><h2 id="dialog-title">Avanzar la simulación</h2><p>El siguiente checkpoint puede observar la cuenta, detectar una fuga, detener el cargo de Gym Co, o mover dinero a ahorro en el sandbox Nessie.</p><p>El backend no permite consultar el checkpoint actual. Si el próximo paso es detener Gym Co, al continuar confirmas que ya no lo usas y autorizas detener ese cargo de demostración.</p><div className="agent-alert"><ShieldAlert size={20} /><span>Un contrato anual puede generar penalizaciones o cobranza. Bloquear el cargo no cancela la suscripción con el comercio.</span></div><button className="black-button" disabled={busy || uncertain || !data || !!error || session.done} onClick={() => mutate('advance')}>Confirmo y autorizo el siguiente paso</button><button className="text-button" onClick={() => setModal(null)}>Volver sin avanzar</button></>}
       {modal === 'reset' && <><h2 id="dialog-title">Reiniciar demo</h2><p>Solicitará al backend volver al día 0 y reactivar Gym Co en el sandbox compartido. Borrará el feed y el chat de esta pestaña, pero no revierte los depósitos o retiros anteriores de Nessie.</p><button className="black-button" disabled={busy} onClick={() => mutate('reset')}>Reiniciar simulación</button></>}
       {modal === 'profile' && <>
