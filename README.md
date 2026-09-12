@@ -237,8 +237,9 @@ URL en vivo: `http://centinel-one-frontend.s3-website-us-east-1.amazonaws.com`. 
 - [x] Motor de señales — desplegado como Lambda real + DynamoDB, endpoint `GET /signals` en vivo
 - [x] Endpoint de datos crudos — `GET /transactions`, 62 movimientos con balance corriendo
 - [x] Agente decisor — política de riesgo + verificación + escrituras reales a Nessie, probado de punta a punta (`POST /simulation/advance-day`)
-- [ ] Chat embebido en el dashboard (reemplaza el bot de Telegram de Jarbis) — puede simularse con los `new_actions` de advance-day mientras tanto
-- [ ] Ver [`PLAN.md`](./PLAN.md) para el plan de implementación completo del frontend
+- [x] Frontend conectado al backend real — el template inicial (`FundFlow`) no tenía ninguna conexión (confirmado en su propio README: "no se realizan movimientos reales ni se conecta al backend"). Se agregó `frontend/src/api.js` y se conectaron balance, transacciones, score y el agente (botón "Avanzar día" + feed) a los 3 endpoints en vivo.
+- [ ] Chat conversacional real (lenguaje natural sobre el agente) — hoy el feed usa el texto fijo que ya genera `advance-day`, funciona para la demo pero no es un LLM respondiendo en el momento
+- [ ] Ver [`PLAN.md`](./PLAN.md) para el plan de implementación completo
 - [~] Dashboard — en progreso (frontend trabajando contra el contrato de datos mock)
 
 ## Track
