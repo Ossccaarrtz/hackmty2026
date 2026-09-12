@@ -1,13 +1,19 @@
 """
 Lambda: POST /chat/message
-Chat real con Gemini (tool-calling). El LLM entiende el mensaje en lenguaje
-natural y decide que herramienta llamar -- pero las herramientas son las
-MISMAS funciones verificadas de agent_actions.py que ya usa advance-day.
-El LLM nunca ejecuta nada directo ni decide montos por su cuenta: cada tool
-vuelve a verificar contra el estado real antes de actuar. Si el LLM alucina
-una confirmacion que no existio, o pide un monto fuera de rango, la funcion
-lo rechaza de todas formas -- la seguridad no depende de que el LLM se porte
-bien, depende del codigo determinista debajo.
+Chat real con Gemini (tool-calling) con memoria de conversacion real. El LLM
+entiende el mensaje en lenguaje natural y decide que herramienta llamar --
+pero las herramientas son las MISMAS funciones verificadas de
+agent_actions.py que ya usa advance-day. El LLM nunca ejecuta nada directo
+ni decide montos por su cuenta: cada tool vuelve a verificar contra el
+estado real antes de actuar. Si el LLM alucina una confirmacion que no
+existio, o pide un monto fuera de rango, la funcion lo rechaza de todas
+formas -- la seguridad no depende de que el LLM se porte bien, depende del
+codigo determinista debajo.
+
+Memoria: se persiste en DynamoDB solo el intercambio visible (lo que Mia
+escribio + la respuesta final de Centinel) -- no los pasos internos de que
+herramienta se llamo. Cada mensaje nuevo reconstruye la conversacion con
+ese historial antes de mandarla a Gemini.
 """
 import json
 import os
@@ -19,12 +25,15 @@ import agent_actions as actions
 
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 # gemini-2.5-flash ya no esta disponible para keys nuevas, y gemini-3.6-flash
-# (el que Google recomienda) tiene cuota gratuita de solo 20/dia -- este
-# default tiene que ser un modelo que de verdad funcione hoy con la key del
-# equipo, no el "sugerido", para que un redeploy sin la env var configurada
-# no tumbe el chat completo el dia de la demo.
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
+# (el que Google recomienda) tenia cuota gratuita de solo 20/dia antes de
+# activar billing -- este default tiene que ser un modelo que de verdad
+# funcione hoy con la key del equipo, no el "sugerido a ciegas", para que un
+# redeploy sin la env var configurada no tumbe el chat completo el dia de
+# la demo.
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+
+MAX_HISTORY_TURNS = 10  # pares (usuario, asistente) -- topa el tamaño y el costo por request
 
 TOOLS = [{
     "functionDeclarations": [
@@ -71,7 +80,8 @@ TOOLS = [{
 
 SYSTEM_INSTRUCTION = (
     "Eres el asistente de Centinel One, un agente financiero para Mia (freelancer, ingreso irregular, "
-    "sin historial de credito). Reglas estrictas: "
+    "sin historial de credito). Tienes memoria real de esta conversacion -- los mensajes anteriores estan "
+    "incluidos abajo, usalos para entender referencias como 'eso' o 'el mismo monto'. Reglas estrictas: "
     "1) Nunca inventes numeros de su cuenta -- si necesitas datos reales, llama a get_status primero. "
     "2) Nunca llames stop_subscription, move_to_savings o release_savings_buffer sin que el usuario lo haya pedido o confirmado explicitamente en la conversacion. "
     "3) Si detienes un cargo recurrente, siempre aclara que eso no cancela el contrato con el comercio, solo el cargo automatico. "
@@ -89,6 +99,22 @@ def sanitize(obj):
     if isinstance(obj, list):
         return [sanitize(v) for v in obj]
     return obj
+
+
+def get_chat_history(user_id):
+    """Solo el intercambio visible (usuario + respuesta final) -- nunca los
+    pasos internos de tool-calling, no hace falta guardarlos para que la
+    conversacion tenga memoria real."""
+    resp = actions.table.get_item(Key={"user_id": user_id, "sk": "CHAT_HISTORY"})
+    item = resp.get("Item")
+    if not item or "contents" not in item:
+        return []
+    return sanitize(item["contents"])
+
+
+def save_chat_history(user_id, contents):
+    trimmed = contents[-(MAX_HISTORY_TURNS * 2):]
+    actions.table.put_item(Item={"user_id": user_id, "sk": "CHAT_HISTORY", "contents": trimmed})
 
 
 def call_gemini(contents):
@@ -136,8 +162,10 @@ def lambda_handler(event, context):
     if not user_message.strip():
         return _response(400, {"error": "Falta el campo 'message'."})
 
-    contents = [{"role": "user", "parts": [{"text": user_message}]}]
+    history = get_chat_history(user_id)
+    contents = history + [{"role": "user", "parts": [{"text": user_message}]}]
     actions_taken = []
+    visible_reply = None
 
     for _ in range(4):
         try:
@@ -145,6 +173,7 @@ def lambda_handler(event, context):
         except Exception as e:
             status = 429 if "429" in str(e) else 200
             reply = "Centinel esta saturado ahorita mismo (limite de solicitudes), intenta de nuevo en un minuto." if status == 429 else f"No pude conectar con el modelo: {e}"
+            # No se persiste: un mensaje que nunca se proceso no debe contaminar la memoria de la conversacion.
             return _response(status, {"reply": reply, "actions_taken": actions_taken})
 
         if "candidates" not in result or not result["candidates"]:
@@ -155,8 +184,8 @@ def lambda_handler(event, context):
         function_call = next((p["functionCall"] for p in parts if "functionCall" in p), None)
 
         if not function_call:
-            text = "".join(p.get("text", "") for p in parts) or "No tengo una respuesta clara para eso."
-            return _response(200, {"reply": text, "actions_taken": actions_taken})
+            visible_reply = "".join(p.get("text", "") for p in parts) or "No tengo una respuesta clara para eso."
+            break
 
         contents.append({"role": "model", "parts": parts})
         tool_result = execute_tool(function_call["name"], function_call.get("args", {}), user_id)
@@ -165,8 +194,14 @@ def lambda_handler(event, context):
             "role": "user",
             "parts": [{"functionResponse": {"name": function_call["name"], "response": tool_result}}],
         })
+    else:
+        visible_reply = "Esto necesito mas pasos de los permitidos, intenta reformular tu mensaje."
 
-    return _response(200, {"reply": "Esto necesito mas pasos de los permitidos, intenta reformular tu mensaje.", "actions_taken": actions_taken})
+    save_chat_history(user_id, history + [
+        {"role": "user", "parts": [{"text": user_message}]},
+        {"role": "model", "parts": [{"text": visible_reply}]},
+    ])
+    return _response(200, {"reply": visible_reply, "actions_taken": actions_taken})
 
 
 def _response(status, body):
