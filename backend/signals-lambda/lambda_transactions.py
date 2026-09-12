@@ -29,7 +29,7 @@ def lambda_handler(event, context):
     response = table.query(KeyConditionExpression=Key("user_id").eq(user_id))
     items = response["Items"]
 
-    transactions = [i for i in items if i["type"] in ("deposit", "purchase")]
+    transactions = [i for i in items if i.get("type") in ("deposit", "purchase")]
     transactions.sort(key=lambda t: (t["date"], t["sk"]))
 
     running_balance = 0.0
