@@ -387,6 +387,66 @@ class TestCreateEnvelope(BaseAgentActionsTest):
         self.assertFalse(result["ok"])
 
 
+class TestSimulateThirdPartyPayroll(BaseAgentActionsTest):
+    """Nomina real de un tercero (otra cuenta Nessie, no la nuestra) -- ver
+    backend/signals-lambda/agent_actions.py::simulate_third_party_payroll.
+    A proposito NO se prueba que reparta a apartados aqui: eso lo decide el
+    mismo camino reactivo de cualquier deposito (lambda_notifier ->
+    verified_allocate_envelopes), ya cubierto por TestVerifiedAllocateEnvelopes.
+    Esta funcion solo es responsable de mover el dinero y escribir el deposito."""
+
+    def setUp(self):
+        super().setUp()
+        self.load_data_patch = patch.object(aa, "load_data", return_value=([], [{"date": "2026-09-12", "amount": 10}], []))
+        self.load_data_patch.start()
+        self.addCleanup(self.load_data_patch.stop)
+
+    @patch.object(aa, "receive_from_third_party")
+    def test_uses_declared_income_pattern_amount_when_not_specified(self, mock_receive):
+        aa.table.get_item.return_value = {"Item": {"expected_amount": 565, "frequency_days": 15, "tolerance_pct": 0.3}}
+        mock_receive.return_value = {"withdrawal": {}, "deposit": {}}
+        result = aa.simulate_third_party_payroll("mia")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["amount"], 565.0)
+        self.assertTrue(result["matches_income_pattern"])
+        mock_receive.assert_called_once()
+        self.assertEqual(mock_receive.call_args.args[2], 565.0)
+
+    def test_rejects_when_no_amount_and_no_pattern_declared(self):
+        aa.table.get_item.return_value = {}
+        result = aa.simulate_third_party_payroll("mia")
+        self.assertFalse(result["ok"])
+
+    @patch.object(aa, "receive_from_third_party")
+    def test_flags_amount_that_does_not_match_income_pattern(self, mock_receive):
+        aa.table.get_item.return_value = {"Item": {"expected_amount": 565, "frequency_days": 15, "tolerance_pct": 0.3}}
+        mock_receive.return_value = {"withdrawal": {}, "deposit": {}}
+        result = aa.simulate_third_party_payroll("mia", amount=100)
+        self.assertTrue(result["ok"])  # el deposito si se hace/registra
+        self.assertFalse(result["matches_income_pattern"])  # pero no se reparte solo
+
+    @patch.object(aa, "receive_from_third_party", side_effect=RuntimeError("Nessie caido"))
+    def test_nessie_failure_does_not_write_deposit(self, mock_receive):
+        aa.table.get_item.return_value = {"Item": {"expected_amount": 565, "frequency_days": 15, "tolerance_pct": 0.3}}
+        result = aa.simulate_third_party_payroll("mia")
+        self.assertFalse(result["ok"])
+        aa.table.put_item.assert_not_called()
+
+    @patch.object(aa, "receive_from_third_party")
+    def test_writes_deposit_with_third_party_category_for_reset_cleanup(self, mock_receive):
+        aa.table.get_item.return_value = {"Item": {"expected_amount": 565, "frequency_days": 15, "tolerance_pct": 0.3}}
+        mock_receive.return_value = {"withdrawal": {}, "deposit": {}}
+        aa.simulate_third_party_payroll("mia")
+        saved_item = aa.table.put_item.call_args.kwargs["Item"]
+        self.assertEqual(saved_item["type"], "deposit")
+        self.assertEqual(saved_item["category"], aa.THIRD_PARTY_INCOME_CATEGORY)
+
+    def test_rejects_non_positive_explicit_amount(self):
+        aa.table.get_item.return_value = {}
+        result = aa.simulate_third_party_payroll("mia", amount=0)
+        self.assertFalse(result["ok"])
+
+
 class TestVerifiedActionHistoryDedup(BaseAgentActionsTest):
     def _mock_two_queries(self, action_items, notif_items):
         # get_verified_action_history llama table.query() dos veces en orden

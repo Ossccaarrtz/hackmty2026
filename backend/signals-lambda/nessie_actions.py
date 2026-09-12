@@ -8,11 +8,15 @@ import json
 from datetime import date
 
 NESSIE_KEY = os.environ.get("NESSIE_API_KEY", "")
+# Cuenta de un tercero real (otra app/otro dueno registrado en el sandbox de
+# Nessie, con su propia api key) que representa al cliente/empleador de Mia
+# para la demo de nomina de un tercero. No es nuestra cuenta.
+EMPLOYER_NESSIE_KEY = os.environ.get("EMPLOYER_NESSIE_API_KEY", "")
 BASE = "https://api.nessieisreal.com"
 
 
-def _request(method, path, body=None):
-    url = f"{BASE}{path}?key={NESSIE_KEY}"
+def _request(method, path, body=None, key=None):
+    url = f"{BASE}{path}?key={key or NESSIE_KEY}"
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=10) as resp:
@@ -40,6 +44,24 @@ def sweep_to_savings(checking_id, savings_id, amount, reason, on_date=None):
         "amount": amount, "description": reason,
     })
     deposit = _request("POST", f"/accounts/{savings_id}/deposits", {
+        "medium": "balance", "transaction_date": on_date, "status": "completed",
+        "amount": amount, "description": reason,
+    })
+    return {"withdrawal": withdrawal, "deposit": deposit}
+
+
+def receive_from_third_party(employer_account_id, checking_id, amount, reason, on_date=None):
+    """Retiro real de una cuenta que NO es nuestra (autenticado con la api
+    key del tercero) + deposito real a la cuenta de Mia. A diferencia de
+    sweep_to_savings/release_from_savings (dinero movido entre las DOS
+    cuentas de Mia con nuestra propia key), aqui el dinero sale de una
+    cuenta ajena -- simula que un empleador de verdad le paga a Mia."""
+    on_date = on_date or date.today().isoformat()
+    withdrawal = _request("POST", f"/accounts/{employer_account_id}/withdrawals", {
+        "medium": "balance", "transaction_date": on_date, "status": "completed",
+        "amount": amount, "description": reason,
+    }, key=EMPLOYER_NESSIE_KEY)
+    deposit = _request("POST", f"/accounts/{checking_id}/deposits", {
         "medium": "balance", "transaction_date": on_date, "status": "completed",
         "amount": amount, "description": reason,
     })

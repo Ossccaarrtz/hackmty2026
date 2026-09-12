@@ -214,6 +214,7 @@ function App() {
   const [newEnvelopeTarget, setNewEnvelopeTarget] = useState('');
   const [incomeAmount, setIncomeAmount] = useState('');
   const [incomeFrequency, setIncomeFrequency] = useState('');
+  const [payrollBusy, setPayrollBusy] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const locked = useRef(false), requestId = useRef(0), closeRef = useRef(null);
   const signals = data?.signals;
@@ -307,6 +308,18 @@ function App() {
       await loadEnvelopes();
     } catch (err) { setEnvelopesError(err.message); }
     finally { setEnvelopesBusy(false); }
+  }
+  async function simulatePayroll() {
+    if (payrollBusy) return;
+    setPayrollBusy(true);
+    setEnvelopesNotice('');
+    setEnvelopesError('');
+    try {
+      const result = await api.simulateThirdPartyPayroll('Estudio Creativo');
+      setEnvelopesNotice(result.message || 'Nómina de un tercero recibida.');
+      await Promise.all([loadEnvelopes(), refresh()]);
+    } catch (err) { setEnvelopesError(err.message); }
+    finally { setPayrollBusy(false); }
   }
   async function refresh() {
     const id = ++requestId.current;
@@ -509,6 +522,9 @@ function App() {
             </form>
             <button className="outline-button" onClick={confirmAllocation} disabled={envelopesBusy}>Confirmar reparto pendiente</button>
             <p className="muted-copy">Si una nómina detectada dejaba tu colchón muy bajo para repartirse sola, la propuesta queda aquí para tu confirmación explícita.</p>
+            <h3>Simular nómina de un tercero</h3>
+            <p className="muted-copy">Mueve dinero real desde una cuenta Nessie que no es la nuestra (el "empleador" de Mia) hasta su cuenta -- el reparto a apartados que veas después ocurre solo, disparado por el mismo webhook que reacciona a cualquier depósito real.</p>
+            <button className="black-button" onClick={simulatePayroll} disabled={payrollBusy}>{payrollBusy ? 'Procesando en Nessie…' : 'Simular nómina de un tercero'}</button>
           </>}
         </motion.section>}
         {page === 'home' && <motion.section className="balance-card glass" key="balance-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><div className="balance-top"><div><h2>Score de resiliencia financiera</h2><div className="total score-hero">{signals?.score.value ?? '—'}<span>/100</span></div>{signals && <TrendBadge trend={signals.score.trend} />}<p className="muted-copy">Tu flujo de efectivo cuenta tu historia.</p></div><span className={`pill ${signals?.anomaly?.detected ? 'pill-warning' : ''}`}>{signals ? (signals.anomaly?.detected ? <><ShieldAlert size={14} /> Anomalía detectada</> : <><ShieldCheck size={14} /> Sin anomalías</>) : 'Sin datos'}</span></div><div className="balance-bottom"><div className="account-orbs"><div className="orb-bridge" /><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.balance)}</strong><span>Saldo del ledger</span></button><button className="orb purple" onClick={() => setModal('score')}><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong><span>Gastos cubiertos</span></button><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.summary.total_income)}</strong><span>Ingresos registrados</span></button></div></div>{signals?.projection?.weeks_to_ready != null && <p className="projection-note">A este ritmo, listo para {signals.projection.product} en ~{signals.projection.weeks_to_ready} {signals.projection.weeks_to_ready === 1 ? 'checkpoint' : 'checkpoints'}.</p>}</motion.section>}

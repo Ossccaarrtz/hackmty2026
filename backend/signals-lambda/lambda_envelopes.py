@@ -5,6 +5,7 @@ GET  /envelopes?user_id=mia                  -> lista de apartados con saldo der
 POST /envelopes                              -> crea un apartado {category, monthly_target}
 POST /envelopes/income-pattern               -> declara el patron de nomina {expected_amount, frequency_days}
 POST /envelopes/confirm-allocation           -> ejecuta un reparto pendiente de confirmar
+POST /envelopes/simulate-payroll             -> nomina real de un tercero {employer_label?, amount?}
 
 Todas las escrituras reales pasan por agent_actions.py -- el mismo modulo
 que usan advance-day y el chat. Este Lambda es solo la capa HTTP encima.
@@ -41,6 +42,10 @@ def lambda_handler(event, context):
 
     if method == "POST" and path.rstrip("/") == "/envelopes/confirm-allocation":
         result = actions.confirm_pending_allocation(user_id)
+        return _response(200 if result.get("ok") else 400, result)
+
+    if method == "POST" and path.rstrip("/") == "/envelopes/simulate-payroll":
+        result = actions.simulate_third_party_payroll(user_id, body.get("employer_label", "Estudio Creativo"), body.get("amount"))
         return _response(200 if result.get("ok") else 400, result)
 
     return _response(404, {"error": f"Ruta no encontrada: {method} {path}"})

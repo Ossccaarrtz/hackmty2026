@@ -13,13 +13,18 @@ from datetime import date
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 
-from signal_engine import compute_signals, score_liquidity, compute_elapsed_days, LIQUIDITY_WARNING_DAYS
-from nessie_actions import stop_recurring_bill, sweep_to_savings, release_from_savings
+from signal_engine import compute_signals, score_liquidity, compute_elapsed_days, LIQUIDITY_WARNING_DAYS, resolve_reference_date
+from nessie_actions import stop_recurring_bill, sweep_to_savings, release_from_savings, receive_from_third_party
 
 REGION = "us-east-1"
 TABLE_NAME = "jarbis-financiero-data"
 CHECKING_ID = "3cbe83c6-e844-48b3-b86a-627b8a6e3028"
 SAVINGS_ID = "f9428a58-dbc4-49b3-9105-e69460a56a9a"
+# Cuenta real de un tercero (otra app/otro dueno en el sandbox de Nessie, NO
+# nuestra) usada para la demo de "nomina de un tercero" -- ver
+# simulate_third_party_payroll.
+EMPLOYER_ACCOUNT_ID = "98698915-42ab-45a8-a89d-31330909e9e5"
+THIRD_PARTY_INCOME_CATEGORY = "income_third_party_demo"
 MAX_AUTONOMOUS_SAVINGS = 100  # tope por transaccion Y por dia -- el chat no puede mover mas que esto solo
 
 ENVELOPE_PREFIX = "ENVELOPE#"
@@ -352,6 +357,54 @@ def deposit_matches_income_pattern(pattern, deposit_amount):
     expected = float(pattern["expected_amount"])
     tolerance = float(pattern.get("tolerance_pct", 0.25))
     return abs(float(deposit_amount) - expected) <= expected * tolerance
+
+
+def simulate_third_party_payroll(user_id, employer_label="Estudio Creativo", amount=None, on_date=None):
+    """Mueve dinero DE VERDAD desde la cuenta de un tercero (otra app/otro
+    dueno en el sandbox de Nessie, no la nuestra) a la cuenta de Mia, y lo
+    registra como cualquier deposito real. A proposito NO llama
+    verified_allocate_envelopes directamente: escribe el deposito y deja que
+    el mismo camino reactivo de cualquier deposito real (DynamoDB Streams ->
+    lambda_notifier -> verified_allocate_envelopes) decida si reparte a
+    apartados -- exactamente lo que pasaria si la nomina llegara sin que
+    nadie de nuestro lado la dispare a mano."""
+    pattern = get_income_pattern(user_id)
+    if amount is None:
+        if not pattern:
+            return {"ok": False, "reason": "No hay un patron de nomina declarado -- especifica un monto o declara un patron primero."}
+        amount = float(pattern["expected_amount"])
+    else:
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+            return {"ok": False, "reason": "El monto no es un numero valido."}
+    if amount <= 0:
+        return {"ok": False, "reason": "El monto tiene que ser mayor a cero."}
+
+    _, purchases, _ = load_data(user_id)
+    on_date = on_date or resolve_reference_date(None, purchases) or date.today().isoformat()
+
+    try:
+        movement = receive_from_third_party(EMPLOYER_ACCOUNT_ID, CHECKING_ID, amount, f"Pago de nomina - {employer_label}", on_date=on_date)
+    except Exception as e:
+        return {"ok": False, "reason": f"No se pudo mover el dinero en Nessie: {e}"}
+
+    table.put_item(Item=to_decimal({
+        "user_id": user_id, "sk": f"TXN#{on_date}#thirdparty{int(time.time() * 1000)}",
+        "type": "deposit", "date": on_date, "amount": amount,
+        "category": THIRD_PARTY_INCOME_CATEGORY, "category_label": f"Nomina - {employer_label}",
+        "merchant_name": None, "description": f"Pago recibido de {employer_label} (cuenta de un tercero, verificable en Nessie)",
+    }))
+    matches = deposit_matches_income_pattern(pattern, amount)
+    return {
+        "ok": True, "amount": amount, "date": on_date, "matches_income_pattern": matches,
+        "nessie": movement,
+        "message": (
+            f"Se recibieron ${amount} de {employer_label} en tu cuenta el {on_date}. "
+            + ("El reparto a tus apartados se procesa automaticamente." if matches
+               else "Este monto no coincide con tu patron de nomina declarado, asi que no se reparte solo a tus apartados.")
+        ),
+    }
 
 
 def get_envelopes(user_id):

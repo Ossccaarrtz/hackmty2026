@@ -40,6 +40,7 @@ export function createApi({ baseUrl = DEFAULT_BASE, userId = 'mia', fetchImpl = 
     createEnvelope: (category, monthlyTarget) => request('/envelopes', { method: 'POST', body: { category, monthly_target: monthlyTarget } }),
     setIncomePattern: (expectedAmount, frequencyDays) => request('/envelopes/income-pattern', { method: 'POST', body: { expected_amount: expectedAmount, frequency_days: frequencyDays } }),
     confirmPendingAllocation: () => request('/envelopes/confirm-allocation', { method: 'POST', body: {} }),
+    simulateThirdPartyPayroll: (employerLabel, amount) => request('/envelopes/simulate-payroll', { method: 'POST', body: { employer_label: employerLabel, amount: amount || undefined } }),
     advanceDay: () => request('/simulation/advance-day', { method: 'POST' }),
     resetSimulation: () => request('/simulation/advance-day', { method: 'POST', reset: true }),
     sendChatMessage: (message) => request('/chat/message', { method: 'POST', body: { message, user_id: userId } }),

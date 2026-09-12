@@ -214,10 +214,20 @@ def _handle_reset(user_id):
     table.delete_item(Key={"user_id": user_id, "sk": "STATE#simulation"})
     table.delete_item(Key={"user_id": user_id, "sk": "CHAT_HISTORY"})
     table.delete_item(Key={"user_id": user_id, "sk": "PENDING_STOP_BILL"})
+    table.delete_item(Key={"user_id": user_id, "sk": "PENDING_ALLOCATION"})
     try:
         resp = table.query(KeyConditionExpression=Key("user_id").eq(user_id))
         for item in resp["Items"]:
-            if item.get("category") in ("savings_transfer", "savings_release") or item["sk"].startswith("ACTION#") or item["sk"].startswith("NOTIFICATION#"):
+            category = item.get("category") or ""
+            # savings_transfer/savings_release: sweeps de suavizado de ingreso.
+            # envelope:*: repartos a apartados ya ejecutados.
+            # income_third_party_demo: depositos de la demo de nomina de un
+            # tercero (backend/signals-lambda/agent_actions.py::simulate_third_party_payroll)
+            # -- sin esto, cada ensayo en vivo deja un deposito extra permanente
+            # en el historial de Mia.
+            if (category in ("savings_transfer", "savings_release", "income_third_party_demo")
+                    or category.startswith("envelope:")
+                    or item["sk"].startswith("ACTION#") or item["sk"].startswith("NOTIFICATION#")):
                 table.delete_item(Key={"user_id": user_id, "sk": item["sk"]})
     except Exception:
         pass
