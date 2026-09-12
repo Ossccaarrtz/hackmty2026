@@ -8,6 +8,34 @@ import './styles.css';
 const money = value => Number.isFinite(value) ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value) : '—';
 const dateLabel = date => new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`));
 const PENDING_TYPES = ['leak_detected', 'anomaly_pause'];
+const CATEGORY_LABELS = { rent: 'Renta', groceries: 'Supermercado', transport: 'Transporte', utilities: 'Servicios', discretionary: 'Discrecional', income: 'Ingreso' };
+const CATEGORY_COLORS = { rent: '#004977', groceries: '#d03027', transport: '#1c74a6', utilities: '#4f95c4', discretionary: '#8390a4', income: '#5ca2fc' };
+function polarPoint(cx, cy, r, angleDeg) {
+  const rad = (angleDeg - 90) * Math.PI / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+function CategoryPie({ data, size = 128 }) {
+  const total = data.reduce((sum, d) => sum + d.value, 0);
+  if (!total) return <p className="empty">Sin gastos por categoría todavía.</p>;
+  const r = size / 2, cx = r, cy = r;
+  let angle = 0;
+  const slices = data.map(d => {
+    const start = polarPoint(cx, cy, r, angle);
+    const sliceAngle = (d.value / total) * 360;
+    angle += sliceAngle;
+    const end = polarPoint(cx, cy, r, angle);
+    const largeArc = sliceAngle > 180 ? 1 : 0;
+    return { ...d, pct: (d.value / total) * 100, path: `M ${cx},${cy} L ${start.x},${start.y} A ${r},${r} 0 ${largeArc} 1 ${end.x},${end.y} Z` };
+  });
+  return <div className="category-chart-row">
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label="Gasto por categoría">
+      {slices.map(s => <path key={s.label} d={s.path} fill={s.color} />)}
+    </svg>
+    <ul className="category-legend">
+      {slices.map(s => <li key={s.label}><span className="category-swatch" style={{ background: s.color }} />{s.label}<strong>{Math.round(s.pct)}%</strong><small>{money(s.value)}</small></li>)}
+    </ul>
+  </div>;
+}
 function readSession() {
   try { const saved = JSON.parse(sessionStorage.getItem(sessionKey)); if (Array.isArray(saved?.feed) && Array.isArray(saved?.history)) return { ...emptySession(), ...saved }; } catch { /* Storage is optional. */ }
   return emptySession();
@@ -118,6 +146,9 @@ function App() {
   const transactions = data?.transactions || [];
   const notifications = data?.notifications || [];
   const filtered = transactions.slice().reverse().filter(tx => `${tx.name} ${tx.category_label}`.toLowerCase().includes(query.toLowerCase()));
+  const categoryData = Object.entries(data?.summary?.by_category || {})
+    .map(([key, value]) => ({ label: CATEGORY_LABELS[key] || key, value, color: CATEGORY_COLORS[key] || '#8390a4' }))
+    .sort((a, b) => b.value - a.value);
 
   async function refresh() {
     const id = ++requestId.current;
@@ -221,7 +252,7 @@ function App() {
         <section className="payments-card glass alerts-card"><header className="card-heading"><h2>Lo que necesita tu atención</h2><span className="pill">{signals?.alerts.length ?? '—'} alertas</span></header>{signals ? signals.alerts.length ? signals.alerts.map(alert => <article className="live-alert" key={alert.id}><ShieldAlert size={24} /><div><strong>{alert.title}</strong><p>{alert.detail}</p>{alert.annual_cost > 0 && <small>{money(alert.annual_cost)} al año · potencial, no ahorro realizado</small>}</div><button className="black-button small" onClick={() => setPage('chat')}>Revisar</button></article>) : <p className="empty">Todo al día: el backend no reporta alertas activas.</p> : <p className="empty">{loading ? 'Consultando alertas…' : 'Alertas no disponibles.'}</p>}<p className="muted-copy">Detener un cargo no cancela el contrato con el comercio.</p></section>
       </>}
     </section>
-    {page === 'home' && <section className="right-column"><section className="transactions"><header className="transactions-heading"><div><h2>Movimientos</h2><p>Historial de Mia</p></div><button className="black-button small" onClick={() => setModal('transactions')}>Ver todos</button></header><div className="transaction-list">{transactions.slice(-6).reverse().map(tx => <div className="transaction-row live-transaction" key={tx.id}><span className={`direction ${tx.signed_amount > 0 ? 'inflow' : 'outflow'}`}>{tx.signed_amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={tx.name}>{tx.name}</strong><span className="transaction-date">{dateLabel(tx.date)}</span><span className={`transaction-amount ${tx.signed_amount > 0 ? 'inflow' : ''}`}>{money(tx.signed_amount)}</span></div>)}{!transactions.length && <p className="empty">{loading ? 'Cargando movimientos…' : data ? 'No hay movimientos registrados.' : 'Historial no disponible.'}</p>}</div></section><section className="glass notifications-panel"><header className="card-heading"><h2>Avisos en tiempo real</h2><span className="pill">{notifications.length}</span></header>{notifications.length ? notifications.slice(0, 5).map(n => <div className="notification-item" key={n.sk}><span>{dateLabel(n.date)}</span><p>{n.text}</p></div>) : <p className="empty">Sin avisos todavía — se generan solos cuando el agente hace un movimiento real (via webhook, sin que nadie los pida).</p>}</section><section className="glass agent-card"><header className="card-heading"><h2>Actividad de Centinel</h2><span className="pill">Modo demo</span></header>{controls}{feed}<button className="text-button" onClick={() => setPage('chat')}>Abrir conversación <ChevronRight size={16} /></button></section></section>}
+    {page === 'home' && <section className="right-column"><section className="transactions"><header className="transactions-heading"><div><h2>Movimientos</h2><p>Historial de Mia</p></div><button className="black-button small" onClick={() => setModal('transactions')}>Ver todos</button></header><div className="transaction-list">{transactions.slice(-6).reverse().map(tx => <div className="transaction-row live-transaction" key={tx.id}><span className={`direction ${tx.signed_amount > 0 ? 'inflow' : 'outflow'}`}>{tx.signed_amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={tx.name}>{tx.name}</strong><span className="transaction-date">{dateLabel(tx.date)}</span><span className={`transaction-amount ${tx.signed_amount > 0 ? 'inflow' : ''}`}>{money(tx.signed_amount)}</span></div>)}{!transactions.length && <p className="empty">{loading ? 'Cargando movimientos…' : data ? 'No hay movimientos registrados.' : 'Historial no disponible.'}</p>}</div></section><section className="glass notifications-panel"><header className="card-heading"><h2>Avisos en tiempo real</h2><span className="pill">{notifications.length}</span></header>{notifications.length ? notifications.slice(0, 5).map(n => <div className="notification-item" key={n.sk}><span>{dateLabel(n.date)}</span><p>{n.text}</p></div>) : <p className="empty">Sin avisos todavía — se generan solos cuando el agente hace un movimiento real (via webhook, sin que nadie los pida).</p>}</section><section className="glass agent-card"><header className="card-heading"><h2>Actividad de Centinel</h2><span className="pill">Modo demo</span></header>{controls}{feed}<button className="text-button" onClick={() => setPage('chat')}>Abrir conversación <ChevronRight size={16} /></button></section><section className="glass category-card"><header className="card-heading"><h2>Gasto por categoría</h2></header>{data ? <CategoryPie data={categoryData} /> : <p className="empty">{loading ? 'Cargando categorías…' : 'Sin datos disponibles.'}</p>}</section></section>}
     {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className={`modal glass ${modal === 'transactions' ? 'ledger-modal' : ''}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={event => event.stopPropagation()}><button ref={closeRef} className="close-modal icon-button" aria-label="Cerrar" onClick={() => setModal(null)}><X /></button>
       {modal === 'score' && <><h2 id="dialog-title">Tu score, explicado</h2><p>Indicador propio de resiliencia financiera; no es un score de Buró ni garantiza aprobación de crédito.</p>{signals?.score.breakdown.map(item => <div className="detail-line" key={item.key}><span>{item.label}<small>{item.detail} · Peso: {item.weight}%</small></span><strong>{item.value}/100</strong></div>)}</>}
       {modal === 'transactions' && <><h2 id="dialog-title">Todos los movimientos</h2><p>{transactions.length} movimientos · Saldo: {money(data?.balance)}</p><LineChart values={transactions.map(tx => tx.running_balance)} label="Balance histórico calculado por el backend" /><label className="ledger-search"><Search size={18} /><input aria-label="Buscar movimientos" placeholder="Buscar comercio o categoría" value={query} onChange={event => setQuery(event.target.value)} /></label>{filtered.map(tx => <div className="detail-line" key={tx.id}><span>{tx.name}<small>{dateLabel(tx.date)} · {tx.category_label}</small></span><strong className={tx.signed_amount > 0 ? 'inflow' : ''}>{money(tx.signed_amount)}</strong></div>)}{!filtered.length && <p>No hay movimientos que coincidan.</p>}</>}
