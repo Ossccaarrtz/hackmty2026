@@ -49,12 +49,17 @@ TOOLS = [{
         },
         {
             "name": "stop_subscription",
-            "description": "Detiene el cargo automatico de una suscripcion/cargo recurrente. Solo tiene efecto si ese cargo esta marcado como fuga detectada ahora mismo -- si no lo esta, se rechaza automaticamente sin importar lo que el usuario diga.",
+            "description": "Propone detener el cargo automatico de una suscripcion/cargo recurrente -- NUNCA ejecuta en esta llamada, solo evalua si es una fuga real y deja la propuesta pendiente. Solo procede si ese cargo esta marcado como fuga detectada ahora mismo -- si no lo esta, se rechaza automaticamente sin importar lo que el usuario diga. Para ejecutar de verdad, el usuario tiene que confirmar explicitamente despues y tienes que llamar confirm_stop_bill.",
             "parameters": {
                 "type": "object",
                 "properties": {"bill_title": {"type": "string", "description": "Nombre exacto del comercio, ej. 'Gym Co'"}},
                 "required": ["bill_title"],
             },
+        },
+        {
+            "name": "confirm_stop_bill",
+            "description": "Ejecuta de verdad una cancelacion de cargo que quedo pendiente de stop_subscription, despues de que el usuario confirmo explicitamente en la conversacion que quiere proceder.",
+            "parameters": {"type": "object", "properties": {}},
         },
         {
             "name": "move_to_savings",
@@ -127,8 +132,8 @@ SYSTEM_INSTRUCTION = (
     "sin historial de credito). Tienes memoria real de esta conversacion -- los mensajes anteriores estan "
     "incluidos abajo, usalos para entender referencias como 'eso' o 'el mismo monto'. Reglas estrictas: "
     "1) Nunca inventes numeros de su cuenta -- si necesitas datos reales, llama a get_status primero, o a get_score_history si pregunta por una fecha o mes pasado. "
-    "2) Nunca llames stop_subscription, move_to_savings o release_savings_buffer sin que el usuario lo haya pedido o confirmado explicitamente en la conversacion. "
-    "3) Si detienes un cargo recurrente, siempre aclara que eso no cancela el contrato con el comercio, solo el cargo automatico. "
+    "2) Nunca llames move_to_savings o release_savings_buffer sin que el usuario lo haya pedido o confirmado explicitamente en la conversacion. "
+    "3) stop_subscription SIEMPRE es un proceso de dos pasos: la primera llamada solo propone (nunca detiene nada de verdad) y te va a devolver una advertencia de riesgo contractual para que se la muestres a Mia tal cual. Si Mia confirma explicitamente despues de leer esa advertencia, llama confirm_stop_bill -- no vuelvas a llamar stop_subscription. "
     "4) Si una herramienta rechaza la accion, explicale a Mia por que en lenguaje simple, no insistas ni la reintentes con otros valores. "
     "5) release_savings_buffer es para semanas de ingreso bajo -- no lo ofrezcas a menos que Mia mencione que le entro poco dinero o necesita liquidez extra. "
     "6) Los apartados (create_envelope) se reparten solos cuando llega un deposito que coincide con el patron de nomina declarado (set_income_pattern) -- si Mia no ha declarado su patron todavia y quiere crear un apartado, pidele primero el monto y frecuencia aproximada de su nomina. "
@@ -191,13 +196,15 @@ def execute_tool(name, args, user_id):
         if name == "get_score_history":
             return sanitize({"history": actions.get_score_history(user_id)})
         if name == "stop_subscription":
-            return sanitize(actions.verified_stop_bill(user_id, args.get("bill_title", "")))
+            return sanitize(actions.propose_stop_bill(user_id, args.get("bill_title", "")))
+        if name == "confirm_stop_bill":
+            return sanitize(actions.confirm_stop_bill(user_id))
         if name == "move_to_savings":
             return sanitize(actions.verified_move_to_savings(user_id, args.get("amount"), args.get("reason", "")))
         if name == "release_savings_buffer":
             return sanitize(actions.verified_release_buffer(user_id, args.get("amount"), args.get("reason", "")))
         if name == "get_envelopes_status":
-            return sanitize({"envelopes": actions.get_envelope_balances(user_id)})
+            return sanitize({"ok": True, "envelopes": actions.get_envelope_balances(user_id)})
         if name == "create_envelope":
             return sanitize(actions.create_envelope(user_id, args.get("category", ""), args.get("monthly_target")))
         if name == "set_income_pattern":
@@ -205,7 +212,7 @@ def execute_tool(name, args, user_id):
         if name == "confirm_pending_allocation":
             return sanitize(actions.confirm_pending_allocation(user_id))
         if name == "get_upcoming_expenses":
-            return sanitize({"upcoming_expenses": actions.get_current_signals(user_id)["upcoming_expenses"]})
+            return sanitize({"ok": True, "upcoming_expenses": actions.get_current_signals(user_id)["upcoming_expenses"]})
         return {"ok": False, "reason": f"Herramienta desconocida: {name}"}
     except Exception as e:
         return {"ok": False, "reason": f"Algo fallo revisando tu cuenta ({e}) -- no se ejecuto ninguna accion."}

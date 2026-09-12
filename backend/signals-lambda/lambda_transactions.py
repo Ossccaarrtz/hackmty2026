@@ -9,6 +9,8 @@ import boto3
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 
+from signal_engine import is_neutral
+
 REGION = "us-east-1"
 TABLE_NAME = "jarbis-financiero-data"
 
@@ -62,7 +64,10 @@ def lambda_handler(event, context):
         "by_category": {},
     }
     for t in enriched:
-        if t["type"] == "purchase" and t["category"] != "savings_release":
+        # savings_transfer/envelope:* son reasignaciones internas de dinero,
+        # no gasto -- si entran aqui, el desglose por categoria del
+        # dashboard mezcla apartados con gasto discrecional real.
+        if t["type"] == "purchase" and t["category"] != "savings_release" and not is_neutral(t["category"]):
             summary["by_category"].setdefault(t["category"], 0)
             summary["by_category"][t["category"]] += t["amount"]
 

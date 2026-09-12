@@ -33,8 +33,12 @@ export function appendChatExchange(session, userText, response) {
   const today = new Date().toISOString().slice(0, 10);
   const userEntry = { id: `chat-${uid()}`, role: 'user', text: userText };
   const assistantEntry = { id: `chat-${uid()}`, role: 'assistant', text: response.reply };
+  // Tools de solo consulta (no acciones sobre dinero) -- nunca deben verse
+  // como una acción rechazada en el feed solo porque su resultado no trae
+  // el campo `ok` (una consulta exitosa no tiene por qué traerlo).
+  const READ_ONLY_TOOLS = ['get_status', 'get_score_history', 'get_envelopes_status', 'get_upcoming_expenses'];
   const executedActions = response.actions_taken
-    .filter(a => !['get_status', 'get_score_history'].includes(a.tool) && a.result)
+    .filter(a => !READ_ONLY_TOOLS.includes(a.tool) && a.result)
     .map(a => ({
       id: `chat-${uid()}`,
       date: today,

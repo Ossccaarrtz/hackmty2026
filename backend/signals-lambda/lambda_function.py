@@ -53,18 +53,19 @@ def lambda_handler(event, context):
     total_income, total_expense = compute_totals(deposits, purchases)
     history = get_score_history(user_id)
 
-    # as_of_date=None apagaba el guardrail de anomalia y el pronostico de
-    # gastos proximos (ambos necesitan una fecha de referencia real) en el
-    # uso normal de /signals sin ?as_of -- se usa "hoy" real como default
-    # sin afectar el resto del calculo (record_score sigue viendo el as_of
-    # original de abajo para decidir si persiste o no).
+    # as_of_date=None ya no apaga el guardrail de anomalia ni el pronostico
+    # de gastos proximos -- compute_signals resuelve la fecha de referencia
+    # internamente contra los datos reales (signal_engine.resolve_reference_date),
+    # nunca contra date.today(). Forzar el reloj de pared aqui habria
+    # adelantado la referencia en cuanto "hoy" real pasara el ultimo
+    # checkpoint sembrado, sin que nadie lo notara hasta ver numeros raros.
     result = compute_signals(
         deposits=deposits,
         purchases=purchases,
         bills=bills,
         total_income=total_income,
         total_expense=total_expense,
-        as_of_date=as_of or date.today().isoformat(),
+        as_of_date=as_of,
         score_history=history,
     )
     # Solo se persiste historial en consultas del "ahora" real -- un as_of
