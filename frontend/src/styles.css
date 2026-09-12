@@ -175,6 +175,13 @@ input:focus,select:focus,textarea:focus{outline:0;box-shadow:0 0 0 3px #0048781f
   .statement-printable{position:static!important;width:100%!important;max-width:100%!important;max-height:none!important;overflow:visible!important;box-shadow:none!important;background:#fff!important;color:#000!important}
   .statement-printable .close-modal,.statement-printable .statement-header-actions{display:none!important}
   .statement-summary-item,.detail-line,.upcoming-expense-row{break-inside:avoid;page-break-inside:avoid}
+  /* visibility:hidden keeps the box size of hidden elements, which reserves the
+     full (large) dashboard height and produces trailing blank pages. Removing
+     these from layout entirely with display:none is what actually trims that
+     space -- they're .dashboard's other grid siblings plus the footer/FAQ
+     widget that sit outside it, none of which the modal-overlay is nested in. */
+  .sidebar,.main-column,.right-column,.app-footer,.faq-fab,.faq-panel{display:none!important}
+  .dashboard{min-height:0!important}
 }
 
 /* Upcoming expenses forecast (alerts card) and the trust-report modal */
