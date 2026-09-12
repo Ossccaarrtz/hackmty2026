@@ -94,6 +94,40 @@ Se lanzaron dos revisiones independientes buscando bugs reales (no solo estilo).
 - ~~Billing de Gemini~~ — **ya resuelto.** Cloud Prepay activado (MXN 100). Probado en vivo: 8 solicitudes seguidas en menos de un minuto, todas exitosas (el límite gratuito era 5/minuto). Modelo de vuelta a `gemini-3.6-flash`.
 - **Un segundo escenario/persona** (alguien con ingreso estable) — quedó como idea abierta en la pizarra de equipo, útil para demostrar que el score no castiga a todos igual.
 
+## 4.5. Spec — Apartados (envelope budgeting con reparto proporcional de nómina)
+
+**Idea:** el usuario define gastos fijos mensuales por categoría (ej. gasolina $2000/mes, comida $3000/mes). Cuando cae un depósito que matchea su patrón de nómina declarado, se reparte proporcional a cada apartado según los días reales transcurridos desde el depósito anterior — sin asumir "semanal" o "quincenal" fijo, porque el ingreso de Mia es irregular (ese es el punto del proyecto, no un detalle a ignorar).
+
+**Problema resuelto explícitamente — nómina vs. depósito random (ej. un amigo te manda $100):** Nessie no da ninguna señal estructurada para distinguirlo (el objeto `deposit` solo trae `amount`, `transaction_date`, `status`, `description` de texto libre que nosotros mismos escribimos al sembrar). Pattern-matching sobre texto es frágil. Solución: el usuario declara su patrón de ingreso esperado **una sola vez** (monto aproximado + frecuencia), y cada depósito nuevo se compara contra ese patrón declarado con tolerancia. Solo un depósito que matchea dispara el reparto — cualquier otro depósito se suma al balance normal sin tocar los apartados. Misma doctrina anti-alucinación del resto del proyecto: el sistema no adivina, verifica contra algo ya confirmado explícitamente por el usuario.
+
+**Modelo de datos nuevo (mismo table, mismo patrón de `sk`):**
+- `sk: "INCOME_PATTERN"` → `{expected_amount, tolerance_pct, frequency_days}` — configurado una vez, por chat o por un campo en el frontend.
+- `sk: "ENVELOPE#<categoria>"` → `{category, monthly_target, created_at}` (ej. `ENVELOPE#gasolina` → `monthly_target: 2000`).
+- El saldo de cada apartado **no es un campo mutable** — se deriva sumando transacciones reales, igual que ya hacemos con `compute_totals`/`savings_release`. Cada reparto se escribe en Nessie como `savings_transfer` con `category: "envelope:gasolina"`. Nessie no tiene subcuentas, así que el apartado es una vista calculada sobre transacciones etiquetadas, mismo truco que ya usamos para no depender de que Nessie actualice `balance`.
+
+**Disparador — reutiliza infra ya construida, cero polling nuevo:** `lambda_notifier.py` ya reacciona a cada INSERT en DynamoDB Streams. Se le agrega: si el INSERT es `type=="deposit"` y el monto/fecha matchea `INCOME_PATTERN` dentro de tolerancia, llama a `agent_actions.verified_allocate_envelopes(user_id, deposit_amount, deposit_date)`.
+
+**`verified_allocate_envelopes` (nueva función en `agent_actions.py`, mismo módulo que ya usan chat y advance-day):**
+1. Carga los apartados del usuario y el `INCOME_PATTERN`.
+2. Confirma que el depósito matchea el patrón (si no, no hace nada — es un depósito normal).
+3. Calcula días reales transcurridos desde el depósito de nómina anterior.
+4. Proporcional por apartado = `monthly_target * dias_transcurridos / 30`.
+5. Simula el saldo de la cuenta corriente después de restar la suma de todos los repartos propuestos.
+6. Corre `signal_engine.score_liquidity` sobre ese saldo simulado, con el **mismo umbral `LIQUIDITY_WARNING_DAYS = 7`** que ya usa `verified_move_to_savings` — ni un umbral nuevo ni una segunda definición de "seguro".
+7. Si el colchón resultante sigue ≥ 7 días → ejecuta autónomo, escribe las transferencias reales en Nessie.
+8. Si lo toca o lo cruza (ej. queda con $3 pesos libres) → **no escribe nada**, genera una acción `partial_allocation_pause` con el desglose propuesto (mismo patrón que `anomaly_pause`/`leak_detected`), pendiente de confirmar por chat o por el feed.
+
+**Tools nuevas en el chat (el LLM nunca decide montos, solo dispara la función verificada):**
+- `get_envelopes_status` — saldos actuales, meta mensual, próximo reparto estimado.
+- `create_envelope` — alta de un apartado nuevo (`category`, `monthly_target`).
+- `confirm_pending_allocation` — ejecuta un `partial_allocation_pause` ya propuesto, después de que Mia confirma o ajusta montos en la conversación.
+
+**Endpoints nuevos:**
+- `POST /envelopes` — crear/editar apartado.
+- `GET /envelopes?user_id=mia` — lista con saldo derivado + estado (`on_track` / `pending_confirmation`).
+
+**Pregunta abierta (decidir antes de programar el paso 8 con varios apartados a la vez):** si hay varios apartados y la nómina no alcanza para todos con el colchón sano, ¿reparto proporcional entre todos (todos reciben menos) o por prioridad (llenar el primero al 100% antes de tocar el siguiente)? Propuesta: proporcional entre todos, más defendible frente a jueces ("nadie se queda en cero arbitrariamente").
+
 ## 5. Notas de seguridad ya resueltas (no hay que volver a decidir esto)
 
 - La política de riesgo real ya está en código, no es una promesa de pitch: mover a ahorro es autónomo, detener un bill SIEMPRE requiere el paso de confirmación antes de ejecutar, y el paso de "ahorro" en Día 90 **verifica que el bill realmente se haya detenido antes** de mover el dinero — si no, no hace nada. Eso es la "verificación anti-alucinación" aplicada en código real, no solo en el discurso del pitch.
