@@ -13,3 +13,38 @@
 .agent-feed{margin-top:16px;max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
 .agent-feed-item{border-left:3px solid #6276ff;background:#eef2ff55;border-radius:0 12px 12px 0;padding:10px 14px;font-size:13px;line-height:1.4}
 .agent-feed-item span{display:block;font-size:11px;color:#748197;margin-bottom:3px}
+
+/* Connected dashboard: preserve the original glass cards and responsive grid. */
+button:disabled{cursor:not-allowed;opacity:.5;transform:none}
+.connected-dashboard .page-header{height:auto;min-height:78px;gap:16px}
+.connected-dashboard .page-header p{font-size:14px;line-height:1.5}
+.connection-banner,.operation-notice{font-size:12px;line-height:1.5;color:#34465e}
+.error-banner{background:#fff0e7;color:#79331f;border-radius:15px;padding:15px;line-height:1.6;font-size:14px}
+.error-banner button{text-decoration:underline;font-weight:600}
+.score-hero{font-size:64px;font-weight:550}.score-hero>span{font-size:24px;margin-left:5px}
+.muted-copy{font-size:12px;line-height:1.6;color:#536780;margin-top:12px}
+.connected-dashboard .orb span{font-size:12px;text-align:center;max-width:95%}
+.connected-dashboard .orb strong{font-size:19px}
+.connected-dashboard .money-actions{width:185px}
+.breakdown-card{height:auto;min-height:268px}
+.score-component{margin-top:18px;font-size:12px}.score-component>div{display:flex;justify-content:space-between;gap:10px;margin-bottom:7px}
+.score-component strong{white-space:nowrap}
+progress{appearance:none;border:0;display:block;width:100%;height:9px;border-radius:10px;background:#c0d1ee;overflow:hidden}
+progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-value{background:linear-gradient(90deg,#806bff,#83b5ff);border-radius:10px}progress::-moz-progress-bar{background:#7d8eff}
+.health-value small{font-size:18px;margin-left:4px}
+.real-chart{width:100%;height:155px;color:#6276dd;display:block;margin-top:14px}.real-chart text{fill:currentColor;font-family:inherit;font-size:11px}
+.health-card .real-chart{height:120px;color:#e7f9ff;margin-top:5px}
+.chart-empty{font-size:13px;line-height:1.6;margin-top:22px!important}
+.alerts-card{min-height:210px;padding:24px}.alerts-card .card-heading{margin:0 0 20px}
+.live-alert{display:flex;gap:15px;align-items:center;padding:15px;background:#eef5ff60;border-radius:18px}.live-alert>svg{color:#a35f26}.live-alert>div{flex:1;min-width:0}.live-alert p{font-size:13px;margin-top:5px}.live-alert small{display:block;margin-top:8px;font-size:11px;color:#5c6d83}
+.live-transaction{grid-template-columns:34px minmax(0,1fr) 64px 78px;gap:10px}
+.connected-dashboard .agent-card{margin-top:24px;flex:1}.agent-controls{flex-wrap:wrap}
+.agent-feed-item p{color:#314257;line-height:1.65}.agent-feed-item.action-error{border-color:#b84d32;background:#fff0e7}
+.text-button{display:block;font-size:13px;text-decoration:underline;text-underline-offset:4px;margin-top:18px;padding:5px 0}
+.mia-avatar{display:grid;place-items:center;border-radius:50%;background:#e0eaf8;width:46px;height:46px;font-weight:600;color:#6473a3}
+.chat-layout{grid-template-columns:66px minmax(0,1fr)}.chat-panel{padding:30px;min-height:65vh}.chat-panel .agent-feed{max-height:none;min-height:240px;padding:20px 0}.chat-panel .agent-feed-item{max-width:850px}.chat-panel .card-heading h2{font-size:24px}
+.ledger-modal{max-width:760px}.ledger-search{display:flex;align-items:center;gap:10px;margin:20px 0}.ledger-search input{min-width:0}.ledger-modal .detail-line strong{white-space:nowrap}
+.modal .black-button{white-space:normal;line-height:1.5}.modal .agent-alert{align-items:flex-start;line-height:1.6}
+@media(max-width:1350px){.connected-dashboard .money-actions{width:155px}.connected-dashboard .money-actions button{font-size:12px;padding:16px 12px}.connected-dashboard .orb strong{font-size:16px}.connected-dashboard .orb span{font-size:10px}.live-transaction{grid-template-columns:28px minmax(0,1fr) 45px 67px;gap:8px}.score-component{font-size:11px}}
+@media(max-width:1100px){.chat-layout{grid-template-columns:52px minmax(0,1fr)}.connected-dashboard .right-column{align-items:start}.connected-dashboard .agent-card{margin-top:0}.connected-dashboard .orb strong{font-size:20px}}
+@media(max-width:700px){.connected-dashboard .page-header h1{font-size:24px}.connected-dashboard .page-header p{font-size:12px}.connected-dashboard .page-header>.pill{font-size:11px;padding:9px}.score-hero{font-size:54px}.connected-dashboard .balance-top>.pill{font-size:10px;max-width:85px;text-align:center}.connected-dashboard .money-actions{width:100%}.connected-dashboard .orb strong{font-size:16px}.connected-dashboard .stats-grid{grid-template-columns:1fr}.breakdown-card{min-height:270px}.score-component{font-size:13px}.connected-dashboard .health-card{height:275px}.live-alert{flex-wrap:wrap}.live-alert>div{flex-basis:65%}.live-alert .black-button{margin-left:39px}.connected-dashboard .agent-card{margin-top:20px}.chat-panel{padding:22px}.chat-panel .card-heading{align-items:flex-start}.chat-panel .card-heading h2{font-size:20px}.chat-panel .card-heading button{font-size:11px}.mia-avatar{width:36px;height:36px}}

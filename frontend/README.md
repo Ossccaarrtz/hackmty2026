@@ -1,15 +1,40 @@
-# FundFlow
+# Centinel One — frontend conectado
 
-Dashboard en React y Vite basado en la referencia visual proporcionada.
+React + Vite. Conserva las tarjetas, fondo y distribución del diseño FundFlow y utiliza los endpoints documentados en `PLAN.md`.
 
-```sh
+```powershell
 cd frontend
+Copy-Item .env.example .env
 npm install
 npm run dev
 ```
 
-Abre la dirección que muestra Vite. Para generar la versión de producción: `npm run build`.
+Vite carga `.env` desde `frontend/`. Solo se necesitan `VITE_API_BASE_URL` y `VITE_USER_ID` (por defecto, endpoint AWS del equipo y `mia`). No copies `NESSIE_API_KEY` al frontend: todas las variables `VITE_*` son públicas. Reinicia Vite al cambiar configuración.
 
-Incluye diseño adaptable, cambio de moneda ilustrativo (EUR = USD × 0.92), búsqueda de transacciones, contactos, transferencias simuladas y detalles de cuentas y pagos. Los datos viven en el estado de React y se reinician al recargar; no se realizan movimientos reales ni se conecta al backend.
+## Conexiones
 
-La fuente DM Sans se obtiene de Google Fonts y los retratos de Pravatar; se utiliza Arial si la fuente no está disponible.
+- `GET /signals?user_id=mia`: score, cuatro componentes, cobertura y alertas.
+- `GET /transactions?user_id=mia`: todos los movimientos, ingresos y saldo `running_balance` calculado por el backend. Se muestran seis recientes y el detalle completo permite buscar y ver la gráfica del ledger.
+- `POST /simulation/advance-day?user_id=mia`: pide autorización explícita antes de enviar, incorpora los textos literales de `new_actions` y registra el score del checkpoint. Después actualiza signals y transactions.
+- `POST /simulation/advance-day?user_id=mia&reset=true`: pide confirmar el reinicio antes de enviarlo.
+
+La pantalla inicial no usa saldos, transferencias, tipos de cambio ni gráficos ficticios. Carga y errores son visibles; si una actualización falla, los últimos datos se identifican como anteriores. Las mutaciones no tienen reintentos automáticos y se bloquean mientras hay una solicitud pendiente.
+
+## Límites del backend actual
+
+- No existe chat libre: la segunda pantalla muestra respuestas reales de la simulación, no respuestas inventadas por el navegador.
+- El historial de acciones y checkpoints se guarda en `sessionStorage` por endpoint/usuario. Solo representa respuestas recibidas en esa pestaña; no existe lectura del log ni del checkpoint actual. Otra pestaña o integrante puede cambiar el sandbox compartido.
+- Por esa falta de consulta y porque el backend asume confirmación en Día 63, cada avance explica los posibles efectos y solicita autorización. Esto es una protección de UI, no una validación de autorización del servidor. Producción requiere un contrato de confirmación y estado en backend.
+- El score hero viene de `/signals` (historial completo); el gráfico de progreso registra scores de checkpoints, calculados para sus fechas y antes de ejecutar la acción. No se mezclan como una sola serie.
+- Los retiros/depósitos de ahorro de Día 90 no se sincronizan todavía al ledger de `/transactions`; no se inventa un nuevo saldo local.
+- Reiniciar no revierte movimientos de ahorro ni borra el log remoto. El backend puede devolver éxito aunque no haya logrado reactivar el bill: revisar las alertas después del reinicio.
+- Ante una respuesta incierta de una mutación se bloquean nuevos avances; revisar el sandbox antes de reiniciar la demo.
+
+## Validación y build
+
+```powershell
+npm test
+npm run build
+```
+
+Las pruebas usan un transporte simulado para verificar contratos, signos, datos vacíos, mensajes, duplicados, errores y timeouts sin escribir en el sandbox compartido. La salida de producción es `frontend/dist/` (Vite), no `build/`.

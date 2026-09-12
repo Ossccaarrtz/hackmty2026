@@ -1,156 +1,113 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { UsersRound, ChartPie, BriefcaseBusiness, CodeXml, Settings, Bell, LifeBuoy, Search, ArrowUpRight, ArrowDownLeft, Plus, ChevronRight, RefreshCw, X, Check, Copy, Figma, LoaderPinwheel, ShieldAlert, Play, RotateCcw } from 'lucide-react';
+import { ChartPie, MessageCircle, Wallet, RefreshCw, X, Shield, ShieldAlert, ArrowUpRight, ArrowDownLeft, Play, RotateCcw, ChevronRight, Search } from 'lucide-react';
+import { api, sessionKey } from './api.js';
+import { appendCheckpoint, emptySession, normalizeData } from './data.js';
 import './styles.css';
-import { getSignals, getTransactions, advanceDay, resetSimulation } from './api';
 
-const initialTransactions = [
-  { name: 'YouTube', date: 'Jun 15', status: 'Pending', amount: -50 },
-  { name: 'John Doe', date: 'Jun 14', status: 'Done', amount: -100 },
-  { name: 'Sans Brothers', date: 'Jun 13', status: 'Done', amount: 120 },
-  { name: 'John Doe', date: 'Jun 8', status: 'Done', amount: -100 },
-  { name: 'Cinema City', date: 'Jun 6', status: 'Done', amount: -75 },
-  { name: 'To USD', date: 'Jun 1', status: 'Done', amount: -250 },
-];
-const initialContacts = [{ name: 'F. Alonso', photo: '12' }, { name: 'C. Leclerc', photo: '13' }, { name: 'M. Naira', photo: '44' }];
-const payments = [{ name: 'Stripe Pricing', date: 'Today', plan: 'Payment Links', amount: 1200, icon: 'stripe' }, { name: 'FigJam Membership', date: 'Jun 23', plan: 'Professional', amount: 155, icon: 'figma' }, { name: 'Loom Subscription', date: 'Jul 15', plan: 'Loom Business', amount: 100, icon: 'loom' }];
+const money = value => Number.isFinite(value) ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value) : '—';
+const dateLabel = date => new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`));
+function readSession() {
+  try { const saved = JSON.parse(sessionStorage.getItem(sessionKey)); if (Array.isArray(saved?.feed) && Array.isArray(saved?.history)) return saved; } catch { /* Storage is optional. */ }
+  return emptySession();
+}
+function LineChart({ values, label }) {
+  if (values.length < 2) return <p className="chart-empty">Se necesitan al menos dos registros para mostrar la evolución.</p>;
+  const min = Math.min(...values), range = Math.max(...values) - min || 1;
+  const points = values.map((value, i) => `${10 + i * 380 / (values.length - 1)},${150 - (value - min) * 130 / range}`).join(' ');
+  return <svg className="real-chart" viewBox="0 0 400 170" role="img" aria-label={label}><polyline points={points} fill="none" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" /><text x="10" y="168">{min.toFixed(0)}</text><text x="355" y="16">{Math.max(...values).toFixed(0)}</text></svg>;
+}
 
 function App() {
-  const [currency, setCurrency] = useState('USD');
-  const [period, setPeriod] = useState('Monthly');
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [operationError, setOperationError] = useState('');
+  const [uncertain, setUncertain] = useState(false);
+  const [session, setSession] = useState(readSession);
+  const [page, setPage] = useState('home');
   const [modal, setModal] = useState(null);
-  const [transactions, setTransactions] = useState(initialTransactions);
-  const [contacts, setContacts] = useState(initialContacts);
-  const [selected, setSelected] = useState(null);
-  const [amount, setAmount] = useState('100.00');
-  const [balance, setBalance] = useState(73558);
   const [query, setQuery] = useState('');
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [toast, setToast] = useState('');
-  const [contactTab, setContactTab] = useState('Contacts');
-  const [signals, setSignals] = useState(null);
-  const [agentBusy, setAgentBusy] = useState(false);
-  const [feed, setFeed] = useState([]);
-  const [connError, setConnError] = useState(null);
-  const symbol = currency === 'USD' ? '$' : '€';
-  const money = (value, decimals = 0) => symbol + (value * (currency === 'EUR' ? 0.92 : 1)).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-  const notify = (message) => { setToast(message); window.setTimeout(() => setToast(''), 4000); };
+  const [notice, setNotice] = useState('');
+  const locked = useRef(false), requestId = useRef(0), closeRef = useRef(null);
+  const signals = data?.signals;
+  const transactions = data?.transactions || [];
+  const filtered = transactions.slice().reverse().filter(tx => `${tx.name} ${tx.category_label}`.toLowerCase().includes(query.toLowerCase()));
 
-  async function loadRealData() {
+  async function refresh() {
+    const id = ++requestId.current;
+    setLoading(true);
     try {
-      const [s, t] = await Promise.all([getSignals(), getTransactions()]);
-      setSignals(s);
-      setConnError(null);
-      if (t.transactions?.length) {
-        const last = t.transactions[t.transactions.length - 1];
-        setBalance(last.running_balance);
-        setTransactions(t.transactions.slice(-8).reverse().map(tx => ({
-          name: tx.merchant_name || tx.category_label,
-          date: tx.date,
-          status: 'Done',
-          amount: tx.signed_amount,
-        })));
-      }
-      if (s.alerts?.length) notify(`Fuga detectada: ${s.alerts[0].title} ($${s.alerts[0].annual_cost}/año sin uso)`);
-    } catch (err) {
-      setConnError(err.message);
-    }
+      const [s, t] = await Promise.all([api.getSignals(), api.getTransactions()]);
+      const next = normalizeData(s, t);
+      if (id !== requestId.current) return;
+      setData(next); setError('');
+    } catch (err) { if (id === requestId.current) setError(err.message); }
+    finally { if (id === requestId.current) setLoading(false); }
   }
+  useEffect(() => { refresh(); return () => { requestId.current++; }; }, []);
+  useEffect(() => { try { sessionStorage.setItem(sessionKey, JSON.stringify(session)); } catch { /* Storage is optional. */ } }, [session]);
+  useEffect(() => {
+    if (!modal) return;
+    const previous = document.activeElement;
+    closeRef.current?.focus();
+    const onKey = event => {
+      if (event.key === 'Escape') setModal(null);
+      if (event.key !== 'Tab') return;
+      const elements = Array.from(document.querySelector('[role="dialog"]').querySelectorAll('button:not(:disabled), input, select, a[href]'));
+      const first = elements[0], last = elements.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('keydown', onKey); previous?.focus(); };
+  }, [modal]);
 
-  useEffect(() => { loadRealData(); }, []);
-
-  async function handleAdvanceDay() {
-    setAgentBusy(true);
+  async function mutate(kind) {
+    if (locked.current) return;
+    locked.current = true; setBusy(true); setOperationError(''); setModal(null); setNotice('');
     try {
-      const data = await advanceDay();
-      if (data.done) {
-        setFeed(f => [{ date: '—', text: 'No hay más días que avanzar en esta demo.' }, ...f]);
+      const result = kind === 'reset' ? await api.resetSimulation() : await api.advanceDay();
+      if (kind === 'reset') {
+        if (!result.reset) throw new Error('El backend no confirmó el reinicio.');
+        setSession(emptySession()); setUncertain(false);
+        setNotice('El backend confirmó el reinicio. Los movimientos anteriores de Nessie no se deshacen.');
       } else {
-        setFeed(f => [...data.new_actions.slice().reverse(), ...f]);
-        data.new_actions.forEach(a => notify(a.text));
+        const next = appendCheckpoint(session, result);
+        setSession(next);
+        setNotice(result.done ? result.message : `${result.label}: respuesta recibida del agente.`);
       }
-      await loadRealData();
+      await refresh();
     } catch (err) {
-      notify(`Error del agente: ${err.message}`);
-    }
-    setAgentBusy(false);
+      setUncertain(true);
+      setOperationError(`${err.message} La operación podría haberse ejecutado. No se reintentará automáticamente; verifica el estado del sandbox antes de continuar.`);
+    } finally { locked.current = false; setBusy(false); }
   }
+  const controls = <div className="agent-controls"><button className="black-button small" disabled={busy || loading || !!error || !data || session.done || uncertain} onClick={() => setModal('advance')}><Play size={15} />{busy ? 'Procesando…' : session.done ? 'Demo completada' : 'Avanzar día'}</button><button className="outline-button small" disabled={busy || loading} onClick={() => setModal('reset')}><RotateCcw size={15} /> Reiniciar</button></div>;
+  const feed = <div className="agent-feed">{session.feed.length ? session.feed.map(action => <article className={`agent-feed-item ${['error', 'verification_blocked'].includes(action.type) ? 'action-error' : ''}`} key={action.id}><span>{action.date && dateLabel(action.date)} · {action.type}</span><p>{action.text}</p></article>) : <p className="empty">Todavía no hay acciones recibidas en esta sesión. Avanza la simulación para ver las respuestas del agente.</p>}</div>;
 
-  async function handleResetSimulation() {
-    setAgentBusy(true);
-    try {
-      await resetSimulation();
-      setFeed([]);
-      await loadRealData();
-      notify('Simulación reiniciada a Día 0.');
-    } catch (err) {
-      notify(`Error al reiniciar: ${err.message}`);
-    }
-    setAgentBusy(false);
-  }
-
-  function send(event) {
-    event.preventDefault();
-    const value = Number(amount) / (currency === 'EUR' ? 0.92 : 1);
-    if (!selected) { setModal('send'); return; }
-    if (!Number.isFinite(value) || value <= 0 || value > balance) { notify('Enter a valid amount within your balance.'); return; }
-    setBalance(b => b - value);
-    setTransactions(t => [{ name: selected.name, date: 'Today', status: 'Pending', amount: -value }, ...t]);
-    setModal(null); notify(`Demo transfer of ${money(value, 2)} to ${selected.name} created.`);
-  }
-  return <main className="dashboard">
-    <aside className="sidebar" aria-label="Main navigation">
-      <a href="#" className="brand-mark" aria-label="FundFlow home"><svg viewBox="0 0 36 48"><path d="M6 4h15l-7 10H4zM20 15h12l7 10H18zM5 25h11v24L5 41z" fill="currentColor" /></svg></a>
-      <nav>{[[UsersRound, 'Contacts'], [ChartPie, 'Overview'], [BriefcaseBusiness, 'Accounts'], [CodeXml, 'Integrations'], [Settings, 'Settings']].map(([Icon, label]) => <button key={label} className={`nav-button ${label === 'Overview' ? 'active' : ''}`} aria-label={label} title={label} onClick={() => label !== 'Overview' && setModal(label.toLowerCase())}><Icon size={23} strokeWidth={1.7} /></button>)}</nav>
-      <div className="sidebar-bottom"><button className="nav-button notification" aria-label="Notifications" onClick={() => setModal('notifications')}><Bell size={23} /><i /></button><button className="nav-button" aria-label="Help" onClick={() => setModal('help')}><LifeBuoy size={23} /></button><button className="profile" aria-label="Profile" onClick={() => setModal('profile')}><img src="https://i.pravatar.cc/100?img=11" alt="Your profile" /></button></div>
-    </aside>
-
+  return <main className={`dashboard connected-dashboard ${page === 'chat' ? 'chat-layout' : ''}`}>
+    <aside className="sidebar" aria-label="Navegación principal"><button className="brand-mark" aria-label="Centinel One inicio" onClick={() => setPage('home')}><Shield size={34} /></button><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Centinel', 'chat'], [Wallet, 'Movimientos', 'transactions']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => destination === 'transactions' ? setModal('transactions') : setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><span className="mia-avatar" aria-label="Perfil de Mia">M</span></div></aside>
     <section className="main-column">
-      <header className="page-header"><div><h1>FundFlow</h1><p>Start managing your finances</p></div><button className="bank-card" onClick={() => setModal('card')} aria-label="View card ending in 4168"><span>**** 4168</span><span>01/29</span></button></header>
-      <section className="balance-card glass">
-        <div className="balance-top"><div><h2>Total balance</h2><div className="total"><span>{symbol}</span>{money(balance, 2).slice(1)}</div></div><div className="segmented" aria-label="Currency">{['EUR', 'USD'].map(c => <button key={c} className={currency === c ? 'selected' : ''} onClick={() => setCurrency(c)}>{c}</button>)}</div></div>
-        <div className="balance-bottom"><div className="account-orbs"><div className="orb-bridge" /><button className="orb" onClick={() => setModal('visa')}><strong>{money(10208)}</strong><span>Visa</span></button><button className="orb purple" onClick={() => setModal('mastercard')}><strong>{money(23558)}</strong><span>Mastercard</span></button><button className="orb" onClick={() => setModal('savings')}><strong>{money(39792 - (73558 - balance))}</strong><span>Savings</span></button></div><div className="money-actions"><button className="outline-button" onClick={() => setModal('receive')}>Receive Money</button><button className="black-button" onClick={() => setModal('send')}>Send Money</button></div></div>
-      </section>
-
-      <div className="stats-grid"><section className="expense-card glass"><header className="card-heading"><h2>Expense statistic</h2><button className="pill" onClick={() => setPeriod(p => p === 'Monthly' ? 'Weekly' : 'Monthly')}>{period}</button></header><div className="bar-chart" aria-label={`${period} expenses chart`}>{(period === 'Monthly' ? [66, 43, 80, 58, 66] : [45, 65, 80, 49, 61]).map((height, i) => <button className={`bar-column ${i === 2 ? 'highlight' : ''}`} key={i} onClick={() => notify(`${period === 'Monthly' ? ['May', 'June', 'July', 'August', 'September'][i] : `Week ${i + 1}`}: ${money(i === 2 ? 45000 : height * 500)} in expenses`)}><div className="bar" style={{ height: `${height}%` }}>{i === 2 && <><i className="chart-dot" /><span className="chart-tooltip">$45k</span></>}</div><span className="bar-label">{period === 'Monthly' ? ['MAY', 'JUN', 'JUL', 'AUG', 'SEP'][i] : ['W1', 'W2', 'W3', 'W4', 'W5'][i]}</span></button>)}</div></section>
-      <section className="health-card"><header className="card-heading"><h2>Financial health</h2><button className="refresh" aria-label="Financial health details" onClick={() => setModal('health')}><RefreshCw size={17} /></button></header><div className="health-value">{signals ? signals.score.value : '—'}{signals ? '' : '%'}</div><p>{signals ? `Cash-Flow Resilience Score · cubre ${signals.liquidity.days_covered} días` : 'Cargando score real…'}</p><svg className="line-chart" viewBox="0 0 400 200" preserveAspectRatio="none" aria-label="Financial health increased by 16.75 percent"><defs><linearGradient id="lineFade"><stop stopColor="#e9f7ff" stopOpacity=".15"/><stop offset=".72" stopColor="#f2ffff"/><stop offset="1" stopColor="#d3ecff" stopOpacity=".2"/></linearGradient></defs><path d="M0 195 C25 190 38 176 50 164 S85 106 101 110 S138 167 156 144 S185 78 202 99 S229 147 248 110 S280 35 294 27 S325 -16 347 24 S362 61 376 64" fill="none" stroke="url(#lineFade)" strokeWidth="2.6"/><circle cx="50" cy="164" r="4" fill="#eefeff"/><circle cx="294" cy="27" r="5" stroke="#f1ffff" strokeWidth="3" fill="#8bbdf7"/><text x="7" y="148">726k</text><text x="297" y="58">16.75%</text></svg></section></div>
-
-      <section className="payments-card glass"><header className="card-heading"><h2>Upcoming payments</h2><button className="black-button small" onClick={() => setModal('payments')}>View All</button></header><div className="payment-list">{payments.map(p => <button className="payment-row" key={p.name} onClick={() => setModal(p.name)}><span className="merchant-icon">{p.icon === 'stripe' ? <b>stripe</b> : p.icon === 'figma' ? <Figma size={18} /> : <LoaderPinwheel size={21} />}</span><strong>{p.name}</strong><span className={p.date === 'Today' ? 'status pending' : 'payment-date'}>{p.date}</span><span className="payment-plan">{p.plan}</span><strong className="payment-amount">{money(p.amount)}</strong></button>)}</div></section>
+      <header className="page-header"><div><h1>Centinel One</h1><p>Hola, Mia. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></header>
+      <div className="connection-banner" role="status">Sandbox Nessie · USD · {loading ? 'Consultando backend…' : error ? 'Sin conexión · datos anteriores si están disponibles' : 'Datos del backend'}{session.label && ` · Último checkpoint: ${session.label}`}</div>
+      {error && <div className="error-banner" role="alert">{error} <button disabled={loading || busy} onClick={refresh}>Reintentar lectura</button></div>}
+      {operationError && <div className="error-banner" role="alert">{operationError}</div>}
+      {notice && <p className="operation-notice" role="status">{notice}</p>}
+      {page === 'chat' ? <section className="glass chat-panel"><header className="card-heading"><h2>Conversación con Centinel</h2><button className="pill" onClick={() => setPage('home')}>Volver al inicio</button></header><p className="muted-copy">Mensajes del agente devueltos por la simulación. El backend todavía no ofrece chat de texto libre.</p>{feed}{controls}<p className="muted-copy">El historial se conserva en esta pestaña. El backend actual no expone un endpoint para recuperar acciones anteriores.</p></section> : <>
+        <section className="balance-card glass"><div className="balance-top"><div><h2>Score de resiliencia financiera</h2><div className="total score-hero">{signals?.score.value ?? '—'}<span>/100</span></div><p className="muted-copy">Tu flujo de efectivo cuenta tu historia.</p></div><span className="pill">{signals ? 'Evaluación actual' : 'Sin datos'}</span></div><div className="balance-bottom"><div className="account-orbs"><div className="orb-bridge" /><button className="orb" onClick={() => setModal('transactions')}><strong>{money(data?.balance)}</strong><span>Saldo del ledger</span></button><button className="orb purple" onClick={() => setModal('score')}><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong><span>Gastos cubiertos</span></button><button className="orb" onClick={() => setModal('transactions')}><strong>{money(data?.summary.total_income)}</strong><span>Ingresos registrados</span></button></div><div className="money-actions"><button className="outline-button" onClick={() => setModal('score')}>Entender mi score</button><button className="black-button" onClick={() => setPage('chat')}>Hablar con Centinel</button></div></div></section>
+        <div className="stats-grid"><section className="expense-card glass breakdown-card"><header className="card-heading"><h2>Qué compone tu score</h2></header>{signals ? signals.score.breakdown.map(item => <div className="score-component" key={item.key} title={item.detail}><div><span>{item.label}</span><strong>{item.value}/100</strong></div><progress max="100" value={item.value} aria-label={item.label} /></div>) : <p className="empty">{loading ? 'Cargando componentes…' : 'Sin datos disponibles.'}</p>}</section><section className="health-card"><header className="card-heading"><h2>Tu progreso</h2><span className="pill">Checkpoints</span></header><div className="health-value">{session.history.at(-1)?.value ?? '—'}<small>/100</small></div><p>Último checkpoint recibido</p><LineChart values={session.history.map(point => point.value)} label="Evolución del score en los checkpoints recibidos" /></section></div>
+        <section className="payments-card glass alerts-card"><header className="card-heading"><h2>Lo que necesita tu atención</h2><span className="pill">{signals?.alerts.length ?? '—'} alertas</span></header>{signals ? signals.alerts.length ? signals.alerts.map(alert => <article className="live-alert" key={alert.id}><ShieldAlert size={24} /><div><strong>{alert.title}</strong><p>{alert.detail}</p><small>{money(alert.annual_cost)} al año · potencial, no ahorro realizado</small></div><button className="black-button small" onClick={() => setPage('chat')}>Revisar</button></article>) : <p className="empty">Todo al día: el backend no reporta alertas activas.</p> : <p className="empty">{loading ? 'Consultando alertas…' : 'Alertas no disponibles.'}</p>}<p className="muted-copy">Detener un cargo no cancela el contrato con el comercio.</p></section>
+      </>}
     </section>
-
-    <section className="right-column"><section className="transactions"><header className="transactions-heading"><div><h2>Transactions</h2><p>Latest transfers</p></div><div className="transaction-actions"><button className="icon-button" aria-label="Search transactions" onClick={() => setSearchOpen(v => !v)}><Search size={22} /></button><button className="black-button small" onClick={() => setModal('transactions')}>View All</button></div></header>{searchOpen && <input className="search-input" autoFocus placeholder="Search transactions…" value={query} onChange={e => setQuery(e.target.value)} aria-label="Search transactions" />}<div className="transaction-list">{transactions.filter(t => t.name.toLowerCase().includes(query.toLowerCase())).slice(0, 6).map((t, i) => <div className="transaction-row" key={`${t.name}-${i}`}><span className="direction">{t.amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={t.name}>{t.name === 'Sans Brothers' ? 'Sans Broth...' : t.name}</strong><span className="transaction-date">{t.date}</span><span className={`status ${t.status === 'Pending' ? 'pending' : ''}`}>{t.status}</span><span className="transaction-amount">{t.amount < 0 ? '-' : ''}{money(Math.abs(t.amount))}</span></div>)}{query && !transactions.some(t => t.name.toLowerCase().includes(query.toLowerCase())) && <p className="empty">No transactions found.</p>}</div></section>
-      <section className="glass agent-card">
-        <header className="card-heading"><h2>Agente Centinel One</h2>{connError && <span className="status pending">sin conexión</span>}</header>
-        {signals?.alerts?.length > 0 && <div className="agent-alert"><ShieldAlert size={16} /> {signals.alerts[0].title}: sin uso hace 60 días (${signals.alerts[0].annual_cost}/año)</div>}
-        <div className="agent-controls">
-          <button className="black-button small" disabled={agentBusy} onClick={handleAdvanceDay}><Play size={14} /> Avanzar día</button>
-          <button className="outline-button small" disabled={agentBusy} onClick={handleResetSimulation}><RotateCcw size={14} /> Reiniciar</button>
-        </div>
-        <div className="agent-feed">
-          {feed.length === 0 && <p className="empty" style={{ padding: '10px 0' }}>Aprieta "Avanzar día" para ver al agente actuar.</p>}
-          {feed.map((a, i) => <div className="agent-feed-item" key={i}><span>{a.date}</span>{a.text}</div>)}
-        </div>
-      </section>
-      <article className="saving-tip"><h3>How to reduce expenses by 25%?</h3><p>View these useful tips to save your money.</p><button onClick={() => setModal('tips')}>Learn more</button></article>
-      <section className="quick-transfer glass"><header className="card-heading"><h2>Quick transfer</h2><div className="segmented">{['All', 'Contacts'].map(tab => <button key={tab} className={contactTab === tab ? 'selected' : ''} onClick={() => setContactTab(tab)}>{tab}</button>)}</div></header><div className="contacts"><button className="contact" onClick={() => setModal('add')}><span className="add-avatar"><Plus size={24} strokeWidth={1.5} /></span><span>Add new</span></button>{(contactTab === 'All' ? [...contacts, { name: 'John Doe', photo: '33' }] : contacts).map(c => <button key={c.name} className={`contact ${selected?.name === c.name ? 'chosen' : ''}`} onClick={() => setSelected(c)}><img src={`https://i.pravatar.cc/100?img=${c.photo}`} alt="" /><span>{c.name}</span></button>)}<button className="next-contact" aria-label="See all contacts" onClick={() => setModal('contacts')}><ChevronRight size={20} /></button></div><form className="transfer-form" onSubmit={send}><label><span>{symbol}</span><input aria-label="Transfer amount" type="number" min="0.01" step="0.01" required value={amount} onChange={e => setAmount(e.target.value)} /></label><button className="black-button" type="submit">Send</button></form></section>
-    </section>
-
-    {toast && <div className="toast" role="status"><Check size={18} />{toast}</div>}
-    {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className="modal glass" role="dialog" aria-modal="true" aria-label={modal} onClick={e => e.stopPropagation()} onKeyDown={e => e.key === 'Escape' && setModal(null)}><button autoFocus className="close-modal icon-button" aria-label="Close" onClick={() => setModal(null)}><X /></button><ModalContent modal={modal} contacts={contacts} selected={selected} setSelected={setSelected} amount={amount} setAmount={setAmount} send={send} money={money} transactions={transactions} setContacts={setContacts} setModal={setModal} notify={notify} signals={signals} /></section></div>}
+    {page === 'home' && <section className="right-column"><section className="transactions"><header className="transactions-heading"><div><h2>Movimientos</h2><p>Historial de Mia</p></div><button className="black-button small" onClick={() => setModal('transactions')}>Ver todos</button></header><div className="transaction-list">{transactions.slice(-6).reverse().map(tx => <div className="transaction-row live-transaction" key={tx.id}><span className="direction">{tx.signed_amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={tx.name}>{tx.name}</strong><span className="transaction-date">{dateLabel(tx.date)}</span><span className="transaction-amount">{money(tx.signed_amount)}</span></div>)}{!transactions.length && <p className="empty">{loading ? 'Cargando movimientos…' : data ? 'No hay movimientos registrados.' : 'Historial no disponible.'}</p>}</div></section><section className="glass agent-card"><header className="card-heading"><h2>Actividad de Centinel</h2><span className="pill">Modo demo</span></header>{controls}{feed}<button className="text-button" onClick={() => setPage('chat')}>Abrir conversación <ChevronRight size={16} /></button></section></section>}
+    {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className={`modal glass ${modal === 'transactions' ? 'ledger-modal' : ''}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={event => event.stopPropagation()}><button ref={closeRef} className="close-modal icon-button" aria-label="Cerrar" onClick={() => setModal(null)}><X /></button>
+      {modal === 'score' && <><h2 id="dialog-title">Tu score, explicado</h2><p>Indicador propio de resiliencia financiera; no es un score de Buró ni garantiza aprobación de crédito.</p>{signals?.score.breakdown.map(item => <div className="detail-line" key={item.key}><span>{item.label}<small>{item.detail} · Peso: {item.weight}%</small></span><strong>{item.value}/100</strong></div>)}</>}
+      {modal === 'transactions' && <><h2 id="dialog-title">Todos los movimientos</h2><p>{transactions.length} movimientos · Saldo: {money(data?.balance)}</p><p className="muted-copy">Este historial contiene depósitos y compras sembrados. Los movimientos de ahorro de la simulación aún no están sincronizados con este ledger.</p><LineChart values={transactions.map(tx => tx.running_balance)} label="Balance histórico calculado por el backend" /><label className="ledger-search"><Search size={18} /><input aria-label="Buscar movimientos" placeholder="Buscar comercio o categoría" value={query} onChange={event => setQuery(event.target.value)} /></label>{filtered.map(tx => <div className="detail-line" key={tx.id}><span>{tx.name}<small>{dateLabel(tx.date)} · {tx.category_label}</small></span><strong>{money(tx.signed_amount)}</strong></div>)}{!filtered.length && <p>No hay movimientos que coincidan.</p>}</>}
+      {modal === 'advance' && <><h2 id="dialog-title">Avanzar la simulación</h2><p>El siguiente checkpoint puede observar la cuenta, detectar una fuga, detener el cargo de Gym Co o mover $40 a ahorro en el sandbox Nessie.</p><p>El backend no permite consultar el checkpoint actual. Si el próximo paso es detener Gym Co, al continuar confirmas que ya no lo usas y autorizas detener ese cargo de demostración.</p><div className="agent-alert"><ShieldAlert size={20} /><span>Un contrato anual puede generar penalizaciones o cobranza. Bloquear el cargo no cancela la suscripción con el comercio.</span></div><button className="black-button" disabled={busy || uncertain || !data || !!error || session.done} onClick={() => mutate('advance')}>Confirmo y autorizo el siguiente paso</button><button className="text-button" onClick={() => setModal(null)}>Volver sin avanzar</button></>}
+      {modal === 'reset' && <><h2 id="dialog-title">Reiniciar demo</h2><p>Solicitará al backend volver al día 0 y reactivar Gym Co en el sandbox compartido. Borrará el feed de esta pestaña, pero no revierte los depósitos o retiros anteriores de Nessie.</p><button className="black-button" disabled={busy} onClick={() => mutate('reset')}>Reiniciar simulación</button></>}
+    </section></div>}
   </main>;
 }
-
-function ModalContent({ modal, contacts, selected, setSelected, amount, setAmount, send, money, transactions, setContacts, setModal, notify, signals }) {
-  if (modal === 'health') return <><h2>Cash-Flow Resilience Score</h2>{signals ? <><div className="modal-score">{signals.score.value}</div><p>Explicable, sin necesitar Buró de crédito. Desglose:</p>{signals.score.breakdown.map(b => <div className="detail-line" key={b.key}><span>{b.label}<small>{b.detail}</small></span><strong>{b.value}</strong></div>)}</> : <p>Cargando…</p>}</>;
-  if (modal === 'send') return <><h2>Send money</h2><p>Choose a contact and an amount for your demo transfer.</p><form onSubmit={send}><label>Recipient<select required value={selected?.name || ''} onChange={e => setSelected(contacts.find(c => c.name === e.target.value))}><option value="" disabled>Select a contact</option>{contacts.map(c => <option key={c.name}>{c.name}</option>)}</select></label><label>Amount<input type="number" min="0.01" step="0.01" required value={amount} onChange={e => setAmount(e.target.value)} /></label><button className="black-button">Send money</button></form></>;
-  if (modal === 'add') return <><h2>Add a contact</h2><p>Save someone for your next transfer.</p><form onSubmit={e => { e.preventDefault(); const name = new FormData(e.currentTarget).get('name').trim(); if (!name) return; setContacts(c => [...c, { name, photo: '33' }]); setModal(null); notify('Contact added.'); }}><label>Full name<input name="name" required maxLength="40" placeholder="e.g. Alex Morgan" /></label><button className="black-button">Add contact</button></form></>;
-  if (modal === 'receive') return <><h2>Receive money</h2><p>Use your demo account details to receive a transfer.</p><div className="detail-line"><span>Account</span><strong>FundFlow USD</strong></div><div className="detail-line"><span>Account number</span><strong>0000 4168 0129</strong></div><button className="black-button" onClick={async () => { try { await navigator.clipboard.writeText('0000 4168 0129'); notify('Account number copied.'); } catch { notify('Account number: 0000 4168 0129'); } }}><Copy size={16} /> Copy account number</button></>;
-  if (modal === 'transactions') return <><h2>All transactions</h2><p>Your recent account activity.</p>{transactions.map((t, i) => <div className="detail-line" key={i}><span>{t.name}<small>{t.date} · {t.status}</small></span><strong>{t.amount < 0 ? '-' : '+'}{money(Math.abs(t.amount))}</strong></div>)}</>;
-  if (modal === 'contacts') return <><h2>Your contacts</h2><p>Select someone for a quick transfer.</p>{contacts.map(c => <button className="detail-line contact-detail" key={c.name} onClick={() => { setSelected(c); setModal('send'); }}><img src={`https://i.pravatar.cc/100?img=${c.photo}`} alt="" /><strong>{c.name}</strong><ArrowUpRight size={18}/></button>)}</>;
-  if (modal === 'tips') return <><h2>A little less spending.<br/>A little more freedom.</h2><p>Start with these three simple habits.</p><div className="tip-detail"><b>01 · Review your subscriptions</b><p>Cancel services you no longer use and check for duplicate memberships.</p><b>02 · Set a weekly spending limit</b><p>Give dining, shopping and entertainment their own budget.</p><b>03 · Make saving automatic</b><p>Set aside part of each payment you receive and review your progress monthly.</p></div></>;
-  if (modal === 'payments' || payments.some(p => p.name === modal)) return <><h2>{modal === 'payments' ? 'Upcoming payments' : modal}</h2><p>Your scheduled subscriptions.</p>{payments.filter(p => modal === 'payments' || p.name === modal).map(p => <div className="detail-line" key={p.name}><span>{p.name}<small>{p.date} · {p.plan}</small></span><strong>{money(p.amount)}</strong></div>)}</>;
-  const content = { accounts: ['Your accounts', 'Visa · ' + money(10208), 'Mastercard · ' + money(23558), 'Savings · ' + money(39792)], visa: ['Visa', 'Debit account', 'Available balance · ' + money(10208)], mastercard: ['Mastercard', 'Card ending in 4168', 'Available balance · ' + money(23558)], savings: ['Savings', 'Personal savings account', 'All amounts shown are demo data.'], card: ['Your Mastercard', 'Card number · **** **** **** 4168', 'Valid through · 01/29'], integrations: ['Integrations', 'No integrations connected.', 'This dashboard currently uses local demo data.'], settings: ['Settings', 'Display currency can be changed from your total balance card.', 'Your demo session resets when you reload the page.'], notifications: ['Notifications', 'Your Stripe payment of $1,200 is due today.', 'Your financial health increased this month.'], help: ['Here to help', 'Select a contact, enter an amount and press Send to try a demo transfer.', 'Use Receive Money to view your sample account details.'], profile: ['Your profile', 'Alex Morgan', 'Personal account · Demo workspace'] }[modal] || ['FundFlow'];
-  return <><h2>{content[0]}</h2>{content.slice(1).map(t => <p key={t}>{t}</p>)}</>;
-}
-
 createRoot(document.getElementById('root')).render(<App />);

@@ -232,6 +232,8 @@ URL en vivo: `http://centinel-one-frontend.s3-website-us-east-1.amazonaws.com`. 
 
 ## Estado actual
 
+**Integración del frontend:** el dashboard consume `/signals` y el historial completo de `/transactions`, con carga, errores y detalle buscable. El chat muestra los mensajes de `/simulation/advance-day`; cada avance solicita autorización explícita antes del POST, ya que el backend no expone el checkpoint actual y asume confirmación en Día 63. No hay transferencias locales ficticias. Consulta [`frontend/README.md`](./frontend/README.md) para configuración, pruebas y límites de sincronización del sandbox. Vite utiliza `frontend/.env` y genera `frontend/dist/`.
+
 - [x] Definición de score, política de riesgo y arquitectura
 - [x] Seed de ~90 días de historial simulado en Nessie
 - [x] Motor de señales — desplegado como Lambda real + DynamoDB, endpoint `GET /signals` en vivo
