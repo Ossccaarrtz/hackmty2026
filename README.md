@@ -1,4 +1,4 @@
-# Jarbis Financiero — HackMTY 2026 (Reto Capital One)
+# Centinel One — HackMTY 2026 (Reto Capital One)
 
 Agente financiero que califica a personas sin historial de crédito usando su comportamiento real de flujo de efectivo, y actúa sobre su dinero (no solo aconseja) con una capa de verificación antes de tocar fondos reales.
 
@@ -37,7 +37,7 @@ Agente financiero que califica a personas sin historial de crédito usando su co
 | Rocket Money | Detecta y cancela suscripciones | No genera score, no hace forecast |
 | Monarch / Copilot | Forecast de cash-flow, insights con IA | Solo informa, no ejecuta nada |
 | Cleo | Chat de IA sobre finanzas | Cero acción real |
-| **Jarbis Financiero** | Score sin Buró + ejecuta acciones reales con verificación | — |
+| **Centinel One** | Score sin Buró + ejecuta acciones reales con verificación | — |
 
 ## Arquitectura
 
@@ -195,6 +195,18 @@ Narrativa de demo que esto habilita: *"aquí está Mia hoy (pantalla 1) → le p
 - `POST /simulation/advance-day` → `{ date, new_actions, score }` — el botón de "avanzar día"
 
 Si el shape real cambia, avisa al resto del equipo antes de romperlo — es el contrato que todos están usando en paralelo.
+
+**Endpoint real ya en vivo (usa este en lugar del mock cuando quieras):**
+```
+GET https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/signals?user_id=mia
+```
+Copia [`.env.example`](./.env.example) a `.env` — ahí está la URL como `VITE_API_BASE_URL`.
+
+**Deploy ya disponible, sin esperar a nadie:** bucket de S3 con hosting estático ya configurado y probado.
+```
+aws s3 sync build/ s3://centinel-one-frontend --region us-east-1
+```
+URL en vivo: `http://centinel-one-frontend.s3-website-us-east-1.amazonaws.com`. CloudFront + dominio `.tech` se conectan hasta el final (ver sección de Arquitectura), esto es solo para ir viendo avances en una URL real desde ya.
 
 ## Estado actual
 
