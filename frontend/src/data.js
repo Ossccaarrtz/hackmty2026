@@ -34,7 +34,7 @@ export function appendChatExchange(session, userText, response) {
   const userEntry = { id: `chat-${uid()}`, role: 'user', text: userText };
   const assistantEntry = { id: `chat-${uid()}`, role: 'assistant', text: response.reply };
   const executedActions = response.actions_taken
-    .filter(a => a.tool !== 'get_status' && a.result)
+    .filter(a => !['get_status', 'get_score_history'].includes(a.tool) && a.result)
     .map(a => ({
       id: `chat-${uid()}`,
       date: today,
