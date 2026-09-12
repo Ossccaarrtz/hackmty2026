@@ -188,6 +188,18 @@ def lambda_handler(event, context):
                 "text": "No hay excedente para mover a ahorro todavia (la fuga del gimnasio sigue sin resolverse).",
             }))
 
+    if idx in (2, 3):
+        # Dia 63 y Dia 90 ejecutan una accion real (stop_bill / move_to_savings)
+        # que cambia el estado -- si devolvemos el "signals" calculado al
+        # principio de este mismo request, el score/alertas que ve el
+        # frontend quedan desfasados un paso respecto al "new_actions" que
+        # ya narra la accion como hecha (ej. alerta de fuga todavia activa
+        # junto con el texto "ya detuve el cargo"). Se recalcula sobre el
+        # estado ya escrito antes de responder.
+        deposits, purchases, bills = load_data(user_id)
+        bills_plain = [{"payee": b["payee"], "status": b["status"], "payment_amount": float(b["payment_amount"]), "bill_id": b["bill_id"]} for b in bills]
+        signals = actions.get_full_signals(deposits, purchases, bills_plain, user_id=user_id, as_of_date=as_of)
+
     state["checkpoint_idx"] = idx
     save_state(user_id, state)
 

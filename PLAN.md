@@ -72,6 +72,7 @@ Se lanzaron dos revisiones independientes buscando bugs reales (no solo estilo).
 - `trend` y `projection` ahora vienen de un historial real de scores persistido (`SCORE#` en DynamoDB) — antes eran literales inventados
 - Fechas hardcodeadas reemplazadas por fecha real; try/except agregado alrededor de las escrituras a Nessie en `agent_actions.py`
 - Nueva alerta `liquidity_warning` cuando el colchón cubre menos de 7 días
+- Auditoría manual en vivo (correr los 4 checkpoints + 8 casos de chat adversariales contra el API real): `score`/`alerts` en los checkpoints Día 63 y Día 90 venían calculados **antes** de ejecutar la acción de ese mismo paso — el frontend podía ver "leak activo" junto con el texto "ya lo resolví" en la misma respuesta. Corregido: `lambda_advance_day.py` recalcula `signals` sobre el estado ya escrito antes de responder, para esos dos checkpoints.
 
 **Backend — nueva funcionalidad construida (no solo reportada):**
 - `verified_release_buffer` — el suavizado de ingreso irregular que el README ya prometía como resuelto pero no existía en código. Ya está implementado, expuesto como tool de chat (`release_savings_buffer`), y probado (rechaza sin fondos, rechaza sobre lo disponible, ejecuta un monto legítimo).
