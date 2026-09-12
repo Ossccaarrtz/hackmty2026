@@ -122,7 +122,20 @@ Validación real: Capital One ya tiene en su app la función "Block Future Charg
 | Ingreso total / gasto total | $4,520 / $4,014 |
 | Balance real (ledger propio, no el de Nessie) | $506 |
 
-**Motor de señales corriendo contra estos datos ahora mismo:** score = 65/100, 1/2 bills sanos, fuga detectada en Gym Co (~$480/año), colchón cubre 12 días. Ver [`/backend/signal-engine.js`](./backend/signal-engine.js) y su [ejemplo de output](./backend/signal-engine-output.example.json).
+**Motor de señales corriendo contra estos datos ahora mismo:** score = 64/100, 1/2 bills sanos, fuga detectada en Gym Co (~$480/año), colchón cubre 12 días. Prototipo en Node en [`/backend/signal-engine.js`](./backend/signal-engine.js); versión real desplegada en Python en [`/backend/signals-lambda`](./backend/signals-lambda).
+
+## Backend desplegado (ya en la cuenta oficial de AWS del equipo)
+
+Se descubrió que la infraestructura de Jarbis ya vive en esta cuenta (`jarbis-*` tablas/Lambdas + API Gateway `jarbis`) — se reutilizó directamente en vez de crear infraestructura paralela.
+
+| Recurso | Detalle |
+|---|---|
+| Tabla DynamoDB | `jarbis-financiero-data` — PK `user_id`, SK `sk` (mismo patrón que las tablas `jarbis-*` existentes) |
+| Lambda | `jarbis-financiero-signals` — Python 3.12, usa el rol ya existente `job-search-lambda-role` |
+| API Gateway | Ruta nueva `GET /signals` agregada al API `jarbis` ya existente |
+| **Endpoint en vivo** | `https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/signals?user_id=mia` |
+
+El frontend ya puede apuntar a este endpoint real en vez del mock del README — el shape es idéntico al contrato definido abajo (le falta `actions`, que se agrega cuando el agente decisor esté conectado).
 
 Detalle completo de la historia simulada en [`/seed/README.md`](./seed/README.md).
 
@@ -187,7 +200,7 @@ Si el shape real cambia, avisa al resto del equipo antes de romperlo — es el c
 
 - [x] Definición de score, política de riesgo y arquitectura
 - [x] Seed de ~90 días de historial simulado en Nessie
-- [x] Motor de señales (cálculo del score + detección de fugas) — corriendo local contra el seed, falta conectarlo a Lambda/DynamoDB
+- [x] Motor de señales — desplegado como Lambda real + DynamoDB, endpoint `GET /signals` en vivo
 - [ ] Conexión del agente decisor a los endpoints de Nessie
 - [ ] Chat embebido en el dashboard (reemplaza el bot de Telegram de Jarbis)
 - [~] Dashboard — en progreso (frontend trabajando contra el contrato de datos mock)
