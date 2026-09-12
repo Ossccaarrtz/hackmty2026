@@ -33,14 +33,20 @@ def lambda_handler(event, context):
     deposits = [i for i in items if i.get("type") == "deposit"]
     purchases = [i for i in items if i.get("type") == "purchase"]
     bills = [i for i in items if i.get("type") == "bill"]
-    meta = next((i for i in items if i.get("type") == "meta"), {"total_income": 0, "total_expense": 0})
+
+    # Los totales se calculan sumando las transacciones reales, no un registro
+    # estatico -- asi cualquier movimiento nuevo (ej. el sweep de ahorro del
+    # agente) se refleja solo, sin tener que sincronizar nada aparte.
+    total_income = sum(float(d["amount"]) for d in deposits)
+    total_expense = sum(float(p["amount"]) for p in purchases)
 
     result = compute_signals(
         deposits=deposits,
         purchases=purchases,
         bills=bills,
-        total_income=float(meta["total_income"]),
-        total_expense=float(meta["total_expense"]),
+        total_income=total_income,
+        total_expense=total_expense,
+        as_of_date=params.get("as_of"),
     )
 
     return {
