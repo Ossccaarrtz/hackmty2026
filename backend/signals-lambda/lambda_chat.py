@@ -102,7 +102,12 @@ def call_gemini(contents):
         headers={"Content-Type": "application/json"}, method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=25) as resp:
+        # Mas corto que el timeout del propio Lambda (ver Timeout en la
+        # config de jarbis-financiero-chat) -- si son iguales, Lambda mata
+        # la ejecucion antes de que este try/except alcance a capturar nada,
+        # y el usuario recibe un timeout crudo de API Gateway en vez de un
+        # mensaje amigable.
+        with urllib.request.urlopen(req, timeout=12) as resp:
             return json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"Gemini HTTP {e.code}: {e.read().decode()}")
