@@ -1,7 +1,23 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { UsersRound, ChartPie, BriefcaseBusiness, CodeXml, Settings, Bell, LifeBuoy, Search, ArrowUpRight, ArrowDownLeft, Plus, ChevronRight, RefreshCw, X, Check, Copy, Figma, LoaderPinwheel } from 'lucide-react';
+import { fetchSignals, fetchTransactions, advanceDay } from './api';
 import './styles.css';
+
+function formatDate(isoDate) {
+  const [, month, day] = isoDate.split('-').map(Number);
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${MONTHS[month - 1]} ${day}`;
+}
+
+function mapTransaction(t) {
+  return {
+    name: t.merchant_name || t.category_label || t.description || t.category,
+    date: formatDate(t.date),
+    status: 'Done',
+    amount: t.signed_amount,
+  };
+}
 
 const initialTransactions = [
   { name: 'YouTube', date: 'Jun 15', status: 'Pending', amount: -50 },
@@ -27,9 +43,52 @@ function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [toast, setToast] = useState('');
   const [contactTab, setContactTab] = useState('Contacts');
+  const [signals, setSignals] = useState(null);
+  const [liveDataError, setLiveDataError] = useState(false);
+  const [advancing, setAdvancing] = useState(false);
   const symbol = currency === 'USD' ? '$' : '€';
   const money = (value, decimals = 0) => symbol + (value * (currency === 'EUR' ? 0.92 : 1)).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   const notify = (message) => { setToast(message); window.setTimeout(() => setToast(''), 4000); };
+
+  const loadLiveData = () => Promise.all([fetchSignals(), fetchTransactions()]).then(([signalsData, txData]) => {
+    setSignals(signalsData);
+    setLiveDataError(false);
+    const real = txData.transactions.slice().reverse().map(mapTransaction);
+    setTransactions(real);
+    if (txData.transactions.length > 0) {
+      setBalance(txData.transactions[txData.transactions.length - 1].running_balance);
+    }
+    return signalsData;
+  });
+
+  useEffect(() => {
+    loadLiveData()
+      .then((signalsData) => {
+        const activeAlert = signalsData.alerts.find((a) => a.status !== 'resolved');
+        if (activeAlert) {
+          notify(`${activeAlert.title}: ${activeAlert.detail} (~$${activeAlert.annual_cost}/yr)`);
+        }
+      })
+      .catch(() => {
+        setLiveDataError(true);
+        notify('Could not reach the live backend — showing demo data.');
+      });
+  }, []);
+
+  function handleAdvanceDay() {
+    setAdvancing(true);
+    advanceDay()
+      .then((result) => {
+        if (result.done) {
+          notify(result.message || 'No more demo days to advance.');
+          return;
+        }
+        (result.new_actions || []).forEach((action) => notify(action.text));
+        return loadLiveData();
+      })
+      .catch(() => notify('Could not reach the live backend to advance the day.'))
+      .finally(() => setAdvancing(false));
+  }
   function send(event) {
     event.preventDefault();
     const value = Number(amount) / (currency === 'EUR' ? 0.92 : 1);
@@ -54,7 +113,7 @@ function App() {
       </section>
 
       <div className="stats-grid"><section className="expense-card glass"><header className="card-heading"><h2>Expense statistic</h2><button className="pill" onClick={() => setPeriod(p => p === 'Monthly' ? 'Weekly' : 'Monthly')}>{period}</button></header><div className="bar-chart" aria-label={`${period} expenses chart`}>{(period === 'Monthly' ? [66, 43, 80, 58, 66] : [45, 65, 80, 49, 61]).map((height, i) => <button className={`bar-column ${i === 2 ? 'highlight' : ''}`} key={i} onClick={() => notify(`${period === 'Monthly' ? ['May', 'June', 'July', 'August', 'September'][i] : `Week ${i + 1}`}: ${money(i === 2 ? 45000 : height * 500)} in expenses`)}><div className="bar" style={{ height: `${height}%` }}>{i === 2 && <><i className="chart-dot" /><span className="chart-tooltip">$45k</span></>}</div><span className="bar-label">{period === 'Monthly' ? ['MAY', 'JUN', 'JUL', 'AUG', 'SEP'][i] : ['W1', 'W2', 'W3', 'W4', 'W5'][i]}</span></button>)}</div></section>
-      <section className="health-card"><header className="card-heading"><h2>Financial health</h2><button className="refresh" aria-label="Financial health details" onClick={() => setModal('health')}><RefreshCw size={17} /></button></header><div className="health-value">85%</div><p>since last month</p><svg className="line-chart" viewBox="0 0 400 200" preserveAspectRatio="none" aria-label="Financial health increased by 16.75 percent"><defs><linearGradient id="lineFade"><stop stopColor="#e9f7ff" stopOpacity=".15"/><stop offset=".72" stopColor="#f2ffff"/><stop offset="1" stopColor="#d3ecff" stopOpacity=".2"/></linearGradient></defs><path d="M0 195 C25 190 38 176 50 164 S85 106 101 110 S138 167 156 144 S185 78 202 99 S229 147 248 110 S280 35 294 27 S325 -16 347 24 S362 61 376 64" fill="none" stroke="url(#lineFade)" strokeWidth="2.6"/><circle cx="50" cy="164" r="4" fill="#eefeff"/><circle cx="294" cy="27" r="5" stroke="#f1ffff" strokeWidth="3" fill="#8bbdf7"/><text x="7" y="148">726k</text><text x="297" y="58">16.75%</text></svg></section></div>
+      <section className="health-card"><header className="card-heading"><h2>Financial health</h2><button className="refresh" aria-label="Financial health details" onClick={() => setModal('health')}><RefreshCw size={17} /></button></header><div className="health-value">{signals ? signals.score.value : 85}%</div><p>{signals ? (signals.score.trend === 'up' ? 'Improving' : signals.score.trend === 'down' ? 'Declining' : 'Stable') + ' this month' : (liveDataError ? 'Demo data — live backend unreachable' : 'Loading live score…')}</p><svg className="line-chart" viewBox="0 0 400 200" preserveAspectRatio="none" aria-label="Financial health increased by 16.75 percent"><defs><linearGradient id="lineFade"><stop stopColor="#e9f7ff" stopOpacity=".15"/><stop offset=".72" stopColor="#f2ffff"/><stop offset="1" stopColor="#d3ecff" stopOpacity=".2"/></linearGradient></defs><path d="M0 195 C25 190 38 176 50 164 S85 106 101 110 S138 167 156 144 S185 78 202 99 S229 147 248 110 S280 35 294 27 S325 -16 347 24 S362 61 376 64" fill="none" stroke="url(#lineFade)" strokeWidth="2.6"/><circle cx="50" cy="164" r="4" fill="#eefeff"/><circle cx="294" cy="27" r="5" stroke="#f1ffff" strokeWidth="3" fill="#8bbdf7"/><text x="7" y="148">726k</text><text x="297" y="58">16.75%</text></svg></section></div>
 
       <section className="payments-card glass"><header className="card-heading"><h2>Upcoming payments</h2><button className="black-button small" onClick={() => setModal('payments')}>View All</button></header><div className="payment-list">{payments.map(p => <button className="payment-row" key={p.name} onClick={() => setModal(p.name)}><span className="merchant-icon">{p.icon === 'stripe' ? <b>stripe</b> : p.icon === 'figma' ? <Figma size={18} /> : <LoaderPinwheel size={21} />}</span><strong>{p.name}</strong><span className={p.date === 'Today' ? 'status pending' : 'payment-date'}>{p.date}</span><span className="payment-plan">{p.plan}</span><strong className="payment-amount">{money(p.amount)}</strong></button>)}</div></section>
     </section>
@@ -65,18 +124,29 @@ function App() {
     </section>
 
     {toast && <div className="toast" role="status"><Check size={18} />{toast}</div>}
-    {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className="modal glass" role="dialog" aria-modal="true" aria-label={modal} onClick={e => e.stopPropagation()} onKeyDown={e => e.key === 'Escape' && setModal(null)}><button autoFocus className="close-modal icon-button" aria-label="Close" onClick={() => setModal(null)}><X /></button><ModalContent modal={modal} contacts={contacts} selected={selected} setSelected={setSelected} amount={amount} setAmount={setAmount} send={send} money={money} transactions={transactions} setContacts={setContacts} setModal={setModal} notify={notify} /></section></div>}
+    {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className="modal glass" role="dialog" aria-modal="true" aria-label={modal} onClick={e => e.stopPropagation()} onKeyDown={e => e.key === 'Escape' && setModal(null)}><button autoFocus className="close-modal icon-button" aria-label="Close" onClick={() => setModal(null)}><X /></button><ModalContent modal={modal} contacts={contacts} selected={selected} setSelected={setSelected} amount={amount} setAmount={setAmount} send={send} money={money} transactions={transactions} setContacts={setContacts} setModal={setModal} notify={notify} signals={signals} advancing={advancing} onAdvanceDay={handleAdvanceDay} /></section></div>}
   </main>;
 }
 
-function ModalContent({ modal, contacts, selected, setSelected, amount, setAmount, send, money, transactions, setContacts, setModal, notify }) {
+function ModalContent({ modal, contacts, selected, setSelected, amount, setAmount, send, money, transactions, setContacts, setModal, notify, signals, advancing, onAdvanceDay }) {
   if (modal === 'send') return <><h2>Send money</h2><p>Choose a contact and an amount for your demo transfer.</p><form onSubmit={send}><label>Recipient<select required value={selected?.name || ''} onChange={e => setSelected(contacts.find(c => c.name === e.target.value))}><option value="" disabled>Select a contact</option>{contacts.map(c => <option key={c.name}>{c.name}</option>)}</select></label><label>Amount<input type="number" min="0.01" step="0.01" required value={amount} onChange={e => setAmount(e.target.value)} /></label><button className="black-button">Send money</button></form></>;
   if (modal === 'add') return <><h2>Add a contact</h2><p>Save someone for your next transfer.</p><form onSubmit={e => { e.preventDefault(); const name = new FormData(e.currentTarget).get('name').trim(); if (!name) return; setContacts(c => [...c, { name, photo: '33' }]); setModal(null); notify('Contact added.'); }}><label>Full name<input name="name" required maxLength="40" placeholder="e.g. Alex Morgan" /></label><button className="black-button">Add contact</button></form></>;
   if (modal === 'receive') return <><h2>Receive money</h2><p>Use your demo account details to receive a transfer.</p><div className="detail-line"><span>Account</span><strong>FundFlow USD</strong></div><div className="detail-line"><span>Account number</span><strong>0000 4168 0129</strong></div><button className="black-button" onClick={async () => { try { await navigator.clipboard.writeText('0000 4168 0129'); notify('Account number copied.'); } catch { notify('Account number: 0000 4168 0129'); } }}><Copy size={16} /> Copy account number</button></>;
   if (modal === 'transactions') return <><h2>All transactions</h2><p>Your recent account activity.</p>{transactions.map((t, i) => <div className="detail-line" key={i}><span>{t.name}<small>{t.date} · {t.status}</small></span><strong>{t.amount < 0 ? '-' : '+'}{money(Math.abs(t.amount))}</strong></div>)}</>;
   if (modal === 'contacts') return <><h2>Your contacts</h2><p>Select someone for a quick transfer.</p>{contacts.map(c => <button className="detail-line contact-detail" key={c.name} onClick={() => { setSelected(c); setModal('send'); }}><img src={`https://i.pravatar.cc/100?img=${c.photo}`} alt="" /><strong>{c.name}</strong><ArrowUpRight size={18}/></button>)}</>;
   if (modal === 'tips') return <><h2>A little less spending.<br/>A little more freedom.</h2><p>Start with these three simple habits.</p><div className="tip-detail"><b>01 · Review your subscriptions</b><p>Cancel services you no longer use and check for duplicate memberships.</p><b>02 · Set a weekly spending limit</b><p>Give dining, shopping and entertainment their own budget.</p><b>03 · Make saving automatic</b><p>Set aside part of each payment you receive and review your progress monthly.</p></div></>;
-  if (modal === 'health') return <><h2>Financial health</h2><div className="modal-score">85%</div><p>Your demo financial health is up 16.75%. Consistent savings and manageable expenses are helping your balance grow.</p></>;
+  if (modal === 'health') {
+    if (!signals) return <><h2>Financial health</h2><p>Loading your live Cash-Flow Resilience Score…</p></>;
+    const activeAlert = signals.alerts.find((a) => a.status !== 'resolved');
+    return <>
+      <h2>Cash-Flow Resilience Score</h2>
+      <div className="modal-score">{signals.score.value}%</div>
+      <p>Trend: {signals.score.trend === 'up' ? 'Improving ↑' : signals.score.trend === 'down' ? 'Declining ↓' : 'Stable'}</p>
+      {signals.score.breakdown.map((item) => <div className="detail-line" key={item.key}><span>{item.label}<small>{item.weight}% weight · {item.detail}</small></span><strong>{item.value}/100</strong></div>)}
+      {activeAlert && <div className="detail-line"><span>⚠ {activeAlert.title}<small>{activeAlert.detail}</small></span><strong>${activeAlert.annual_cost}/yr</strong></div>}
+      <button className="black-button" disabled={advancing} onClick={onAdvanceDay}>{advancing ? 'Advancing…' : 'Advance day (demo)'}</button>
+    </>;
+  }
   if (modal === 'payments' || payments.some(p => p.name === modal)) return <><h2>{modal === 'payments' ? 'Upcoming payments' : modal}</h2><p>Your scheduled subscriptions.</p>{payments.filter(p => modal === 'payments' || p.name === modal).map(p => <div className="detail-line" key={p.name}><span>{p.name}<small>{p.date} · {p.plan}</small></span><strong>{money(p.amount)}</strong></div>)}</>;
   const content = { accounts: ['Your accounts', 'Visa · ' + money(10208), 'Mastercard · ' + money(23558), 'Savings · ' + money(39792)], visa: ['Visa', 'Debit account', 'Available balance · ' + money(10208)], mastercard: ['Mastercard', 'Card ending in 4168', 'Available balance · ' + money(23558)], savings: ['Savings', 'Personal savings account', 'All amounts shown are demo data.'], card: ['Your Mastercard', 'Card number · **** **** **** 4168', 'Valid through · 01/29'], integrations: ['Integrations', 'No integrations connected.', 'This dashboard currently uses local demo data.'], settings: ['Settings', 'Display currency can be changed from your total balance card.', 'Your demo session resets when you reload the page.'], notifications: ['Notifications', 'Your Stripe payment of $1,200 is due today.', 'Your financial health increased this month.'], help: ['Here to help', 'Select a contact, enter an amount and press Send to try a demo transfer.', 'Use Receive Money to view your sample account details.'], profile: ['Your profile', 'Alex Morgan', 'Personal account · Demo workspace'] }[modal] || ['FundFlow'];
   return <><h2>{content[0]}</h2>{content.slice(1).map(t => <p key={t}>{t}</p>)}</>;
