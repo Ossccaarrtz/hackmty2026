@@ -117,10 +117,12 @@ Validación real: Capital One ya tiene en su app la función "Block Future Charg
 | | |
 |---|---|
 | Depósitos (ingreso freelance irregular) | 8, entre $300 y $720 |
-| Compras (renta, súper, transporte, discrecional) | 52 |
-| Bills recurrentes | Gym Co ($40/mes, `recurring`, sin actividad relacionada — la fuga a detectar) + Telco Co ($45/mes, `recurring`, sano) |
-| Ingreso total / gasto total | $4,520 / $3,879 |
-| Balance real (ledger propio, no el de Nessie) | $641 |
+| Compras (renta, súper, transporte, teléfono, discrecional) | 55 |
+| Bills recurrentes | Gym Co ($40/mes, `recurring`, sin actividad relacionada — la fuga) + Telco Co ($45/mes, `recurring`, con pago mensual real — control sano) |
+| Ingreso total / gasto total | $4,520 / $4,014 |
+| Balance real (ledger propio, no el de Nessie) | $506 |
+
+**Motor de señales corriendo contra estos datos ahora mismo:** score = 65/100, 1/2 bills sanos, fuga detectada en Gym Co (~$480/año), colchón cubre 12 días. Ver [`/backend/signal-engine.js`](./backend/signal-engine.js) y su [ejemplo de output](./backend/signal-engine-output.example.json).
 
 Detalle completo de la historia simulada en [`/seed/README.md`](./seed/README.md).
 
@@ -185,10 +187,10 @@ Si el shape real cambia, avisa al resto del equipo antes de romperlo — es el c
 
 - [x] Definición de score, política de riesgo y arquitectura
 - [x] Seed de ~90 días de historial simulado en Nessie
-- [ ] Motor de señales (cálculo del score + detección de fugas)
+- [x] Motor de señales (cálculo del score + detección de fugas) — corriendo local contra el seed, falta conectarlo a Lambda/DynamoDB
 - [ ] Conexión del agente decisor a los endpoints de Nessie
 - [ ] Chat embebido en el dashboard (reemplaza el bot de Telegram de Jarbis)
-- [ ] Dashboard y timeline de acciones para la demo
+- [~] Dashboard — en progreso (frontend trabajando contra el contrato de datos mock)
 
 ## Track
 
