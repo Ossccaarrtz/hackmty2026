@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ChartPie, MessageCircle, Wallet, RefreshCw, X, Shield, ShieldAlert, ShieldCheck, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, Search, Bell, Send } from 'lucide-react';
+import { ChartPie, MessageCircle, Wallet, RefreshCw, X, Shield, ShieldAlert, ShieldCheck, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, Search, Bell, Send, User, Lock, Eye, EyeOff } from 'lucide-react';
 import { api, sessionKey } from './api.js';
 import { appendCheckpoint, appendChatExchange, emptySession, normalizeData } from './data.js';
 import './styles.css';
@@ -62,17 +62,33 @@ function Footer() {
 function Login({ onLogin }) {
   const [email, setEmail] = useState('mia@centinelone.com');
   const [password, setPassword] = useState('demo1234');
-  const [remember, setRemember] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+  const [remember, setRemember] = useState(false);
   function submit(event) { event.preventDefault(); onLogin(remember); }
   return <div className="login-page">
-    <header className="login-topbar"><span className="login-topbar-brand"><Shield size={20} /> Centinel One</span></header>
+    <header className="login-topbar">
+      <img src="/capital-one-logo.svg" alt="Capital One" className="login-topbar-logo" />
+      <span className="login-topbar-brand"><Shield size={16} /> Centinel One</span>
+    </header>
     <div className="login-center">
       <form className="login-card" onSubmit={submit}>
-        <div className="login-logo"><Shield size={30} /></div>
+        <img src="/capital-one-logo.svg" alt="Capital One" className="login-logo" />
         <h1 className="login-title">Iniciar sesión</h1>
         <p className="login-tagline">Agente de autonomía financiera · Track 1, Capital One Hackathon 2026</p>
-        <label className="login-field"><span>Nombre de usuario</span><input type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} required /></label>
-        <label className="login-field"><span>Contraseña</span><input type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required /></label>
+        <label className="login-field">
+          <span>Nombre de usuario</span>
+          <span className="login-input-wrap"><User size={17} /><input type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} required /></span>
+        </label>
+        <label className="login-field">
+          <span>Contraseña</span>
+          <span className="login-input-wrap">
+            <Lock size={17} />
+            <input type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required />
+            <button type="button" className="login-toggle-visibility" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} onClick={() => setShowPassword(v => !v)}>
+              {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
+          </span>
+        </label>
         <label className="login-remember"><input type="checkbox" checked={remember} onChange={event => setRemember(event.target.checked)} /> Recordarme</label>
         <button className="login-cta" type="submit">Iniciar sesión</button>
         <button type="button" className="text-button login-forgot">¿Olvidaste tu usuario o contraseña?</button>
