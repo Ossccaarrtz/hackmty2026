@@ -109,3 +109,45 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .profile-header{display:flex;align-items:center;gap:14px;margin:6px 0 20px}
 .profile-avatar-lg{width:64px;height:64px;font-size:22px}
 @media(max-width:700px){.app-footer{flex-direction:column;gap:6px;text-align:center;padding:0 10px}}
+
+/* FAQ widget: always-visible bottom-right launcher, small anchored popup (not full screen) */
+.faq-fab{position:fixed;right:24px;bottom:24px;z-index:60;width:58px;height:58px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 28px -6px #0f172a40;border:1px solid #e7ebf1}
+.faq-fab img{width:34px;height:auto}
+.faq-fab.is-open{background:#080909;color:#fff}
+.faq-panel{position:fixed;right:24px;bottom:92px;z-index:60;width:340px;max-width:calc(100vw - 48px);max-height:min(480px,65vh);display:flex;flex-direction:column;border-radius:22px;overflow:hidden;background:#fff;border:1px solid #e7ebf1;box-shadow:0 24px 60px -16px #0f172a4d}
+.faq-panel-header{padding:16px 18px;border-bottom:1px solid #eef1f5;font-weight:650}
+.faq-list{overflow-y:auto;padding:6px 8px}
+.faq-item{border-bottom:1px solid #eef1f5}
+.faq-item:last-child{border-bottom:0}
+.faq-question{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;padding:13px 10px;font-size:13px;font-weight:550;color:#1e2b36}
+.faq-question svg{flex-shrink:0;transition:transform .15s}
+.faq-item.is-active .faq-question svg{transform:rotate(90deg)}
+.faq-answer{padding:0 10px 14px;font-size:12px;line-height:1.55;color:#5c6d83}
+@media(max-width:700px){.faq-fab{right:16px;bottom:16px}.faq-panel{right:16px;left:16px;width:auto;bottom:84px}}
+
+/* Transaction filters: category + date range, alongside the existing text search */
+.ledger-filters{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin:0 0 14px}
+.ledger-filter{display:flex;flex-direction:column;gap:5px;font-size:11px;color:#5c6d83}
+.ledger-filter select,.ledger-filter input{padding:9px 11px;border-radius:10px;border:1px solid #b4c5d8;background:#fff6;color:#1e2b36;font-size:13px}
+.ledger-filter-clear{padding-bottom:9px}
+.ledger-filter-count{margin:0 0 12px}
+
+/* Entrance stagger and the chat panel transition are handled by Framer Motion in main.jsx (motion.*, AnimatePresence). */
+/* While the chat panel is open, the persistent chrome dims slightly to signal a workspace switch. */
+.connected-dashboard.chat-active .sidebar,
+.connected-dashboard.chat-active .page-header{opacity:.96;transition:opacity .3s ease}
+
+/* Micro-interactions: card hover lift (shadow via CSS, the 4px lift itself is a Framer whileHover transform) */
+.glass{transition:box-shadow .2s ease}
+.health-card,.transactions{transition:box-shadow .2s ease}
+.balance-card:hover,.breakdown-card:hover,.category-spending:hover,.alerts-card:hover{box-shadow:inset 0 1px 6px #ffffff30,0 20px 40px -14px rgba(15,35,60,.28)}
+.health-card:hover{box-shadow:inset 0 1px 9px #dae7ff66,0 20px 40px -14px rgba(15,35,60,.3)}
+.transactions:hover{box-shadow:0 20px 40px -14px rgba(15,35,60,.22)}
+
+/* Buttons: tap scale instead of the default translateY nudge */
+button:active{transform:scale(.98)}
+
+/* Inputs: animated focus ring */
+input,select,textarea{transition:box-shadow .18s ease,border-color .18s ease}
+input:focus,select:focus,textarea:focus{outline:0;box-shadow:0 0 0 3px #0048781f;border-color:#004878}
+.login-input-wrap input:focus{box-shadow:none}

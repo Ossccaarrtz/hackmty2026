@@ -43,6 +43,11 @@ TOOLS = [{
             "parameters": {"type": "object", "properties": {}},
         },
         {
+            "name": "get_score_history",
+            "description": "Consulta el historial real de scores de Mia, un punto por cada fecha en la que se calculo su score (no es diario, son los checkpoints/consultas reales que han ocurrido). Usa esto cuando Mia pregunte por su score en un mes o fecha pasada especifica, por ejemplo '¿como estaba mi score en septiembre?' o '¿cual era mi score hace dos semanas?'. Razona tu mismo sobre la lista de puntos {date, value} que te regresa para responder -- nunca inventes un valor para una fecha que no este en la lista, y aclarale a Mia si no hay ningun punto registrado en el rango que pregunto.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+        {
             "name": "stop_subscription",
             "description": "Detiene el cargo automatico de una suscripcion/cargo recurrente. Solo tiene efecto si ese cargo esta marcado como fuga detectada ahora mismo -- si no lo esta, se rechaza automaticamente sin importar lo que el usuario diga.",
             "parameters": {
@@ -121,7 +126,7 @@ SYSTEM_INSTRUCTION = (
     "Eres el asistente de Centinel One, un agente financiero para Mia (freelancer, ingreso irregular, "
     "sin historial de credito). Tienes memoria real de esta conversacion -- los mensajes anteriores estan "
     "incluidos abajo, usalos para entender referencias como 'eso' o 'el mismo monto'. Reglas estrictas: "
-    "1) Nunca inventes numeros de su cuenta -- si necesitas datos reales, llama a get_status primero. "
+    "1) Nunca inventes numeros de su cuenta -- si necesitas datos reales, llama a get_status primero, o a get_score_history si pregunta por una fecha o mes pasado. "
     "2) Nunca llames stop_subscription, move_to_savings o release_savings_buffer sin que el usuario lo haya pedido o confirmado explicitamente en la conversacion. "
     "3) Si detienes un cargo recurrente, siempre aclara que eso no cancela el contrato con el comercio, solo el cargo automatico. "
     "4) Si una herramienta rechaza la accion, explicale a Mia por que en lenguaje simple, no insistas ni la reintentes con otros valores. "
@@ -183,6 +188,8 @@ def execute_tool(name, args, user_id):
     try:
         if name == "get_status":
             return sanitize(actions.get_current_signals(user_id))
+        if name == "get_score_history":
+            return sanitize({"history": actions.get_score_history(user_id)})
         if name == "stop_subscription":
             return sanitize(actions.verified_stop_bill(user_id, args.get("bill_title", "")))
         if name == "move_to_savings":
