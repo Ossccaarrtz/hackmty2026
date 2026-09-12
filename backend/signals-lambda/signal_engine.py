@@ -5,10 +5,11 @@ y arma el JSON del contrato de datos que el frontend consume.
 Puerto a Python del prototipo original (backend/signal-engine.js) para
 que coincida con el stack real de Jarbis (Lambda en Python 3.12).
 """
-from datetime import date
+from datetime import date, timedelta
 from statistics import mean, pstdev
 
 ESSENTIAL_CATEGORIES = {"rent", "groceries", "transport", "utilities", "income"}
+NEUTRAL_CATEGORIES = {"income", "savings_transfer"}  # no cuentan como gasto discrecional ni esencial
 WINDOW_DAYS = 90
 WEIGHTS = {"income": 0.35, "essential": 0.25, "bills": 0.20, "liquidity": 0.20}
 
@@ -44,7 +45,10 @@ def score_income_regularity(deposits):
 
 
 def score_essential_ratio(purchases, total_income):
-    discretionary_spend = sum(float(p["amount"]) for p in purchases if p["category"] not in ESSENTIAL_CATEGORIES)
+    discretionary_spend = sum(
+        float(p["amount"]) for p in purchases
+        if p["category"] not in ESSENTIAL_CATEGORIES and p["category"] not in NEUTRAL_CATEGORIES
+    )
     ratio = discretionary_spend / total_income if total_income else 0
     return {
         "value": round(clamp(100 - ratio * 200, 0, 100)),
@@ -87,6 +91,36 @@ def project_readiness(score_history, current_score, threshold=75):
     return max(int(weeks_to_ready), 0) if weeks_to_ready is not None else None
 
 
+def detect_anomaly(purchases, as_of_date, window_days=14):
+    """Guardrail de seguridad: compara el gasto reciente contra el propio historial
+    de la persona. Si algo se ve muy fuera de lo normal, el agente no debe actuar
+    solo -- debe escalar a un humano en vez de asumir que todo esta bien."""
+    if not as_of_date:
+        return {"detected": False}
+
+    spend = [p for p in purchases if p["category"] not in NEUTRAL_CATEGORIES and p["date"] <= as_of_date]
+    if len(spend) < 4:
+        return {"detected": False}
+
+    cutoff = (date.fromisoformat(as_of_date) - timedelta(days=window_days)).isoformat()
+    recent = [p for p in spend if p["date"] > cutoff]
+    older = [p for p in spend if p["date"] <= cutoff]
+    if not older or not recent:
+        return {"detected": False}
+
+    recent_daily_avg = sum(float(p["amount"]) for p in recent) / window_days
+    older_span = max(days_between(older[0]["date"], cutoff), 1)
+    older_daily_avg = sum(float(p["amount"]) for p in older) / older_span
+
+    if older_daily_avg > 0 and recent_daily_avg > older_daily_avg * 2:
+        return {
+            "detected": True,
+            "reason": f"Tu gasto de los ultimos {window_days} dias (${round(recent_daily_avg)}/dia) es mas del doble "
+                      f"de tu promedio historico (${round(older_daily_avg)}/dia) -- no se ve como tu patron normal.",
+        }
+    return {"detected": False}
+
+
 def filter_up_to(items, as_of_date):
     """Filtra deposits/purchases a solo lo ocurrido hasta as_of_date (inclusive). Para 'avanzar dia'."""
     if not as_of_date:
@@ -107,6 +141,7 @@ def compute_signals(deposits, purchases, bills, total_income=None, total_expense
     essential_ratio = score_essential_ratio(purchases, total_income)
     bill_health = evaluate_bills(bills, purchases)
     liquidity = score_liquidity(current_balance, purchases, WINDOW_DAYS)
+    anomaly = detect_anomaly(purchases, as_of_date)
 
     final_score = round(
         income_regularity["value"] * WEIGHTS["income"]
@@ -142,6 +177,7 @@ def compute_signals(deposits, purchases, bills, total_income=None, total_expense
             ],
         },
         "alerts": leaks,
+        "anomaly": anomaly,
         "liquidity": {"days_covered": liquidity["days_covered"]},
         "projection": {"weeks_to_ready": project_readiness([45, 52, 58, final_score], final_score) or 6, "product": "tarjeta secured"},
         "_debug": {"total_income": total_income, "total_expense": total_expense, "current_balance": current_balance},
