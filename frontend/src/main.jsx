@@ -31,6 +31,39 @@ function readAuthed() {
     return sessionStorage.getItem(AUTH_KEY) === 'true';
   } catch { return false; }
 }
+const FAQS = [
+  { q: '¿Qué es el Cash-Flow Resilience Score?', a: 'Un indicador propio (0-100) de qué tan resiliente es tu flujo de efectivo, calculado a partir de tu comportamiento real: regularidad de ingreso, ratio esencial/discrecional, recurrencia de bills y colchón de liquidez. No es un score de Buró y no requiere historial crediticio previo.' },
+  { q: '¿Cómo detecta Centinel una fuga de dinero?', a: 'Compara tus bills recurrentes contra actividad relacionada real (por ejemplo, un cargo de gimnasio sin visitas asociadas). Si no encuentra esa actividad por un periodo prolongado, la marca como posible fuga y te avisa antes de hacer nada.' },
+  { q: '¿Centinel puede mover mi dinero sin avisarme?', a: 'Solo en un caso: mover dinero a tu propio ahorro, porque es reversible y no involucra a terceros. Detener un cargo recurrente siempre pide tu confirmación explícita primero, y te advierte si podría tener implicaciones contractuales.' },
+  { q: '¿Qué pasa con mis datos financieros?', a: 'El modelo de lenguaje nunca ve tu historial crudo de transacciones -- solo señales ya derivadas (ej. "score=64, fuga detectada: Gym Co"). Toda la demo corre sobre el sandbox de Capital One Nessie, no datos reales.' },
+  { q: '¿Qué significa "Sin anomalías"?', a: 'Centinel compara tu actividad reciente contra tu propio historial. Si detecta un patrón fuera de lo normal, pausa cualquier acción autónoma y te pide confirmar antes de continuar, en vez de actuar solo.' },
+];
+function FaqWidget() {
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(null);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = event => event.key === 'Escape' && setOpen(false);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+  return <>
+    <button className={`faq-fab ${open ? 'is-open' : ''}`} aria-label={open ? 'Cerrar preguntas frecuentes' : 'Preguntas frecuentes'} onClick={() => setOpen(v => !v)}>
+      {open ? <X size={22} /> : <img src="/capital-one-logo.svg" alt="" />}
+    </button>
+    {open && <section className="faq-panel" role="dialog" aria-label="Preguntas frecuentes">
+      <header className="faq-panel-header"><span>Preguntas frecuentes</span></header>
+      <div className="faq-list">
+        {FAQS.map((item, index) => <div className={`faq-item ${activeIndex === index ? 'is-active' : ''}`} key={item.q}>
+          <button className="faq-question" onClick={() => setActiveIndex(activeIndex === index ? null : index)}>
+            {item.q}<ChevronRight size={16} />
+          </button>
+          {activeIndex === index && <p className="faq-answer">{item.a}</p>}
+        </div>)}
+      </div>
+    </section>}
+  </>;
+}
 function PrivacyPolicy() {
   return <>
     <h2 id="privacy-title">Aviso de privacidad (demo)</h2>
@@ -112,13 +145,23 @@ function App() {
   const [page, setPage] = useState('home');
   const [modal, setModal] = useState(null);
   const [query, setQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [notice, setNotice] = useState('');
   const [chatInput, setChatInput] = useState('');
   const locked = useRef(false), requestId = useRef(0), closeRef = useRef(null);
   const signals = data?.signals;
   const transactions = data?.transactions || [];
   const notifications = data?.notifications || [];
-  const filtered = transactions.slice().reverse().filter(tx => `${tx.name} ${tx.category_label}`.toLowerCase().includes(query.toLowerCase()));
+  const categoryOptions = [...new Set(transactions.map(tx => tx.category).filter(Boolean))]
+    .map(key => ({ key, label: transactions.find(tx => tx.category === key)?.category_label || key }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const filtered = transactions.slice().reverse()
+    .filter(tx => `${tx.name} ${tx.category_label}`.toLowerCase().includes(query.toLowerCase()))
+    .filter(tx => !categoryFilter || tx.category === categoryFilter)
+    .filter(tx => !dateFrom || tx.date >= dateFrom)
+    .filter(tx => !dateTo || tx.date <= dateTo);
 
   async function refresh() {
     const id = ++requestId.current;
@@ -224,7 +267,15 @@ function App() {
     {page === 'home' && <section className="right-column"><section className="transactions"><header className="transactions-heading"><div><h2>Movimientos</h2><p>Historial de Mia</p></div><button className="black-button small" onClick={() => setModal('transactions')}>Ver todos</button></header><div className="transaction-list">{transactions.slice(-3).reverse().map(tx => <div className="transaction-row live-transaction" key={tx.id}><span className={`direction ${tx.signed_amount > 0 ? 'inflow' : 'outflow'}`}>{tx.signed_amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={tx.name}>{tx.name}</strong><span className="transaction-date">{dateLabel(tx.date)}</span><span className={`transaction-amount ${tx.signed_amount > 0 ? 'inflow' : ''}`}>{money(tx.signed_amount)}</span></div>)}{!transactions.length && <p className="empty">{loading ? 'Cargando movimientos…' : data ? 'No hay movimientos registrados.' : 'Historial no disponible.'}</p>}</div></section><CategorySpending summary={data?.summary} loading={loading} /></section>}
     {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className={`modal glass ${modal === 'transactions' ? 'ledger-modal' : ''}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={event => event.stopPropagation()}><button ref={closeRef} className="close-modal icon-button" aria-label="Cerrar" onClick={() => setModal(null)}><X /></button>
       {modal === 'score' && <><h2 id="dialog-title">Tu score, explicado</h2><p>Indicador propio de resiliencia financiera; no es un score de Buró ni garantiza aprobación de crédito.</p>{signals?.score.breakdown.map(item => <div className="detail-line" key={item.key}><span>{item.label}<small>{item.detail} · Peso: {item.weight}%</small></span><strong>{item.value}/100</strong></div>)}</>}
-      {modal === 'transactions' && <><h2 id="dialog-title">Todos los movimientos</h2><p>{transactions.length} movimientos · Saldo: {money(data?.balance)}</p><LineChart values={transactions.map(tx => tx.running_balance)} label="Balance histórico calculado por el backend" /><label className="ledger-search"><Search size={18} /><input aria-label="Buscar movimientos" placeholder="Buscar comercio o categoría" value={query} onChange={event => setQuery(event.target.value)} /></label>{filtered.map(tx => <div className="detail-line" key={tx.id}><span>{tx.name}<small>{dateLabel(tx.date)} · {tx.category_label}</small></span><strong className={tx.signed_amount > 0 ? 'inflow' : ''}>{money(tx.signed_amount)}</strong></div>)}{!filtered.length && <p>No hay movimientos que coincidan.</p>}</>}
+      {modal === 'transactions' && <><h2 id="dialog-title">Todos los movimientos</h2><p>{transactions.length} movimientos · Saldo: {money(data?.balance)}</p><LineChart values={transactions.map(tx => tx.running_balance)} label="Balance histórico calculado por el backend" /><label className="ledger-search"><Search size={18} /><input aria-label="Buscar movimientos" placeholder="Buscar comercio o categoría" value={query} onChange={event => setQuery(event.target.value)} /></label>
+        <div className="ledger-filters">
+          <label className="ledger-filter"><span>Categoría</span><select aria-label="Filtrar por categoría" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}><option value="">Todas</option>{categoryOptions.map(opt => <option key={opt.key} value={opt.key}>{opt.label}</option>)}</select></label>
+          <label className="ledger-filter"><span>Desde</span><input type="date" aria-label="Fecha desde" value={dateFrom} onChange={event => setDateFrom(event.target.value)} /></label>
+          <label className="ledger-filter"><span>Hasta</span><input type="date" aria-label="Fecha hasta" value={dateTo} onChange={event => setDateTo(event.target.value)} /></label>
+          {(categoryFilter || dateFrom || dateTo) && <button type="button" className="text-button ledger-filter-clear" onClick={() => { setCategoryFilter(''); setDateFrom(''); setDateTo(''); }}>Limpiar filtros</button>}
+        </div>
+        <p className="muted-copy ledger-filter-count">{filtered.length} de {transactions.length} movimientos</p>
+        {filtered.map(tx => <div className="detail-line" key={tx.id}><span>{tx.name}<small>{dateLabel(tx.date)} · {tx.category_label}</small></span><strong className={tx.signed_amount > 0 ? 'inflow' : ''}>{money(tx.signed_amount)}</strong></div>)}{!filtered.length && <p>No hay movimientos que coincidan.</p>}</>}
       {modal === 'notifications' && <><h2 id="dialog-title">Avisos en tiempo real</h2><p className="muted-copy">Generados automáticamente por un webhook (DynamoDB Streams) cada vez que el agente hace un movimiento real — sin que nadie los pida.</p>{notifications.length ? notifications.map(n => <div className="detail-line" key={n.sk}><span>{n.text}<small>{dateLabel(n.date)}</small></span></div>) : <p>Sin avisos todavía.</p>}</>}
       {modal === 'advance' && <><h2 id="dialog-title">Avanzar la simulación</h2><p>El siguiente checkpoint puede observar la cuenta, detectar una fuga, detener el cargo de Gym Co, o mover dinero a ahorro en el sandbox Nessie.</p><p>El backend no permite consultar el checkpoint actual. Si el próximo paso es detener Gym Co, al continuar confirmas que ya no lo usas y autorizas detener ese cargo de demostración.</p><div className="agent-alert"><ShieldAlert size={20} /><span>Un contrato anual puede generar penalizaciones o cobranza. Bloquear el cargo no cancela la suscripción con el comercio.</span></div><button className="black-button" disabled={busy || uncertain || !data || !!error || session.done} onClick={() => mutate('advance')}>Confirmo y autorizo el siguiente paso</button><button className="text-button" onClick={() => setModal(null)}>Volver sin avanzar</button></>}
       {modal === 'reset' && <><h2 id="dialog-title">Reiniciar demo</h2><p>Solicitará al backend volver al día 0 y reactivar Gym Co en el sandbox compartido. Borrará el feed y el chat de esta pestaña, pero no revierte los depósitos o retiros anteriores de Nessie.</p><button className="black-button" disabled={busy} onClick={() => mutate('reset')}>Reiniciar simulación</button></>}
@@ -239,6 +290,7 @@ function App() {
     </section></div>}
   </main>
   <Footer />
+  <FaqWidget />
   </>;
 }
 createRoot(document.getElementById('root')).render(<App />);
