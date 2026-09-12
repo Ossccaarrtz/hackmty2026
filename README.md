@@ -42,10 +42,20 @@ Agente financiero que califica a personas sin historial de crédito usando su co
 ## Arquitectura
 
 ```
-NESSIE API (datos) → Motor de señales (score + detección) → Agente decisor (política de riesgo + verificación) → interfaz (chat/dashboard) + escritura de vuelta a Nessie
+NESSIE API (datos) → Motor de señales (score + detección) → Agente decisor (política de riesgo + verificación) → interfaz (chat embebido/dashboard) + escritura de vuelta a Nessie
 ```
 
-Se reutiliza la arquitectura de un proyecto previo del equipo ("Jarbis": asistente personal con bot de Telegram, tool-calling, verificación anti-alucinación, backend Lambda + DynamoDB, dashboard React).
+**Stack:** React (frontend) + DynamoDB + Lambda + API Gateway + S3/CloudFront, dominio `.tech`. Se reutiliza la arquitectura de un proyecto previo del equipo ("Jarbis": tool-calling, verificación anti-alucinación, backend Lambda + DynamoDB, dashboard React) — la razón para seguir en serverless no es "los datos vienen de una API", es que las acciones del agente son eventos discretos (mensaje de chat, click en "avanzar día", petición del dashboard), no un stream continuo.
+
+**Decisiones de la arquitectura (y por qué):**
+- **Interfaz: chat embebido en el propio dashboard, no Telegram.** Un banco real no manda datos financieros por la infraestructura de un tercero. El patrón real es el de **Eno** (el asistente de Capital One): chat dentro de la app, notificaciones dentro de la app. Además elimina una dependencia externa que podría fallar en vivo durante la demo.
+- **Lectura del día a día: DynamoDB, no Nessie en vivo.** Confirmamos que Nessie responde lento (~7.6s) y que su `balance` no se actualiza solo. El seed ya vive en Nessie; para el dashboard/score se lee de DynamoDB (espejo rápido y confiable). Nessie solo se toca de verdad cuando el agente **ejecuta** una acción real (`PUT bills`, `POST withdrawals/deposits`) — ahí sí tiene que ser Nessie, es la prueba de que el movimiento es real.
+- **"Avanzar día": botón manual, no cron/EventBridge.** Da control total del ritmo durante la demo en vivo en lugar de depender del reloj de pared.
+- **CloudFront + dominio `.tech`: solo al final.** Durante desarrollo activo, servir el build de React sin CloudFront (o desde algo con deploy instantáneo) para no perder minutos en cada propagación/invalidación de caché mientras se itera la UI.
+- **DynamoDB en una sola tabla**, partition key `customer_id`, sort key con tipo + fecha (`TXN#2026-06-16`, `SCORE#...`, `ACTION#...`) — trae el timeline completo de un cliente con una sola query.
+- **Ojo con API Gateway REST (límite de 29s)** si el loop del agente (LLM + verificación + escritura a Nessie + explicación) tarda más — usar HTTP API o confirmar tiempos reales.
+
+**Manejo de datos financieros con el LLM (Claude):** el LLM nunca calcula el score ni decide montos — eso es código determinista. Al LLM solo le llegan señales ya derivadas (ej. "score=62, fuga detectada: Gym Co $40/mes sin uso"), no el historial crudo de transacciones — minimiza qué dato sensible viaja al modelo, por diseño. La verificación anti-alucinación existe para confirmar que lo que el LLM genera coincide con lo que el código ya calculó, antes de tocar dinero real. En términos comerciales, Anthropic no entrena modelos con datos enviados vía API (salvo opt-in explícito) y ofrece retención configurable (hasta cero). Para producción real haría falta un DPA con el proveedor y cumplimiento de GLBA — mismo proceso que cualquier banco ya sigue para usar un proveedor de nube, no es una barrera nueva de la IA.
 
 ## Cash-Flow Resilience Score (0–100)
 
@@ -100,12 +110,27 @@ Validación real: Capital One ya tiene en su app la función "Block Future Charg
 - `transfers` está limitado en la versión actual — no acepta `payee_id` ni `medium`. Usar `withdrawals` + `deposits` por separado para simular movimiento entre cuentas.
 - Documentación oficial (`/docs`, `/swagger.json`) devuelve 403 — no confiar en ella, solo en pruebas directas.
 
+## Datos sembrados (seed)
+
+~90 días de historial de Mia ya viven en el sandbox de Nessie (ver [`/seed`](./seed)):
+
+| | |
+|---|---|
+| Depósitos (ingreso freelance irregular) | 8, entre $300 y $720 |
+| Compras (renta, súper, transporte, discrecional) | 52 |
+| Bills recurrentes | Gym Co ($40/mes, `recurring`, sin actividad relacionada — la fuga a detectar) + Telco Co ($45/mes, `recurring`, sano) |
+| Ingreso total / gasto total | $4,520 / $3,879 |
+| Balance real (ledger propio, no el de Nessie) | $641 |
+
+Detalle completo de la historia simulada en [`/seed/README.md`](./seed/README.md).
+
 ## Estado actual
 
 - [x] Definición de score, política de riesgo y arquitectura
-- [x] Seed de ~90 días de historial simulado en Nessie (8 depósitos, 52 compras, 2 bills recurrentes, una fuga deliberada en el gimnasio)
+- [x] Seed de ~90 días de historial simulado en Nessie
 - [ ] Motor de señales (cálculo del score + detección de fugas)
 - [ ] Conexión del agente decisor a los endpoints de Nessie
+- [ ] Chat embebido en el dashboard (reemplaza el bot de Telegram de Jarbis)
 - [ ] Dashboard y timeline de acciones para la demo
 
 ## Track
