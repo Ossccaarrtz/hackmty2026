@@ -72,6 +72,13 @@ def record_score(user_id, as_of_date, value):
 
 
 def get_full_signals(deposits, purchases, bills_plain, user_id=None, as_of_date=None, persist=True):
+    # as_of_date=None significaba "no evalues anomalia ni gastos proximos"
+    # (compute_signals depende de una fecha de referencia real para eso) --
+    # asi que TODA llamada fuera de un checkpoint de advance-day (chat,
+    # verified_move_to_savings, verified_release_buffer, /signals normal)
+    # tenia el guardrail de anomalia permanentemente apagado sin que nadie
+    # lo notara. Default a hoy real cuando no se especifica un checkpoint.
+    as_of_date = as_of_date or date.today().isoformat()
     total_income = sum(float(d["amount"]) for d in deposits)
     total_expense = sum(float(p["amount"]) for p in purchases)
     history = get_score_history(user_id) if user_id else []

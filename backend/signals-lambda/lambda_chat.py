@@ -109,6 +109,11 @@ TOOLS = [{
             "description": "Ejecuta un reparto de nomina a apartados que quedo pendiente de confirmar porque hubiera dejado el colchon de liquidez muy bajo.",
             "parameters": {"type": "object", "properties": {}},
         },
+        {
+            "name": "get_upcoming_expenses",
+            "description": "Consulta gastos recurrentes que se esperan pronto (ej. gasolina cada ~14 dias) segun la cadencia real observada en su historial -- no son montos inventados, se calculan de transacciones reales pasadas.",
+            "parameters": {"type": "object", "properties": {}},
+        },
     ]
 }]
 
@@ -192,6 +197,8 @@ def execute_tool(name, args, user_id):
             return sanitize(actions.set_income_pattern(user_id, args.get("expected_amount"), args.get("frequency_days")))
         if name == "confirm_pending_allocation":
             return sanitize(actions.confirm_pending_allocation(user_id))
+        if name == "get_upcoming_expenses":
+            return sanitize({"upcoming_expenses": actions.get_current_signals(user_id)["upcoming_expenses"]})
         return {"ok": False, "reason": f"Herramienta desconocida: {name}"}
     except Exception as e:
         return {"ok": False, "reason": f"Algo fallo revisando tu cuenta ({e}) -- no se ejecuto ninguna accion."}

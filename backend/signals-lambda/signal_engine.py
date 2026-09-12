@@ -111,6 +111,52 @@ def score_liquidity(current_balance, purchases, elapsed_days):
     }
 
 
+def forecast_upcoming_expenses(purchases, as_of_date, lookahead_days=5):
+    """Detecta gastos recurrentes por categoria (ej. gasolina cada ~14 dias)
+    a partir de la cadencia real observada -- no asume periodicidad fija.
+    Requiere al menos 3 ocurrencias reales para calcular un intervalo
+    promedio, y descarta categorias donde el intervalo es demasiado
+    irregular (coeficiente de variacion > 50%) para no fingir que un gasto
+    genuinamente aleatorio es 'predecible'."""
+    if not as_of_date:
+        return []
+    today = date.fromisoformat(as_of_date)
+    by_category = {}
+    for p in purchases:
+        if is_neutral(p["category"]) or p["date"] > as_of_date:
+            continue
+        by_category.setdefault(p["category"], []).append(p)
+
+    forecasts = []
+    for category, items in by_category.items():
+        items = sorted(items, key=lambda p: p["date"])
+        if len(items) < 3:
+            continue
+        dates = [date.fromisoformat(p["date"]) for p in items]
+        intervals = [(dates[i + 1] - dates[i]).days for i in range(len(dates) - 1)]
+        avg_interval = mean(intervals)
+        if avg_interval <= 0:
+            continue
+        cv = pstdev(intervals) / avg_interval if len(intervals) > 1 else 0
+        if cv > 0.5:
+            continue
+
+        expected_next = dates[-1] + timedelta(days=round(avg_interval))
+        days_until = (expected_next - today).days
+        if -2 <= days_until <= lookahead_days:
+            forecasts.append({
+                "category": category,
+                "category_label": items[-1].get("category_label", category),
+                "expected_date": expected_next.isoformat(),
+                "expected_amount": round(mean(float(p["amount"]) for p in items), 2),
+                "days_until": days_until,
+                "confidence": round(clamp(100 - cv * 100, 0, 100)),
+            })
+
+    forecasts.sort(key=lambda f: f["days_until"])
+    return forecasts
+
+
 def compute_trend(score_history, current_score):
     """Tendencia real comparada contra el ultimo punto persistido -- antes
     siempre decia 'up' sin calcular nada."""
@@ -262,6 +308,7 @@ def compute_signals(deposits, purchases, bills, total_income=None, total_expense
         },
         "alerts": alerts,
         "anomaly": anomaly,
+        "upcoming_expenses": forecast_upcoming_expenses(purchases, as_of_date),
         "liquidity": {"days_covered": liquidity["days_covered"]},
         "projection": {"weeks_to_ready": project_readiness(score_history, final_score), "product": "tarjeta secured"},
         "_debug": {"total_income": total_income, "total_expense": total_expense, "current_balance": current_balance, "elapsed_days": elapsed_days},
