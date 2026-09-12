@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ShieldCheck, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, Search, Bell, Send, User, Lock, Eye, EyeOff } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { api, sessionKey } from './api.js';
 import { appendCheckpoint, appendChatExchange, emptySession, normalizeData } from './data.js';
 import './styles.css';
@@ -23,6 +24,16 @@ function TrendBadge({ trend }) {
   if (trend === 'up') return <span className="trend-badge trend-up"><ArrowUp size={14} /> Subiendo</span>;
   if (trend === 'down') return <span className="trend-badge trend-down"><ArrowDown size={14} /> Bajando</span>;
   return <span className="trend-badge trend-flat"><Minus size={14} /> Estable</span>;
+}
+const MOTION_EASE = [0.22, 1, 0.36, 1];
+function buildDashboardVariants(reduce) {
+  return {
+    container: { hidden: {}, visible: { transition: reduce ? {} : { delayChildren: 0.15, staggerChildren: 0.08 } } },
+    item: {
+      hidden: reduce ? { opacity: 1 } : { opacity: 0, y: 16, scale: 0.98 },
+      visible: { opacity: 1, y: 0, scale: 1, transition: { duration: reduce ? 0 : 0.5, ease: MOTION_EASE } },
+    },
+  };
 }
 const AUTH_KEY = 'centinel:authed';
 function readAuthed() {
@@ -98,12 +109,9 @@ function Login({ onLogin }) {
   const [password, setPassword] = useState('demo1234');
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   function submit(event) {
     event.preventDefault();
-    if (submitting) return;
-    setSubmitting(true);
-    window.setTimeout(() => onLogin(remember), 500);
+    onLogin(remember);
   }
   return <div className="login-page">
     <header className="login-topbar">
@@ -111,7 +119,7 @@ function Login({ onLogin }) {
       <span className="login-topbar-brand">Centinel One</span>
     </header>
     <div className="login-center">
-      <form className={`login-card glass ${submitting ? 'is-submitting' : ''}`} onSubmit={submit}>
+      <form className="login-card glass" onSubmit={submit}>
         <img src="/capital-one-logo.svg" alt="Capital One" className="login-logo" />
         <h1 className="login-title">Iniciar sesión</h1>
         <p className="login-tagline">Agente de autonomía financiera · Track 1, Capital One Hackathon 2026</p>
@@ -130,7 +138,7 @@ function Login({ onLogin }) {
           </span>
         </label>
         <label className="login-remember"><input type="checkbox" checked={remember} onChange={event => setRemember(event.target.checked)} /> Recordarme</label>
-        <button className="login-cta black-button" type="submit" disabled={submitting}>{submitting ? <span className="login-spinner" /> : 'Iniciar sesión'}</button>
+        <button className="login-cta black-button" type="submit">Iniciar sesión</button>
         <button type="button" className="text-button login-forgot">¿Olvidaste tu usuario o contraseña?</button>
         <p className="login-footnote">Acceso de demostración — cuenta de Mia precargada.</p>
       </form>
@@ -140,6 +148,8 @@ function Login({ onLogin }) {
 }
 
 function App() {
+  const shouldReduceMotion = useReducedMotion();
+  const { container: dashboardContainer, item: dashboardItem } = buildDashboardVariants(shouldReduceMotion);
   const [authed, setAuthed] = useState(readAuthed);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -248,29 +258,32 @@ function App() {
   if (!authed) return <Login onLogin={remember => { if (remember) { try { localStorage.setItem(AUTH_KEY, 'true'); } catch { /* Storage is optional. */ } } setAuthed(true); }} />;
 
   return <>
-  <main className={`dashboard connected-dashboard ${page === 'chat' ? 'chat-layout' : ''}`}>
-    <aside className="sidebar" aria-label="Navegación principal"><button className="brand-mark" aria-label="Centinel One inicio" onClick={() => setPage('home')}><img src="/capital-one-logo.svg" alt="Capital One" /></button><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Centinel', 'chat'], [Wallet, 'Movimientos', 'transactions']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => destination === 'transactions' ? setModal('transactions') : setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="mia-avatar" aria-label="Perfil de Mia" onClick={() => setModal('profile')}>M</button></div></aside>
+  <motion.main className={`dashboard connected-dashboard ${page === 'chat' ? 'chat-layout chat-active' : ''}`} variants={dashboardContainer} initial="hidden" animate="visible">
+    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><button className="brand-mark" aria-label="Centinel One inicio" onClick={() => setPage('home')}><img src="/capital-one-logo.svg" alt="Capital One" /></button><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Centinel', 'chat'], [Wallet, 'Movimientos', 'transactions']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => destination === 'transactions' ? setModal('transactions') : setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="mia-avatar" aria-label="Perfil de Mia" onClick={() => setModal('profile')}>M</button></div></motion.aside>
     <section className="main-column">
-      <header className="page-header"><div><h1>Centinel One</h1><p>Hola, Mia. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></header>
+      <motion.header className="page-header" variants={dashboardItem}><div><h1>Centinel One</h1><p>Hola, Mia. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></motion.header>
       {error && <div className="error-banner" role="alert">{error} <button disabled={loading || busy} onClick={refresh}>Reintentar lectura</button></div>}
       {operationError && <div className="error-banner" role="alert">{operationError}</div>}
       {notice && <p className="operation-notice" role="status">{notice}</p>}
-      {page === 'chat' ? <section className="glass chat-panel">
-        <header className="card-heading"><h2>Conversación con Centinel</h2><button className="pill" onClick={() => setPage('home')}>Volver al inicio</button></header>
-        {chatTranscript}
-        <form className="chat-form" onSubmit={sendChat}>
-          <input aria-label="Mensaje para Centinel" placeholder="Ej. ¿cómo va mi score? / detén el gimnasio / mueve 20 a mi ahorro" value={chatInput} onChange={event => setChatInput(event.target.value)} disabled={busy} />
-          <button className="black-button" type="submit" disabled={busy || !chatInput.trim()} aria-label="Enviar mensaje"><Send size={16} /></button>
-        </form>
-        {controls}
-        {feed}
-      </section> : <>
-        <section className="balance-card glass"><div className="balance-top"><div><h2>Score de resiliencia financiera</h2><div className="total score-hero">{signals?.score.value ?? '—'}<span>/100</span></div>{signals && <TrendBadge trend={signals.score.trend} />}<p className="muted-copy">Tu flujo de efectivo cuenta tu historia.</p></div><span className={`pill ${signals?.anomaly?.detected ? 'pill-warning' : ''}`}>{signals ? (signals.anomaly?.detected ? <><ShieldAlert size={14} /> Anomalía detectada</> : <><ShieldCheck size={14} /> Sin anomalías</>) : 'Sin datos'}</span></div><div className="balance-bottom"><div className="account-orbs"><div className="orb-bridge" /><button className="orb" onClick={() => setModal('transactions')}><strong>{money(data?.balance)}</strong><span>Saldo del ledger</span></button><button className="orb purple" onClick={() => setModal('score')}><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong><span>Gastos cubiertos</span></button><button className="orb" onClick={() => setModal('transactions')}><strong>{money(data?.summary.total_income)}</strong><span>Ingresos registrados</span></button></div></div>{signals?.projection?.weeks_to_ready != null && <p className="projection-note">A este ritmo, listo para {signals.projection.product} en ~{signals.projection.weeks_to_ready} {signals.projection.weeks_to_ready === 1 ? 'checkpoint' : 'checkpoints'}.</p>}</section>
-        <div className="stats-grid"><section className="expense-card glass breakdown-card"><header className="card-heading"><h2>Qué compone tu score</h2></header>{signals ? signals.score.breakdown.map(item => <div className="score-component" key={item.key} title={item.detail}><div><span>{item.label}</span><strong>{item.value}/100</strong></div><progress max="100" value={item.value} aria-label={item.label} /></div>) : <p className="empty">{loading ? 'Cargando componentes…' : 'Sin datos disponibles.'}</p>}<button className="outline-button score-details-button" onClick={() => setModal('score')}>Entender mi score</button></section><section className="health-card"><header className="card-heading"><h2>Tu progreso</h2><span className="pill">Checkpoints</span></header><div className="health-value">{session.history.at(-1)?.value ?? '—'}<small>/100</small></div><p>Último checkpoint recibido</p><LineChart values={session.history.map(point => point.value)} label="Evolución del score en los checkpoints recibidos" /></section></div>
-        <section className="payments-card glass alerts-card"><header className="card-heading"><h2>Lo que necesita tu atención</h2><span className="pill">{signals?.alerts.length ?? '—'} alertas</span></header>{signals ? signals.alerts.length ? signals.alerts.map(alert => <article className="live-alert" key={alert.id}><ShieldAlert size={24} /><div><strong>{alert.title}</strong><p>{alert.detail}</p>{alert.annual_cost > 0 && <small>{money(alert.annual_cost)} al año · potencial, no ahorro realizado</small>}</div><button className="black-button small" onClick={() => setPage('chat')}>Revisar</button></article>) : <p className="empty">Todo al día: el backend no reporta alertas activas.</p> : <p className="empty">{loading ? 'Consultando alertas…' : 'Alertas no disponibles.'}</p>}<p className="muted-copy">Detener un cargo no cancela el contrato con el comercio.</p></section>
-      </>}
+      <AnimatePresence mode="popLayout" initial={false}>
+        {page === 'chat' && <motion.section className="glass chat-panel" key="chat-panel"
+          initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
+          transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
+          <header className="card-heading"><h2>Conversación con Centinel</h2><button className="pill" onClick={() => setPage('home')}>Volver al inicio</button></header>
+          {chatTranscript}
+          <form className="chat-form" onSubmit={sendChat}>
+            <input aria-label="Mensaje para Centinel" placeholder="Ej. ¿cómo va mi score? / detén el gimnasio / mueve 20 a mi ahorro" value={chatInput} onChange={event => setChatInput(event.target.value)} disabled={busy} />
+            <button className="black-button" type="submit" disabled={busy || !chatInput.trim()} aria-label="Enviar mensaje"><Send size={16} /></button>
+          </form>
+          {controls}
+          {feed}
+        </motion.section>}
+        {page !== 'chat' && <motion.section className="balance-card glass" key="balance-card" variants={dashboardItem} whileHover={{ y: -4 }} transition={{ duration: 0.2 }}><div className="balance-top"><div><h2>Score de resiliencia financiera</h2><div className="total score-hero">{signals?.score.value ?? '—'}<span>/100</span></div>{signals && <TrendBadge trend={signals.score.trend} />}<p className="muted-copy">Tu flujo de efectivo cuenta tu historia.</p></div><span className={`pill ${signals?.anomaly?.detected ? 'pill-warning' : ''}`}>{signals ? (signals.anomaly?.detected ? <><ShieldAlert size={14} /> Anomalía detectada</> : <><ShieldCheck size={14} /> Sin anomalías</>) : 'Sin datos'}</span></div><div className="balance-bottom"><div className="account-orbs"><div className="orb-bridge" /><button className="orb" onClick={() => setModal('transactions')}><strong>{money(data?.balance)}</strong><span>Saldo del ledger</span></button><button className="orb purple" onClick={() => setModal('score')}><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong><span>Gastos cubiertos</span></button><button className="orb" onClick={() => setModal('transactions')}><strong>{money(data?.summary.total_income)}</strong><span>Ingresos registrados</span></button></div></div>{signals?.projection?.weeks_to_ready != null && <p className="projection-note">A este ritmo, listo para {signals.projection.product} en ~{signals.projection.weeks_to_ready} {signals.projection.weeks_to_ready === 1 ? 'checkpoint' : 'checkpoints'}.</p>}</motion.section>}
+        {page !== 'chat' && <div className="stats-grid" key="stats-grid"><motion.section className="expense-card glass breakdown-card" variants={dashboardItem} whileHover={{ y: -4 }} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Qué compone tu score</h2></header>{signals ? signals.score.breakdown.map(item => <div className="score-component" key={item.key} title={item.detail}><div><span>{item.label}</span><strong>{item.value}/100</strong></div><progress max="100" value={item.value} aria-label={item.label} /></div>) : <p className="empty">{loading ? 'Cargando componentes…' : 'Sin datos disponibles.'}</p>}<button className="outline-button score-details-button" onClick={() => setModal('score')}>Entender mi score</button></motion.section><motion.section className="health-card" variants={dashboardItem} whileHover={{ y: -4 }} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Tu progreso</h2><span className="pill">Checkpoints</span></header><div className="health-value">{session.history.at(-1)?.value ?? '—'}<small>/100</small></div><p>Último checkpoint recibido</p><LineChart values={session.history.map(point => point.value)} label="Evolución del score en los checkpoints recibidos" /></motion.section></div>}
+        {page !== 'chat' && <motion.section className="payments-card glass alerts-card" key="alerts-card" variants={dashboardItem} whileHover={{ y: -4 }} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Lo que necesita tu atención</h2><span className="pill">{signals?.alerts.length ?? '—'} alertas</span></header>{signals ? signals.alerts.length ? signals.alerts.map(alert => <article className="live-alert" key={alert.id}><ShieldAlert size={24} /><div><strong>{alert.title}</strong><p>{alert.detail}</p>{alert.annual_cost > 0 && <small>{money(alert.annual_cost)} al año · potencial, no ahorro realizado</small>}</div><button className="black-button small" onClick={() => setPage('chat')}>Revisar</button></article>) : <p className="empty">Todo al día: el backend no reporta alertas activas.</p> : <p className="empty">{loading ? 'Consultando alertas…' : 'Alertas no disponibles.'}</p>}<p className="muted-copy">Detener un cargo no cancela el contrato con el comercio.</p></motion.section>}
+      </AnimatePresence>
     </section>
-    {page === 'home' && <section className="right-column"><section className="transactions"><header className="transactions-heading"><div><h2>Movimientos</h2><p>Historial de Mia</p></div><button className="black-button small" onClick={() => setModal('transactions')}>Ver todos</button></header><div className="transaction-list">{transactions.slice(-3).reverse().map(tx => <div className="transaction-row live-transaction" key={tx.id}><span className={`direction ${tx.signed_amount > 0 ? 'inflow' : 'outflow'}`}>{tx.signed_amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={tx.name}>{tx.name}</strong><span className="transaction-date">{dateLabel(tx.date)}</span><span className={`transaction-amount ${tx.signed_amount > 0 ? 'inflow' : ''}`}>{money(tx.signed_amount)}</span></div>)}{!transactions.length && <p className="empty">{loading ? 'Cargando movimientos…' : data ? 'No hay movimientos registrados.' : 'Historial no disponible.'}</p>}</div></section><CategorySpending summary={data?.summary} loading={loading} /></section>}
+    {page === 'home' && <section className="right-column"><motion.section className="transactions" variants={dashboardItem} whileHover={{ y: -4 }} transition={{ duration: 0.2 }}><header className="transactions-heading"><div><h2>Movimientos</h2><p>Historial de Mia</p></div><button className="black-button small" onClick={() => setModal('transactions')}>Ver todos</button></header><div className="transaction-list">{transactions.slice(-3).reverse().map(tx => <div className="transaction-row live-transaction" key={tx.id}><span className={`direction ${tx.signed_amount > 0 ? 'inflow' : 'outflow'}`}>{tx.signed_amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={tx.name}>{tx.name}</strong><span className="transaction-date">{dateLabel(tx.date)}</span><span className={`transaction-amount ${tx.signed_amount > 0 ? 'inflow' : ''}`}>{money(tx.signed_amount)}</span></div>)}{!transactions.length && <p className="empty">{loading ? 'Cargando movimientos…' : data ? 'No hay movimientos registrados.' : 'Historial no disponible.'}</p>}</div></motion.section><CategorySpending summary={data?.summary} loading={loading} variants={dashboardItem} /></section>}
     {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className={`modal glass ${modal === 'transactions' ? 'ledger-modal' : ''}`} role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={event => event.stopPropagation()}><button ref={closeRef} className="close-modal icon-button" aria-label="Cerrar" onClick={() => setModal(null)}><X /></button>
       {modal === 'score' && <><h2 id="dialog-title">Tu score, explicado</h2><p>Indicador propio de resiliencia financiera; no es un score de Buró ni garantiza aprobación de crédito.</p>{signals?.score.breakdown.map(item => <div className="detail-line" key={item.key}><span>{item.label}<small>{item.detail} · Peso: {item.weight}%</small></span><strong>{item.value}/100</strong></div>)}</>}
       {modal === 'transactions' && <><h2 id="dialog-title">Todos los movimientos</h2><p>{transactions.length} movimientos · Saldo: {money(data?.balance)}</p><LineChart values={transactions.map(tx => tx.running_balance)} label="Balance histórico calculado por el backend" /><label className="ledger-search"><Search size={18} /><input aria-label="Buscar movimientos" placeholder="Buscar comercio o categoría" value={query} onChange={event => setQuery(event.target.value)} /></label>
@@ -294,7 +307,7 @@ function App() {
         <button className="outline-button" onClick={() => { try { localStorage.removeItem(AUTH_KEY); } catch { /* Storage is optional. */ } setModal(null); setAuthed(false); }}>Cerrar sesión</button>
       </>}
     </section></div>}
-  </main>
+  </motion.main>
   <Footer />
   <FaqWidget />
   </>;
