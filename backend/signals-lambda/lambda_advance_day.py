@@ -14,11 +14,13 @@ import json
 import time
 import boto3
 from botocore.exceptions import ClientError
+from datetime import date
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 
 from signal_engine import compute_totals
 import agent_actions as actions
+import email_notifications
 
 REGION = "us-east-1"
 TABLE_NAME = "jarbis-financiero-data"
@@ -96,6 +98,93 @@ def load_data(user_id):
     return deposits, purchases, bills
 
 
+def _send_upcoming_expense_reminders(signals):
+    """Un correo por cada gasto recurrente esperado (renta, gasolina, etc.
+    -- inferido de tu propia cadencia de compras, NO suscripciones) que
+    caiga a 5, 3 o 1 dia de distancia. Es solo un aviso para que tengas
+    fondos listos -- estos gastos no son cancelables desde el chat, a
+    diferencia de una suscripcion marcada como fuga (ver
+    _send_leak_reminder)."""
+    for item in signals.get("upcoming_expenses", []):
+        days = item.get("days_until")
+        if days not in (5, 3, 1):
+            continue
+        plural = "día" if days == 1 else "días"
+        if days == 1:
+            headline, vibe = "⏳ Mañana toca este gasto", "Checa que tengas fondos listos para que no te tome en curva."
+        elif days == 3:
+            headline, vibe = "📅 Se acerca la fecha", "Vas a tiempo, solo es para que lo tengas en el radar."
+        else:
+            headline, vibe = "👀 Ojo con esto", "Te avisamos con tiempo -- todavia falta, pero mejor prevenir."
+        email_notifications.send_email(
+            subject=f"{headline}: {item['category_label']} en {days} {plural}",
+            html=email_notifications.wrap(f"""
+                <p style="font-size:19px;font-weight:700;margin:0 0 14px;">{headline}</p>
+                <p>Segun tu propio historial, en <strong>{days} {plural}</strong> esperamos que gastes
+                   <strong style="color:#d22630;">~${item['expected_amount']:.2f}</strong> en
+                   <strong>{item['category_label']}</strong>. 💸</p>
+                <p>{vibe}</p>
+                <p>Esto es solo un heads-up -- Kivo no lo va a pagar ni a detener por ti, nomas te
+                   ayuda a que no te agarre desprevenido. 🙌</p>
+                <p style="margin-bottom:0;">— El equipo de Kivo 💙</p>
+            """),
+        )
+
+
+def _send_leak_reminder(leak_alert):
+    """Se manda cuando una suscripcion se marca como fuga (sin actividad
+    relacionada hace 60+ dias) -- a diferencia de upcoming_expenses, esto
+    SI es una suscripcion real (tiene payee/bill_id) y SI se puede pedir
+    que Kivo deje de contarla via chat ("cancela X"), asi que el CTA
+    aplica de verdad."""
+    email_notifications.send_email(
+        subject=f"🕵️ ¿Sigues pagando {leak_alert['title']}?",
+        html=email_notifications.wrap(f"""
+            <p style="font-size:19px;font-weight:700;margin:0 0 14px;">🕵️ Esto huele a fuga</p>
+            <p>Llevamos <strong>60+ dias</strong> sin ver actividad relacionada con
+               <strong>{leak_alert['title']}</strong> (<strong style="color:#d22630;">${leak_alert['monthly_amount']:.2f}/mes</strong>). 💸</p>
+            <p>¿Todavia lo usas o ya nomas esta ahi cobrando polvo? 🤔</p>
+            <p style="background:#eef4fb;border-radius:12px;padding:14px 18px;margin:18px 0;">
+              Si ya no, dile a Kivo en el chat:<br>
+              <strong>"cancela {leak_alert['title']}"</strong><br>
+              <span style="font-size:13px;color:#5c6d83;">Ojo: esto hace que Kivo deje de contarlo en tu score y
+              tus recordatorios -- si el cargo real sigue activo con el comercio, cancelalo tu directamente con ellos.</span>
+            </p>
+            <p style="margin-bottom:0;">— El equipo de Kivo 💙</p>
+        """),
+    )
+
+
+def _send_external_expense_reminder(purchases):
+    """Si hoy (fecha real, no la del checkpoint simulado -- asi es como
+    log_external_expense ya guarda estos gastos) no se registro en el chat
+    ningun gasto en efectivo/otra tarjeta, manda un recordatorio: sin esto,
+    el score y el presupuesto solo ven la fraccion de la vida financiera
+    real que paso por la tarjeta del banco."""
+    today = date.today().isoformat()
+    logged_today = any(
+        p.get("date") == today and p.get("sk", "").split("#")[2].startswith("external")
+        for p in purchases if p.get("sk", "").count("#") >= 2
+    )
+    if not logged_today:
+        email_notifications.send_email(
+            subject="🕵️ ¿Gastaste algo hoy que Kivo no vio?",
+            html=email_notifications.wrap("""
+                <p style="font-size:19px;font-weight:700;margin:0 0 14px;">🕵️ Modo detective activado</p>
+                <p>Hoy no nos platicaste de ningún gasto en efectivo o con otra tarjeta. 👀</p>
+                <p>Si te echaste un taco, un Uber, o pagaste algo que no fue con tu tarjeta del
+                   banco, cuéntaselo a Kivo para que tu score no se quede con información a medias. 📊</p>
+                <p style="background:#eef4fb;border-radius:12px;padding:14px 18px;margin:18px 0;">
+                  Solo dile algo como:<br>
+                  <strong>"gasté 80 en efectivo en comida"</strong> y Kivo lo apunta por ti. ✍️
+                </p>
+                <p>Entre más completo esté tu historial, mejor te conocemos (y mejor te ayudamos
+                   a no gastar de más). 💪</p>
+                <p style="margin-bottom:0;">— Kivo</p>
+            """),
+        )
+
+
 def lambda_handler(event, context):
     params = event.get("queryStringParameters") or {}
     user_id = params.get("user_id", "ana")
@@ -145,6 +234,7 @@ def lambda_handler(event, context):
                         "¿La sigues usando? Si tiene contrato anual, cancelar antes de tiempo podria "
                         "generarte una penalizacion o mandarte a cobranza -- confirmalo antes de que lo detengamos.",
             }))
+            _send_leak_reminder(leak_alert)
 
     elif idx == 2:
         # Dia 63: el humano ya confirmo (asumido en la demo) -> reusa la MISMA
@@ -214,6 +304,9 @@ def lambda_handler(event, context):
         deposits, purchases, bills = load_data(user_id)
         bills_plain = [{"payee": b["payee"], "status": b["status"], "payment_amount": float(b["payment_amount"]), "bill_id": b["bill_id"]} for b in bills]
         signals = actions.get_full_signals(deposits, purchases, bills_plain, user_id=user_id, as_of_date=as_of)
+
+    _send_upcoming_expense_reminders(signals)
+    _send_external_expense_reminder(purchases)
 
     state["checkpoint_idx"] = idx
     save_state(user_id, state)

@@ -14,7 +14,7 @@ from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 
 from signal_engine import compute_signals, score_liquidity, compute_elapsed_days, LIQUIDITY_WARNING_DAYS, resolve_reference_date
-from nessie_actions import stop_recurring_bill, sweep_to_savings, release_from_savings, receive_from_third_party
+from nessie_actions import sweep_to_savings, release_from_savings, receive_from_third_party
 
 REGION = "us-east-1"
 TABLE_NAME = "jarbis-financiero-data"
@@ -376,17 +376,22 @@ def _find_leak_bill(user_id, bill_title):
 
 
 def _execute_stop_bill(user_id, bill):
-    try:
-        stop_recurring_bill(bill["bill_id"], bill["payee"], bill["payment_amount"])
-    except Exception as e:
-        return {"ok": False, "reason": f"No se pudo detener el cargo en Nessie ahorita: {e}. No se hizo ningun cambio."}
+    """Kivo ya no ejecuta cambios reales contra el banco/Nessie -- solo
+    actualiza su propia vista (score, alertas, recordatorios). Cancelar el
+    cargo de verdad con el comercio sigue siendo responsabilidad del
+    usuario; esto nunca "mueve dinero", solo deja de contarlo."""
     table.update_item(
         Key={"user_id": user_id, "sk": f"BILL#{bill['payee']}"},
         UpdateExpression="SET #s = :s",
         ExpressionAttributeNames={"#s": "status"},
         ExpressionAttributeValues={":s": "cancelled"},
     )
-    return {"ok": True, "amount": bill["payment_amount"], "message": f"Detuve el cargo automatico de {bill['payee']} (${bill['payment_amount']}/mes). Esto no cancela el contrato con el comercio, solo el cargo."}
+    return {
+        "ok": True, "amount": bill["payment_amount"],
+        "message": f"Listo -- para Kivo, {bill['payee']} (${bill['payment_amount']}/mes) ya no se va a pagar: no lo vuelvo "
+                   "a contar en tu score ni en tus recordatorios. Si el cargo real sigue activo con el comercio, "
+                   "tienes que cancelarlo tu directamente con ellos.",
+    }
 
 
 def verified_stop_bill(user_id, bill_title):

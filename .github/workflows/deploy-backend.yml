@@ -61,8 +61,8 @@ jobs:
           for fn in "${!HANDLERS[@]}"; do
             handler="${HANDLERS[$fn]}"
             workdir=$(mktemp -d)
-            cp "$handler" agent_actions.py nessie_actions.py signal_engine.py "$workdir/"
-            (cd "$workdir" && zip -q deploy.zip "$handler" agent_actions.py nessie_actions.py signal_engine.py)
+            cp "$handler" agent_actions.py nessie_actions.py signal_engine.py email_notifications.py "$workdir/"
+            (cd "$workdir" && zip -q deploy.zip "$handler" agent_actions.py nessie_actions.py signal_engine.py email_notifications.py)
             echo "== Desplegando $fn (handler=$handler) =="
             aws lambda update-function-code --function-name "$fn" --zip-file "fileb://$workdir/deploy.zip" --no-cli-pager
             aws lambda wait function-updated --function-name "$fn"

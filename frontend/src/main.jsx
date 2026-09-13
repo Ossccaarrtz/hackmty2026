@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, ChevronLeft, Search, Bell, Send, User, Lock, Eye, EyeOff, FileText, Copy, Check, Receipt, Download, PiggyBank, CalendarDays } from 'lucide-react';
+import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, ChevronLeft, Search, Bell, Send, User, Lock, Eye, EyeOff, FileText, Copy, Check, Download, PiggyBank, CalendarDays } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { api, sessionKey } from './api.js';
 import { appendCheckpoint, appendChatExchange, emptySession, normalizeData } from './data.js';
@@ -57,9 +57,9 @@ const ACTION_TYPE_LABELS = {
 };
 const actionTypeLabel = type => ACTION_TYPE_LABELS[type] || type.replaceAll('_', ' ');
 // "Revisar" en una alerta llevaba al chat en blanco -- la estudiante tenia que
-// releer la alerta y reescribirsela a Spark de memoria. Esto arma una pregunta
+// releer la alerta y reescribirsela a Kivo de memoria. Esto arma una pregunta
 // tipo "que pasaria si..." con los datos que la alerta ya trae, precargada en
-// el input (sin auto-enviar) para que Spark explique el escenario antes de que
+// el input (sin auto-enviar) para que Kivo explique el escenario antes de que
 // se decida a actuar.
 function buildAlertPrompt(alert) {
   if (alert.type === 'leak') return `¿Qué pasaría si dejo de pagar ${alert.title}? Me cuesta ${money(alert.monthly_amount)}/mes (${money(alert.annual_cost)} al año) y no lo he usado en un rato.`;
@@ -96,7 +96,7 @@ function renderChatText(text) {
     : <p key={i}>{block.content}</p>);
 }
 function TypingIndicator() {
-  return <div className="chat-bubble assistant typing-indicator" aria-label="Spark está escribiendo"><span /><span /><span /></div>;
+  return <div className="chat-bubble assistant typing-indicator" aria-label="Kivo está escribiendo"><span /><span /><span /></div>;
 }
 function readSession() {
   try { const saved = JSON.parse(sessionStorage.getItem(sessionKey)); if (Array.isArray(saved?.feed) && Array.isArray(saved?.history)) return { ...emptySession(), ...saved }; } catch { /* Storage is optional. */ }
@@ -154,10 +154,10 @@ function readAuthed() {
 }
 const FAQS = [
   { q: '¿Qué es el Cash-Flow Resilience Score?', a: 'Un indicador propio (0-100) de qué tan resiliente es tu flujo de efectivo, calculado a partir de tu comportamiento real: regularidad de ingreso, ratio esencial/discrecional, recurrencia de bills y colchón de liquidez. No es un score de Buró y no requiere historial crediticio previo.' },
-  { q: '¿Cómo detecta Spark una fuga de dinero?', a: 'Compara tus bills recurrentes contra actividad relacionada real (por ejemplo, un cargo de gimnasio sin visitas asociadas). Si no encuentra esa actividad por un periodo prolongado, la marca como posible fuga y te avisa antes de hacer nada.' },
-  { q: '¿Spark puede mover mi dinero sin avisarme?', a: 'Solo en un caso: mover dinero a tu propio ahorro, porque es reversible y no involucra a terceros. Detener un cargo recurrente siempre pide tu confirmación explícita primero, y te advierte si podría tener implicaciones contractuales.' },
+  { q: '¿Cómo detecta Kivo una fuga de dinero?', a: 'Compara tus bills recurrentes contra actividad relacionada real (por ejemplo, un cargo de gimnasio sin visitas asociadas). Si no encuentra esa actividad por un periodo prolongado, la marca como posible fuga y te avisa antes de hacer nada.' },
+  { q: '¿Kivo puede mover mi dinero sin avisarme?', a: 'Solo en un caso: mover dinero a tu propio ahorro, porque es reversible y no involucra a terceros. Detener un cargo recurrente siempre pide tu confirmación explícita primero, y te advierte si podría tener implicaciones contractuales.' },
   { q: '¿Qué pasa con mis datos financieros?', a: 'El modelo de lenguaje nunca ve tu historial crudo de transacciones -- solo señales ya derivadas (ej. "score=57, fuga detectada: FitZone Campus"). Toda la demo corre sobre el sandbox de Capital One Nessie, no datos reales.' },
-  { q: '¿Qué significa "Sin anomalías"?', a: 'Spark compara tu actividad reciente contra tu propio historial. Si detecta un patrón fuera de lo normal, pausa cualquier acción autónoma y te pide confirmar antes de continuar, en vez de actuar solo.' },
+  { q: '¿Qué significa "Sin anomalías"?', a: 'Kivo compara tu actividad reciente contra tu propio historial. Si detecta un patrón fuera de lo normal, pausa cualquier acción autónoma y te pide confirmar antes de continuar, en vez de actuar solo.' },
 ];
 function FaqWidget() {
   const [open, setOpen] = useState(false);
@@ -170,7 +170,7 @@ function FaqWidget() {
   }, [open]);
   return <>
     <button className={`faq-fab ${open ? 'is-open' : ''}`} aria-label={open ? 'Cerrar preguntas frecuentes' : 'Preguntas frecuentes'} onClick={() => setOpen(v => !v)}>
-      {open ? <X size={22} /> : <img src="/capital-one-logo.svg" alt="" />}
+      {open ? <X size={22} /> : <img src="/kivo-icon.png" alt="" />}
     </button>
     {open && <section className="faq-panel" role="dialog" aria-label="Preguntas frecuentes">
       <header className="faq-panel-header"><span>Preguntas frecuentes</span></header>
@@ -188,7 +188,7 @@ function FaqWidget() {
 function PrivacyPolicy() {
   return <>
     <h2 id="privacy-title">Aviso de privacidad (demo)</h2>
-    <p>Spark es un proyecto para el Hackathon de Capital One (Track 1) — no procesa datos financieros reales; todos los movimientos vienen del sandbox de Capital One Nessie.</p>
+    <p>Kivo es un proyecto para el Hackathon de Capital One (Track 1) — no procesa datos financieros reales; todos los movimientos vienen del sandbox de Capital One Nessie.</p>
     <p>El modelo de lenguaje (Gemini) nunca recibe tu historial crudo de transacciones, solo señales ya derivadas por nuestro motor (por ejemplo, "score=57, fuga detectada: FitZone Campus"). Toda acción que mueve dinero pasa primero por una verificación que confirma que coincide con lo que el motor de señales ya calculó, antes de escribir en Nessie.</p>
     <p className="muted-copy">Para un producto real, esto requeriría un acuerdo de procesamiento de datos (DPA) con el proveedor del modelo y cumplimiento de GLBA — el mismo proceso que sigue cualquier institución financiera al usar un proveedor de nube.</p>
   </>;
@@ -203,7 +203,7 @@ function Footer() {
   }, [open]);
   return <>
     <footer className="app-footer">
-      <span>© 2026 Spark — Capital One Hackathon</span>
+      <span>© 2026 Kivo — Capital One Hackathon</span>
       <button className="footer-link" onClick={() => setOpen(true)}>Aviso de privacidad</button>
     </footer>
     {open && <div className="modal-overlay" onClick={() => setOpen(false)}>
@@ -215,7 +215,7 @@ function Footer() {
   </>;
 }
 function Login({ onLogin }) {
-  const [email, setEmail] = useState('ana@spark.mx');
+  const [email, setEmail] = useState('ana@kivo.mx');
   const [password, setPassword] = useState('demo1234');
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
@@ -226,7 +226,7 @@ function Login({ onLogin }) {
   return <div className="login-page">
     <div className="login-center">
       <form className="login-card glass" onSubmit={submit}>
-        <img src="/capital-one-logo.svg" alt="Capital One" className="login-logo" />
+        <img src="/kivo-logo.png" alt="Kivo" className="login-logo" />
         <h1 className="login-title">Iniciar sesión</h1>
         <p className="login-tagline">Agente de autonomía financiera · Track 1, Capital One Hackathon 2026</p>
         <label className="login-field">
@@ -584,8 +584,8 @@ function App() {
   }
 
   const controls = <div className="agent-controls"><button className="black-button small" disabled={busy || loading || !!error || !data || session.done || uncertain} onClick={() => setModal('advance')}><Play size={15} />{busy ? 'Procesando…' : session.done ? 'Demo completada' : 'Avanzar día'}</button><button className="outline-button small" disabled={busy || loading} onClick={() => setModal('reset')}><RotateCcw size={15} /> Reiniciar</button></div>;
-  const feed = <div className="agent-feed">{session.feed.length ? session.feed.map(action => <article className={`agent-feed-item ${['error', 'verification_blocked', 'chat_rejected'].includes(action.type) ? 'action-error' : PENDING_TYPES.includes(action.type) || action.requires_confirmation ? 'action-pending' : ''}`} key={action.id}><span>{action.date && dateLabel(action.date)} · {actionTypeLabel(action.type)}</span><p>{action.text}</p></article>) : <p className="empty">Todavía no hay acciones recibidas en esta sesión. Avanza la simulación o escríbele a Spark para ver sus respuestas.</p>}</div>;
-  const chatTranscript = <div className="chat-transcript">{session.chatLog.length ? session.chatLog.map(m => <div className={`chat-bubble ${m.role}`} key={m.id}>{renderChatText(m.text)}</div>) : <p className="empty">Escríbele a Spark: puede revisar tu score, detener una suscripción marcada como fuga, mover dinero a tu ahorro, o liberar parte de tu ahorro si esta semana te entró poco.</p>}{chatBusy && <TypingIndicator />}<div ref={chatEndRef} /></div>;
+  const feed = <div className="agent-feed">{session.feed.length ? session.feed.map(action => <article className={`agent-feed-item ${['error', 'verification_blocked', 'chat_rejected'].includes(action.type) ? 'action-error' : PENDING_TYPES.includes(action.type) || action.requires_confirmation ? 'action-pending' : ''}`} key={action.id}><span>{action.date && dateLabel(action.date)} · {actionTypeLabel(action.type)}</span><p>{action.text}</p></article>) : <p className="empty">Todavía no hay acciones recibidas en esta sesión. Avanza la simulación o escríbele a Kivo para ver sus respuestas.</p>}</div>;
+  const chatTranscript = <div className="chat-transcript">{session.chatLog.length ? session.chatLog.map(m => <div className={`chat-bubble ${m.role}`} key={m.id}>{renderChatText(m.text)}</div>) : <p className="empty">Escríbele a Kivo: puede revisar tu score, detener una suscripción marcada como fuga, mover dinero a tu ahorro, o liberar parte de tu ahorro si esta semana te entró poco.</p>}{chatBusy && <TypingIndicator />}<div ref={chatEndRef} /></div>;
 
   if (!authed) return <Login onLogin={remember => { if (remember) { try { localStorage.setItem(AUTH_KEY, 'true'); } catch { /* Storage is optional. */ } } setAuthed(true); }} />;
 
@@ -594,9 +594,9 @@ function App() {
 
   return <>
   <motion.main className={`dashboard connected-dashboard ${isFullPage ? 'full-page-layout page-focused' : ''}`} variants={dashboardContainer} initial="hidden" animate="visible">
-    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Spark', 'chat'], [Wallet, 'Movimientos', 'transactions'], [CalendarDays, 'Calendario de gastos', 'calendar'], [FileText, 'Reporte de confianza', 'trust'], [Receipt, 'Estado de cuenta', 'statement'], [PiggyBank, 'Apartados', 'envelopes']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
+    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Kivo', 'chat'], [Wallet, 'Movimientos', 'transactions'], [CalendarDays, 'Calendario de gastos', 'calendar'], [FileText, 'Reporte de confianza', 'trust'], [PiggyBank, 'Apartados', 'envelopes']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
     <section className="main-column">
-      <motion.header className="page-header" variants={dashboardItem}><div><div className="page-brand"><img src="/capital-one-logo.svg" alt="Capital One" className="page-brand-logo" /><h1>Spark</h1></div><p>Hola, Ana. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></motion.header>
+      <motion.header className="page-header" variants={dashboardItem}><div><div className="page-brand"><img src="/kivo-logo.png" alt="" className="page-brand-logo" /><h1 className="sr-only">Kivo</h1></div><p>Hola, Ana. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></motion.header>
       {error && <div className="error-banner" role="alert">{error} <button disabled={loading || busy} onClick={refresh}>Reintentar lectura</button></div>}
       {operationError && <div className="error-banner" role="alert">{operationError}</div>}
       {notice && <p className="operation-notice" role="status">{notice}</p>}
@@ -604,23 +604,41 @@ function App() {
         {page === 'chat' && <motion.section className="glass chat-panel" key="chat-panel"
           initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
           transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
-          <header className="card-heading"><h2>Conversación con Spark</h2><button className="pill" onClick={() => setPage('home')}>Volver al inicio</button></header>
+          <header className="card-heading"><h2>Conversación con Kivo</h2><button className="pill" onClick={() => setPage('home')}>Volver al inicio</button></header>
           {chatTranscript}
           <form className="chat-form" onSubmit={sendChat}>
-            <input aria-label="Mensaje para Spark" placeholder="Ej. ¿cómo va mi score? / cancela FitZone Campus / mueve 20 a mi ahorro" value={chatInput} onChange={event => setChatInput(event.target.value)} disabled={busy} />
+            <input aria-label="Mensaje para Kivo" placeholder="Ej. ¿cómo va mi score? / cancela FitZone Campus / mueve 20 a mi ahorro" value={chatInput} onChange={event => setChatInput(event.target.value)} disabled={busy} />
             <button className="black-button" type="submit" disabled={busy || !chatInput.trim()} aria-label="Enviar mensaje"><Send size={16} /></button>
           </form>
           <div className="chat-feed-section"><h3>Acciones recientes</h3>{feed}</div>
         </motion.section>}
-        {page === 'transactions' && <motion.section className="glass page-panel transactions-page" key="transactions-page"
+        {page === 'transactions' && <motion.section className="glass page-panel transactions-page statement-printable" key="transactions-page"
           initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
           transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
-          <header className="card-heading"><h2>Todos los movimientos</h2>{backToHome}</header>
-          <p>{transactions.length} movimientos · Saldo: {money(data?.balance)}</p>
+          <div className="statement-header">
+            <div><h2>Movimientos</h2><p className="muted-copy">{transactions.length} movimientos · Saldo: {money(data?.balance)}</p></div>
+            <div className="statement-header-actions">
+              <select aria-label="Filtrar movimientos por mes" value={activeStatementMonth} onChange={event => { const ym = event.target.value; setStatementMonth(ym); setDateFrom(`${ym}-01`); setDateTo(`${ym}-${String(new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0).getDate()).padStart(2, '0')}`); }}>
+                {statementMonths.map(ym => <option key={ym} value={ym}>{monthLabel(ym)}</option>)}
+              </select>
+              <button className="black-button small" onClick={() => window.print()}><Download size={15} /> Descargar PDF</button>
+              {backToHome}
+            </div>
+          </div>
+          {statementTransactions.length > 0 && <div className="statement-summary">
+            <div className="statement-summary-item"><span>Saldo inicial del mes</span><strong>{money(statementOpening)}</strong></div>
+            <div className="statement-summary-item"><span>Ingresos del mes</span><strong className="inflow">+{money(statementIncome)}</strong></div>
+            <div className="statement-summary-item"><span>Gastos del mes</span><strong>-{money(statementExpense)}</strong></div>
+            <div className="statement-summary-item"><span>Saldo final del mes</span><strong>{money(statementClosing)}</strong></div>
+          </div>}
           <div className="transactions-charts">
             <div><h3 className="chart-block-title">Balance histórico</h3><LineChart values={transactions.map(tx => tx.running_balance)} label="Balance histórico calculado por el backend" /></div>
             <CategorySpending summary={data?.summary} loading={loading} />
           </div>
+          {statementBreakdown.length > 0 && <>
+            <h3>En qué se fue el dinero en {monthLabel(activeStatementMonth)}</h3>
+            {statementBreakdown.map(([label, amount]) => <div className="detail-line" key={label}><span>{label}</span><strong>{money(amount)}</strong></div>)}
+          </>}
           <label className="ledger-search"><Search size={18} /><input aria-label="Buscar movimientos" placeholder="Buscar comercio o categoría" value={query} onChange={event => setQuery(event.target.value)} /></label>
           <div className="ledger-filters">
             <label className="ledger-filter"><span>Categoría</span><select aria-label="Filtrar por categoría" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}><option value="">Todas</option>{categoryOptions.map(opt => <option key={opt.key} value={opt.key}>{opt.label}</option>)}</select></label>
@@ -635,7 +653,7 @@ function App() {
           initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
           transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
           <header className="card-heading"><h2>Calendario de gastos</h2>{backToHome}</header>
-          <p className="muted-copy">Gastos recurrentes que Spark anticipa a partir de tu cadencia real de compras -- no son montos inventados.</p>
+          <p className="muted-copy">Gastos recurrentes que Kivo anticipa a partir de tu cadencia real de compras -- no son montos inventados.</p>
           {calendarLoading && <p className="empty">Cargando calendario…</p>}
           {calendarError && <div className="error-banner" role="alert">{calendarError} <button onClick={loadCalendar}>Reintentar</button></div>}
           {!calendarLoading && !calendarError && calendarDisplayedYearMonth && <>
@@ -662,7 +680,7 @@ function App() {
             {selectedCalendarDay ? <div className="calendar-detail">
               <h3>{dateLabel(selectedCalendarDay)}</h3>
               {selectedCalendarExpenses.map((item, index) => <div className="detail-line" key={index}><span>{item.category_label}<small>{item.days_until === 0 ? 'Hoy' : item.days_until === 1 ? 'Mañana' : item.days_until > 0 ? `En ${item.days_until} días` : `Hace ${-item.days_until} días`} · {item.confidence}% confianza, según tu historial de compras</small></span><strong>{money(item.expected_amount)}</strong></div>)}
-            </div> : <p className="empty calendar-hint">{Object.keys(calendarExpensesByDate).length ? 'Toca un día marcado para ver el gasto esperado.' : 'Todavía no hay gastos recurrentes predecibles -- Spark necesita al menos 3 compras reales de una misma categoría para poder anticiparla.'}</p>}
+            </div> : <p className="empty calendar-hint">{Object.keys(calendarExpensesByDate).length ? 'Toca un día marcado para ver el gasto esperado.' : 'Todavía no hay gastos recurrentes predecibles -- Kivo necesita al menos 3 compras reales de una misma categoría para poder anticiparla.'}</p>}
           </>}
         </motion.section>}
         {page === 'trust' && <motion.section className="glass page-panel" key="trust-page"
@@ -709,32 +727,6 @@ function App() {
             {signals.wallet_share?.value != null && <p className="muted-copy">{signals.wallet_share.detail}</p>}
           </div>}
         </motion.section>}
-        {page === 'statement' && <motion.section className="glass page-panel statement-printable" key="statement-page"
-          initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
-          transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
-          <div className="statement-header">
-            <div><h2>Estado de cuenta</h2><p className="muted-copy">Libro financiero mensual de Ana: en qué se fue el dinero y de dónde vino.</p></div>
-            <div className="statement-header-actions">
-              <select aria-label="Mes del estado de cuenta" value={activeStatementMonth} onChange={event => setStatementMonth(event.target.value)}>
-                {statementMonths.map(ym => <option key={ym} value={ym}>{monthLabel(ym)}</option>)}
-              </select>
-              <button className="black-button small" onClick={() => window.print()}><Download size={15} /> Descargar PDF</button>
-              {backToHome}
-            </div>
-          </div>
-          {!statementTransactions.length ? <p className="empty">Sin movimientos en {activeStatementMonth ? monthLabel(activeStatementMonth) : 'este periodo'}.</p> : <>
-            <div className="statement-summary">
-              <div className="statement-summary-item"><span>Saldo inicial</span><strong>{money(statementOpening)}</strong></div>
-              <div className="statement-summary-item"><span>Ingresos</span><strong className="inflow">+{money(statementIncome)}</strong></div>
-              <div className="statement-summary-item"><span>Gastos</span><strong>-{money(statementExpense)}</strong></div>
-              <div className="statement-summary-item"><span>Saldo final</span><strong>{money(statementClosing)}</strong></div>
-            </div>
-            <h3>En qué se fue el dinero</h3>
-            {statementBreakdown.map(([label, amount]) => <div className="detail-line" key={label}><span>{label}</span><strong>{money(amount)}</strong></div>)}
-            <h3>Movimientos del mes ({statementTransactions.length})</h3>
-            {statementTransactions.map(tx => <div className="detail-line" key={tx.id}><span>{tx.name}<small>{dateLabel(tx.date)} · {tx.category_label}</small></span><strong className={tx.signed_amount > 0 ? 'inflow' : ''}>{money(tx.signed_amount)}</strong></div>)}
-          </>}
-        </motion.section>}
         {page === 'envelopes' && <motion.section className="glass page-panel" key="envelopes-page"
           initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
           transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
@@ -772,6 +764,7 @@ function App() {
             <button className="black-button" onClick={simulatePayroll} disabled={payrollBusy}>{payrollBusy ? 'Procesando en Nessie…' : 'Simular nómina de un tercero'}</button>
           </>}
         </motion.section>}
+        {page === 'home' && <motion.section className="balance-card glass" key="balance-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><div className="balance-top"><div><h2>Score de resiliencia financiera</h2><div className="total score-hero">{signals?.score.value ?? '—'}<span>/100</span></div>{signals && <TrendBadge trend={signals.score.trend} />}<p className={`score-status-message ${signals ? `is-${scoreStatusFeedback(signals).tone}` : ''}`}>{signals ? scoreStatusFeedback(signals).text : 'Cargando tu score…'}</p></div></div><div className="balance-bottom"><div className="account-orbs"><div className="orb-bridge" /><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.balance)}</strong><span>Saldo disponible</span></button><button className="orb purple" onClick={() => setModal('score')}><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong><span>Gastos cubiertos</span></button><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.summary.total_income)}</strong><span>Ingresos registrados</span></button></div></div><button className="outline-button score-details-button" onClick={() => setModal('score')}>Entender mi score</button></motion.section>}
         {page === 'home' && <motion.section className="glass budget-goal-card" key="budget-goal-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}>
           <header className="card-heading"><h2>Meta de gasto del mes</h2>{monthlyBudget != null && budgetSource === 'local' && !editingBudget && <button className="text-button budget-edit-link" onClick={() => { setBudgetInput(String(monthlyBudget)); setEditingBudget(true); }}>Editar</button>}</header>
           {monthlyBudget == null || editingBudget ? <form className="budget-goal-form" onSubmit={submitBudget}>
@@ -779,18 +772,23 @@ function App() {
             <div className="budget-goal-form-actions"><button className="black-button small" type="submit">Guardar meta</button>{monthlyBudget != null && <button type="button" className="text-button" onClick={() => setEditingBudget(false)}>Cancelar</button>}</div>
           </form> : !currentMonthKey ? <p className="empty">Aún no hay movimientos este mes para comparar contra tu meta.</p> : <>
             <p className="muted-copy budget-goal-month">{monthLabel(currentMonthKey)}</p>
-            <div className={`total score-hero budget-goal-hero tone-${budgetTone(budgetPercent)}`}>{Math.round(budgetPercent)}<span>%</span></div>
-            <div className="budget-goal-numbers"><strong>{money(currentMonthExpense)}</strong><span> de {money(monthlyBudget)} gastados</span></div>
             <div className="budget-track"><div className={`budget-fill tone-${budgetTone(budgetPercent)}`} style={{ width: `${Math.min(budgetPercent, 100)}%` }} /></div>
+            <div className="budget-goal-numbers"><strong>{money(currentMonthExpense)}</strong><span> de {money(monthlyBudget)} gastados · {Math.round(budgetPercent)}%</span></div>
             <p className={`budget-goal-message tone-${budgetTone(budgetPercent)}`}>{budgetMessage(budgetTone(budgetPercent), budgetPercent, currentMonthExpense - monthlyBudget)}</p>
-            {budgetSource === 'backend' && <p className="muted-copy budget-goal-chat-hint">¿Quieres cambiarla? Pídeselo a Spark en el chat, ej. "cambia mi meta a 5000". <button type="button" className="text-button" onClick={() => setPage('chat')}>Ir al chat</button></p>}
+            {budgetSource === 'backend' && <p className="muted-copy budget-goal-chat-hint">¿Quieres cambiarla? Pídeselo a Kivo en el chat, ej. "cambia mi meta a 5000". <button type="button" className="text-button" onClick={() => setPage('chat')}>Ir al chat</button></p>}
           </>}
         </motion.section>}
-        {page === 'home' && <motion.section className="balance-card glass" key="balance-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><div className="balance-top"><div><h2>Score de resiliencia financiera</h2><div className="total score-hero">{signals?.score.value ?? '—'}<span>/100</span></div>{signals && <TrendBadge trend={signals.score.trend} />}<p className={`score-status-message ${signals ? `is-${scoreStatusFeedback(signals).tone}` : ''}`}>{signals ? scoreStatusFeedback(signals).text : 'Cargando tu score…'}</p></div></div><div className="balance-bottom"><div className="account-orbs"><div className="orb-bridge" /><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.balance)}</strong><span>Saldo disponible</span></button><button className="orb purple" onClick={() => setModal('score')}><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong><span>Gastos cubiertos</span></button><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.summary.total_income)}</strong><span>Ingresos registrados</span></button></div></div><button className="outline-button score-details-button" onClick={() => setModal('score')}>Entender mi score</button></motion.section>}
-        {page === 'home' && <motion.section className="payments-card glass alerts-card" key="alerts-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Lo que necesita tu atención</h2><span className="pill">{signals?.alerts.length ?? '—'} alertas</span></header>{signals ? signals.alerts.length ? signals.alerts.map(alert => <article className="live-alert" key={alert.id}><ShieldAlert size={24} /><div><strong>{alert.title}</strong><p>{alert.detail}</p>{alert.annual_cost > 0 && <small>{money(alert.monthly_amount)}/mes · {money(alert.annual_cost)} al año · potencial, no ahorro realizado</small>}</div><button className="black-button small" onClick={() => { setChatInput(buildAlertPrompt(alert)); setPage('chat'); }}>Revisar</button></article>) : <p className="empty">Todo al día: el backend no reporta alertas activas.</p> : <p className="empty">{loading ? 'Consultando alertas…' : 'Alertas no disponibles.'}</p>}{signals?.upcoming_expenses?.length > 0 && <div className="upcoming-expenses"><h3>Próximos gastos esperados</h3>{signals.upcoming_expenses.map(item => <div className="upcoming-expense-row" key={item.category}><span>{item.category_label}</span><span className="muted-copy">{item.days_until === 0 ? 'Hoy' : item.days_until === 1 ? 'Mañana' : `En ${item.days_until} días`} · {dateLabel(item.expected_date)} · {item.confidence}% confianza</span><strong>{money(item.expected_amount)}</strong></div>)}</div>}<p className="muted-copy">Detener un cargo no cancela el contrato con el comercio.</p></motion.section>}
+        {page === 'home' && <motion.section className="payments-card glass alerts-card" key="alerts-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Lo que necesita tu atención</h2><span className="pill">{signals?.alerts.length ?? '—'} alertas</span></header>{signals ? signals.alerts.length ? signals.alerts.map(alert => <article className="live-alert" key={alert.id}><ShieldAlert size={24} /><div><strong>{alert.title}</strong><p>{alert.detail}</p>{alert.annual_cost > 0 && <small>{money(alert.monthly_amount)}/mes · {money(alert.annual_cost)} al año · potencial, no ahorro realizado</small>}</div><button className="black-button small" onClick={() => { setChatInput(buildAlertPrompt(alert)); setPage('chat'); }}>Revisar</button></article>) : <p className="empty">Todo al día: el backend no reporta alertas activas.</p> : <p className="empty">{loading ? 'Consultando alertas…' : 'Alertas no disponibles.'}</p>}<p className="muted-copy">Detener un cargo no cancela el contrato con el comercio.</p></motion.section>}
       </AnimatePresence>
     </section>
-    {page === 'home' && <section className="right-column"><motion.section className="transactions" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="transactions-heading"><div><h2>Movimientos</h2><p>Historial de Ana</p></div><button className="black-button small" onClick={() => setPage('transactions')}>Ver todos</button></header><div className="transaction-list">{transactions.slice(-3).reverse().map(tx => <div className="transaction-row live-transaction" key={tx.id}><span className={`direction ${tx.signed_amount > 0 ? 'inflow' : 'outflow'}`}>{tx.signed_amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={tx.name}>{tx.name}</strong><span className="transaction-date">{dateLabel(tx.date)}</span><span className={`transaction-amount ${tx.signed_amount > 0 ? 'inflow' : ''}`}>{money(tx.signed_amount)}</span></div>)}{!transactions.length && <p className="empty">{loading ? 'Cargando movimientos…' : data ? 'No hay movimientos registrados.' : 'Historial no disponible.'}</p>}</div></motion.section><CategorySpending summary={data?.summary} loading={loading} variants={dashboardItem} /></section>}
+    {page === 'home' && <section className="right-column"><motion.section className="transactions" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="transactions-heading"><div><h2>Movimientos</h2><p>Historial de Ana</p></div><button className="black-button small" onClick={() => setPage('transactions')}>Ver todos</button></header><div className="transaction-list">{transactions.slice(-3).reverse().map(tx => <div className="transaction-row live-transaction" key={tx.id}><span className={`direction ${tx.signed_amount > 0 ? 'inflow' : 'outflow'}`}>{tx.signed_amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={tx.name}>{tx.name}</strong><span className="transaction-date">{dateLabel(tx.date)}</span><span className={`transaction-amount ${tx.signed_amount > 0 ? 'inflow' : ''}`}>{money(tx.signed_amount)}</span></div>)}{!transactions.length && <p className="empty">{loading ? 'Cargando movimientos…' : data ? 'No hay movimientos registrados.' : 'Historial no disponible.'}</p>}</div></motion.section><CategorySpending summary={data?.summary} loading={loading} variants={dashboardItem} />
+      {signals?.upcoming_expenses?.length > 0 && <motion.section className="glass upcoming-preview-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}>
+        <header className="card-heading"><h2>Próximos gastos</h2><button className="black-button small" onClick={() => setPage('calendar')}>Ver calendario</button></header>
+        <div className="upcoming-preview-list">
+          {signals.upcoming_expenses.slice(0, 3).map(item => <div className="upcoming-expense-row" key={item.category}><span>{item.category_label}</span><span className="muted-copy">{item.days_until === 0 ? 'Hoy' : item.days_until === 1 ? 'Mañana' : `En ${item.days_until} días`}</span><strong>{money(item.expected_amount)}</strong></div>)}
+        </div>
+      </motion.section>}
+    </section>}
     {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className="modal glass" role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={event => event.stopPropagation()}><button ref={closeRef} className="close-modal icon-button" aria-label="Cerrar" onClick={() => setModal(null)}><X /></button>
       {modal === 'score' && <><h2 id="dialog-title">Tu score, explicado</h2><p>Indicador propio de resiliencia financiera; no es un score de Buró ni garantiza aprobación de crédito.</p>{signals?.score.breakdown.map(item => <div className="detail-line score-factor-line" key={item.key}><span>{item.label}<small className="score-factor-explainer">{SCORE_FACTOR_EXPLAINERS[item.key]}</small></span><strong>{item.value}/100</strong></div>)}
         <div className="score-progress-section">

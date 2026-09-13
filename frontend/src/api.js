@@ -14,7 +14,7 @@ export function createApi({ baseUrl = DEFAULT_BASE, userId = 'ana', fetchImpl = 
       // Never retry a POST automatically: the server may have executed it already.
       const response = await fetchImpl(url.toString(), init);
       if (response.status === 429) {
-        let msg = 'Spark está saturado ahorita mismo (límite de solicitudes), intenta de nuevo en un minuto.';
+        let msg = 'Kivo está saturado ahorita mismo (límite de solicitudes), intenta de nuevo en un minuto.';
         try { const body = await response.json(); if (body?.reply) msg = body.reply; } catch { /* usa el mensaje por default */ }
         throw new Error(msg);
       }
@@ -48,4 +48,4 @@ export function createApi({ baseUrl = DEFAULT_BASE, userId = 'ana', fetchImpl = 
   };
 }
 export const api = createApi({ baseUrl: import.meta.env?.VITE_API_BASE_URL || DEFAULT_BASE, userId: import.meta.env?.VITE_USER_ID || 'ana' });
-export const sessionKey = `spark:${import.meta.env?.VITE_API_BASE_URL || DEFAULT_BASE}:${import.meta.env?.VITE_USER_ID || 'ana'}`;
+export const sessionKey = `kivo:${import.meta.env?.VITE_API_BASE_URL || DEFAULT_BASE}:${import.meta.env?.VITE_USER_ID || 'ana'}`;
