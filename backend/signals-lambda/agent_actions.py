@@ -659,6 +659,9 @@ def estimate_monthly_disposable(user_id, exclude_goal_slug=None):
     return round(monthly_income - monthly_expense - committed_goals, 2)
 
 
+MAX_REALISTIC_GOAL_MONTHS = 60  # 5 anios -- mas alla de esto deja de ser un plan util y se vuelve solo un numero
+
+
 def create_goal(user_id, label, target_amount, target_date=None):
     """Meta de ahorro de largo plazo (ej. 'viaje a Japon') -- a diferencia
     de una meta de categoria, esta SI acumula un total a lo largo de
@@ -682,27 +685,37 @@ def create_goal(user_id, label, target_amount, target_date=None):
     if target_date:
         months = _months_between(date.today().isoformat(), target_date)
         monthly_contribution = round(target_amount / months, 2)
-        realistic = disposable <= 0 or monthly_contribution <= disposable
+        # Antes "disposable <= 0" contaba como realista por accidente --
+        # sin dinero libre, CUALQUIER aporte requerido es irrealista, no al reves.
+        realistic = disposable > 0 and monthly_contribution <= disposable
     elif disposable <= 0:
         return {"ok": False, "reason": f"Con tu ingreso y gasto real actual no veo dinero libre por mes para ahorrar (~${disposable}) -- todavia no puedo armarte un plan realista. Baja una meta de categoria o ajusta tu gasto primero."}
     else:
         months = max(math.ceil(target_amount / disposable), 1)
         monthly_contribution = round(target_amount / months, 2)
-        realistic = True
+        # El disponible SIEMPRE alcanza aqui (months se calcula justo para
+        # que quepa) -- lo que puede no ser realista es el PLAZO: a $69/mes
+        # una meta de $80,000 toma 1154 meses (~96 anios), matematicamente
+        # "cabe" pero no es un plan util para nadie.
+        realistic = months <= MAX_REALISTIC_GOAL_MONTHS
 
     existing = table.get_item(Key={"user_id": user_id, "sk": f"{GOAL_PREFIX}{slug}"}).get("Item")
     table.put_item(Item=to_decimal({
         "user_id": user_id, "sk": f"{GOAL_PREFIX}{slug}", "type": "goal",
         "slug": slug, "label": label, "target_amount": target_amount,
         "monthly_contribution": monthly_contribution, "estimated_months": months,
+        "realistic": realistic,
         "contributed": existing["contributed"] if existing else 0,
         "created_at": existing["created_at"] if existing else date.today().isoformat(),
     }))
     verb = "actualizada" if existing else "creada"
+    years = round(months / 12, 1)
     if realistic:
         message = f"Meta '{label}' {verb}: ${target_amount} en ~{months} meses (~${monthly_contribution}/mes segun tu disponible real). No aparto nada -- usa log_goal_contribution cuando de verdad apartes dinero para esto."
-    else:
+    elif target_date:
         message = f"Meta '{label}' {verb}: para llegar a ${target_amount} el {target_date} necesitas ~${monthly_contribution}/mes, mas de lo que veo disponible hoy (~${disposable}/mes). La guarde de todos modos, pero puede que tengas que mover la fecha o bajar otra meta."
+    else:
+        message = f"Meta '{label}' {verb}: a tu ritmo actual (~${disposable}/mes libres) esto tomaria ~{months} meses (~{years} anios) -- no es un plazo realista para la mayoria de las metas. La guarde de todos modos, pero considera bajar el monto o buscar mas margen en tu presupuesto antes de comprometerte."
     return {
         "ok": True, "slug": slug, "target_amount": target_amount, "months": months,
         "monthly_contribution": monthly_contribution, "disposable": disposable,
@@ -724,13 +737,25 @@ def get_goals_with_progress(user_id):
         created = date.fromisoformat(g["created_at"])
         months_elapsed = max((today.year - created.year) * 12 + (today.month - created.month), 0)
         expected_by_now = round(min(float(g["monthly_contribution"]) * months_elapsed, target_amount), 2)
+        on_track = contributed >= expected_by_now
+        # "nueva" existe para no decir 'vas a buen ritmo' de una meta recien
+        # creada con $0 aportados -- tecnicamente cumple (nada se le debia
+        # todavia), pero suena a logro cuando en realidad no ha pasado nada.
+        if target_amount and contributed >= target_amount:
+            pace = "cumplida"
+        elif months_elapsed == 0:
+            pace = "nueva"
+        elif on_track:
+            pace = "bien"
+        else:
+            pace = "atrasada"
         goals.append({
             "slug": g["slug"], "label": g["label"], "target_amount": target_amount,
             "monthly_contribution": float(g["monthly_contribution"]), "estimated_months": int(g["estimated_months"]),
             "contributed": contributed, "remaining": round(max(target_amount - contributed, 0), 2),
             "percent": round(contributed / target_amount * 100) if target_amount else 0,
-            "on_track": contributed >= expected_by_now,
-            "expected_by_now": expected_by_now,
+            "on_track": on_track, "expected_by_now": expected_by_now, "pace": pace,
+            "realistic": bool(g.get("realistic", True)),
         })
     return goals
 
