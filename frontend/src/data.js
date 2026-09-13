@@ -36,7 +36,7 @@ export function appendChatExchange(session, userText, response) {
   // Tools de solo consulta (no acciones sobre dinero) -- nunca deben verse
   // como una acción rechazada en el feed solo porque su resultado no trae
   // el campo `ok` (una consulta exitosa no tiene por qué traerlo).
-  const READ_ONLY_TOOLS = ['get_status', 'get_score_history', 'get_envelopes_status', 'get_upcoming_expenses'];
+  const READ_ONLY_TOOLS = ['get_status', 'get_score_history', 'get_envelopes_status', 'get_upcoming_expenses', 'simulate_decision', 'get_financial_lesson'];
   const executedActions = response.actions_taken
     .filter(a => !READ_ONLY_TOOLS.includes(a.tool) && a.result)
     .map(a => ({

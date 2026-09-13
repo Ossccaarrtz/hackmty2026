@@ -86,6 +86,16 @@ test('chat exchanges become a transcript, and only executed actions (not get_sta
   assert.equal(next.feed.some(item => item.type === 'stop_subscription'), true);
   assert.equal(next.feed.some(item => item.type === 'chat_rejected'), true);
 });
+test('simulate_decision and get_financial_lesson never join the feed -- son simulacion/consulta, nunca ejecutan nada', () => {
+  const response = { reply: 'Si dejas el gimnasio, tu score subiria 12 puntos.', actions_taken: [
+    { tool: 'simulate_decision', result: { ok: true, score_now: 57, score_projected: 69 } },
+    { tool: 'get_financial_lesson', result: { ok: true, factor: 'essential_ratio' } },
+    { tool: 'log_external_expense', result: { ok: true, message: 'Registre $200 en efectivo.' } },
+  ] };
+  const next = appendChatExchange(emptySession(), 'que pasa si dejo el gimnasio?', response);
+  assert.equal(next.feed.length, 1); // solo log_external_expense ejecuta algo real
+  assert.equal(next.feed[0].type, 'log_external_expense');
+});
 test('a malformed chat response is rejected instead of silently corrupting the session', () => {
   assert.throws(() => appendChatExchange(emptySession(), 'hola', { reply: 'ok' }), /incompatible/);
   assert.throws(() => appendChatExchange(emptySession(), 'hola', { actions_taken: [] }), /incompatible/);
