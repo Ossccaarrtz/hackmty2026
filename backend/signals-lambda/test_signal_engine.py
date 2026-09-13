@@ -18,8 +18,8 @@ import unittest
 import signal_engine as se
 
 
-def purchase(date, category, amount, category_label=None):
-    return {"date": date, "category": category, "amount": amount, "category_label": category_label or category}
+def purchase(date, category, amount, category_label=None, merchant_name=None):
+    return {"date": date, "category": category, "amount": amount, "category_label": category_label or category, "merchant_name": merchant_name}
 
 
 class TestResolveReferenceDate(unittest.TestCase):
@@ -129,20 +129,36 @@ class TestEvaluateBillsRecencyWindow(unittest.TestCase):
 
     def test_bill_with_recent_activity_is_healthy(self):
         bills = [{"payee": "Telco Co", "status": "recurring", "payment_amount": 45, "bill_id": "b1"}]
-        purchases = [purchase("2026-09-03", "utilities", 45)]  # Telco Co -> utilities
+        purchases = [purchase("2026-09-03", "utilities", 45, merchant_name="Telco Co")]
         result = se.evaluate_bills(bills, purchases, as_of_date="2026-09-12")
         self.assertTrue(result["bills"][0]["healthy"])
 
     def test_bill_with_only_old_activity_is_unhealthy(self):
         bills = [{"payee": "Telco Co", "status": "recurring", "payment_amount": 45, "bill_id": "b1"}]
-        purchases = [purchase("2026-06-01", "utilities", 45)]  # > 60 dias antes del as_of
+        purchases = [purchase("2026-06-01", "utilities", 45, merchant_name="Telco Co")]  # > 60 dias antes del as_of
         result = se.evaluate_bills(bills, purchases, as_of_date="2026-09-12")
         self.assertFalse(result["bills"][0]["healthy"])
 
-    def test_bill_with_no_mapped_category_never_healthy(self):
+    def test_bill_with_no_matching_merchant_never_healthy(self):
+        """Regresion directa de un hallazgo real: evaluate_bills usaba un mapeo
+        categoria->comercio fijo con los nombres de UNA sola persona sembrada
+        (Mia) en vez del merchant_name real de cada compra -- con cualquier
+        otra persona (otros nombres de comercio), un bill sano con actividad
+        real de todos modos salia como fuga. Aqui la categoria SI matchea pero
+        el nombre de comercio NO -- debe seguir sin salud, sin importar
+        cuantas compras haya en esa categoria."""
         bills = [{"payee": "Gym Co", "status": "recurring", "payment_amount": 40, "bill_id": "b2"}]
-        result = se.evaluate_bills(bills, [purchase("2026-09-10", "discretionary", 40)], as_of_date="2026-09-12")
+        result = se.evaluate_bills(bills, [purchase("2026-09-10", "discretionary", 40, merchant_name="Otro Comercio")], as_of_date="2026-09-12")
         self.assertFalse(result["bills"][0]["healthy"])
+
+    def test_bill_matches_by_real_merchant_name_not_hardcoded_persona(self):
+        """Con una persona distinta a Mia (otros nombres de comercio reales),
+        el bill debe salir sano si el merchant_name real de la compra
+        coincide con el payee del bill -- sin depender de ningun mapeo fijo."""
+        bills = [{"payee": "Telcel Plan", "status": "recurring", "payment_amount": 200, "bill_id": "b3"}]
+        purchases = [purchase("2026-09-01", "utilities", 200, merchant_name="Telcel Plan")]
+        result = se.evaluate_bills(bills, purchases, as_of_date="2026-09-12")
+        self.assertTrue(result["bills"][0]["healthy"])
 
     def test_cancelled_bill_is_always_healthy_regardless_of_activity(self):
         bills = [{"payee": "Gym Co", "status": "cancelled", "payment_amount": 40, "bill_id": "b2"}]

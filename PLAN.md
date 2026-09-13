@@ -1,4 +1,4 @@
-# Plan de implementación — Centinel One
+# Plan de implementación — Spark (antes Centinel One)
 
 Este documento existe para que cualquiera del equipo pueda seguir construyendo sin necesitar una explicación en vivo. Todo lo marcado como "en vivo" ya está probado end-to-end contra la cuenta oficial de AWS y el sandbox de Nessie — no es teoría.
 
@@ -219,3 +219,43 @@ Se pidió explícitamente buscar el mismo patrón de bug ya encontrado una vez (
 **Cobertura de pruebas — ✅ resuelto.** `backend/signals-lambda/test_agent_actions.py`, 33 tests con `unittest`/`unittest.mock` de la stdlib (cero dependencias nuevas, no se empaquetan en ningún Lambda). Mockea `table` (DynamoDB) y las funciones de `nessie_actions` — corre en ~15ms, nunca toca AWS/Nessie real. Cubre `verified_move_to_savings`, `verified_release_buffer`, `verified_allocate_envelopes`, el flujo de dos pasos de `propose_stop_bill`/`confirm_stop_bill`/`verified_stop_bill`, la deduplicación de `get_verified_action_history`, y `deposit_matches_income_pattern`.
 
 **Verificado que el suite de verdad atrapa regresiones, no solo que pasa en verde:** se reintrodujeron temporalmente (y se revirtieron de inmediato) los dos bugs de seguridad ya corregidos esta sesión — el guardrail de anomalía ignorado en `verified_allocate_envelopes` y la ejecución prematura en `propose_stop_bill` — y en ambos casos el test correspondiente falló como se esperaba antes de restaurar el fix real. Correr con `python -m unittest test_agent_actions -v` desde `backend/signals-lambda/`.
+
+## 8. Pivote de producto — Spark (persona Ana, estudiante) — backlog concreto, nada de esto está construido todavía
+
+Decidido el 2026-09-12 tras feedback de jueces/mentores sobre el modelo de negocio original. Razonamiento completo en [PITCH.md](./PITCH.md). **Este pase solo tocó documentación** (este archivo, README.md, PITCH.md) — instrucción explícita de no tocar frontend/backend todavía. Lo que sigue es el backlog para cuando sí se autorice tocar código, en el orden recomendado:
+
+**8.1 — Docs (✅ hecho en este pase)**
+- README.md: sección de pivote, persona nueva, panorama competitivo actualizado, notas de honestidad en seed/estado actual.
+- PITCH.md: frase en una línea nueva, modelo de negocio de dos líneas + TAM/SAM/SOM, argumento regulatorio invertido (ya no necesitamos licencia de money transmitter), citas verificadas nuevas (Cardlytics, Belvo, Finerio Connect, Santander Cuenta Universitaria/TUI), autocrítica del pivote mismo, guion de 3 minutos con narrativa de Ana + nota de honestidad sobre que el código no está al día.
+- PLAN.md: esta sección.
+
+**8.2 — Re-seed de Nessie (backend, no frontend) — ✅ hecho**
+- `seed/ana-seed.js` (mismo patrón que `jarbis-seed.js`) creó un customer/checking/savings nuevo en Nessie para Ana (montos en MXN): mesada/pago de medio tiempo irregular ($1,150-$2,100), renta de cuarto ($2,800 x3), cafetería (~18 compras), transporte (~12), discrecional (15), plan celular sano (bill control), FitZone Campus (bill fuga, sin actividad). `backend/signals-lambda/load_ana_seed.py` cargó todo a DynamoDB bajo `user_id="ana"`, en paralelo a Mia (nada de Mia se tocó ni se reemplazó).
+- Probado en vivo: `/signals?user_id=ana` da score 57/100, detecta la fuga real (FitZone Campus) y NO marca como fuga el bill sano (Telcel Plan) — ver los dos bugs de abajo, encontrados y corregidos durante esta prueba.
+
+**Dos bugs reales encontrados y corregidos al sembrar la primera persona nueva del proyecto (no existían con solo Mia porque nunca se habían probado con otro nombre de comercio/otra cuenta):**
+1. **`evaluate_bills` en `signal_engine.py` usaba un diccionario `CATEGORY_TO_MERCHANT` hardcodeado con los nombres de comercio de Mia** ("Telco Co", "SuperMart", etc.) en vez del `merchant_name` real de cada compra — con cualquier otra persona, un bill sano con actividad real de todos modos salía como fuga (confirmado: "Telcel Plan" de Ana, con 3 pagos reales relacionados, salía "sin actividad en 87 días"). Corregido: ahora compara contra `p.get("merchant_name")` directamente, sin ningún mapeo fijo. Constante `CATEGORY_TO_MERCHANT` eliminada (quedó sin uso). 2 tests nuevos en `test_signal_engine.py` (uno documenta el bug original a propósito).
+2. **`CHECKING_ID`/`SAVINGS_ID` en `agent_actions.py` estaban hardcodeados a la cuenta de Mia** — cualquier acción de dinero (`move_to_savings`, apartados, nómina de un tercero) disparada con `user_id="ana"` habría escrito de verdad en la cuenta de Mia en Nessie, aunque el registro en DynamoDB dijera "ana". Corregido: `get_account_ids(user_id)` resuelve la cuenta real correcta por persona (`ACCOUNTS_BY_USER`), con Mia como fallback para user_id no reconocidos. Probado en vivo end-to-end: se declaró el patrón de nómina de Ana, se creó un apartado de Transporte, se disparó un depósito que matchea su patrón — el depósito real llegó a la cuenta de Ana (confirmado con `GET /accounts/{ana_checking}/deposits`), el reparto se ejecutó solo, y la cuenta de Mia no se tocó. 2 tests nuevos en `test_agent_actions.py`.
+
+Estado actual de Ana: income pattern declarado (~$1,581 cada 12 días, tolerancia 41% derivada de su historial real) y un apartado de Transporte ($300/mes) ya configurados, listos para demo. Simulación reseteada a Día 0 después de las pruebas.
+
+**8.3 — Señal de "activación" (backend, nuevo) — estimado 30-40 min con tests**
+- Nueva función en `signal_engine.py`, ej. `compute_activation_signal(deposits, purchases, card_issued_date)` — mide días desde la última transacción real y/o frecuencia mensual de uso, devuelve un índice 0-100 y una alerta cuando está por debajo de un umbral.
+- Esta es la pieza de "Algorithmic Logic/Intelligence" (9% de la rúbrica, el sub-criterio individual más pesado) que justifica que esto no sea "solo un dashboard con ofertas" — sin esto, el pivote pierde Technical Depth respecto a la idea original.
+- Necesita tests unitarios siguiendo el patrón de `test_signal_engine.py` (funciones puras, sin mocks).
+
+**8.4 — Módulo de ofertas / card-linked offers (backend + una pantalla nueva) — estimado 20-30 min**
+- Lista curada estática de ofertas por categoría (ej. descuento estudiantil de streaming para "entretenimiento", promo Mastercard-Cinépolis) — lógica simple: toma la categoría de mayor gasto discrecional real (`summary.by_category`, ya existe) y regresa la oferta correspondiente.
+- No hace falta integración real con comercios para la demo — el punto es mostrar que la recomendación está basada en datos reales del usuario, no es genérica.
+
+**8.5 — Re-skin de frontend (copy únicamente, cero lógica nueva) — estimado 30-40 min**
+- Persona: nombre, edad, tagline del login, FAQ, mensajes de chat, narrativa de cierre del score.
+- Nombre del "empleador" en la simulación de depósito de un tercero: de "Estudio Creativo" a algo tipo "Papá y mamá" o "Beca/Trabajo de medio tiempo".
+- Nombre del banco ficticio en la demo: **no usar "Santander" literal** (evitar implicar un partnership real que no existe) — usar un nombre ficticio, ej. "Banco Aurora", y citar a Santander solo como evidencia de mercado en el pitch, no en la demo misma.
+
+**8.6 — Simulador financiero educativo (`simulate_decision` + `get_financial_lesson`) — ✅ hecho, backend + chat, sin depender de frontend nuevo**
+- Mientras el frontend está ocupado con otro trabajo, se identificó esto como el ítem de mayor valor que backend puede avanzar solo: dos tools de chat nuevas que responden "¿que pasaria con mi score si...?" (dejar un cargo, reducir gasto discrecional) reutilizando `signal_engine.compute_signals` sobre una copia hipotética de los datos, más una lección atada al factor más débil real del score. Detalle completo, incluyendo un bug de anti-alucinación encontrado y corregido en la primera prueba en vivo, en el [README](./README.md#backend-desplegado-ya-en-la-cuenta-oficial-de-aws-del-equipo), sección "Noveno y décimo tools de chat en vivo".
+- 15 tests nuevos, 107 en total. Probado en vivo contra la cuenta real de Ana.
+- Pendiente (frontend, no bloqueante): agregar `simulate_decision`/`get_financial_lesson` a la lista de exclusión del feed de acciones en `data.js` (mismo patrón que `get_envelopes_status`/`get_upcoming_expenses`), para que no se pinten como "acción rechazada".
+
+**Nombre de producto elegido para el pivote: "Spark"** (discutido y elegido sobre otras opciones — Lanix, Activa, Kick, Boost, Pulse — por ser corto, fácil de decir en el pitch, y conectar directo con la tesis de "encender una tarjeta dormida").

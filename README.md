@@ -1,6 +1,40 @@
-# Centinel One — HackMTY 2026 (Reto Capital One)
+# Spark (antes Centinel One) — HackMTY 2026 (Reto Capital One)
 
-Agente financiero que califica a personas sin historial de crédito usando su comportamiento real de flujo de efectivo, y actúa sobre su dinero (no solo aconseja) con una capa de verificación antes de tocar fondos reales.
+Plataforma que activa tarjetas bancarias universitarias dormidas — le da al banco la activación que ya está pagando y no consigue, y al estudiante educación financiera + acciones reales y verificadas sobre su propio dinero, preparándolo para su primera tarjeta de crédito.
+
+## ⚠️ Pivote de producto (2026-09-12)
+
+Cambiamos la tesis de negocio a medio hackatón tras feedback de jueces/mentores sobre el modelo original (ver [PITCH.md](./PITCH.md) para el detalle completo del porqué). **Esta actualización toca solo documentación de contexto (este README, PLAN.md, PITCH.md) — el código (backend y frontend) todavía no se tocó**, así que el prototipo en vivo sigue corriendo con la persona anterior (Mia, freelancer) hasta que se complete el trabajo listado en [PLAN.md](./PLAN.md) sección 8.
+
+**Qué se queda igual (motor técnico, cero cambios de código):**
+| Pieza | Por qué se queda |
+|---|---|
+| Cash-Flow Resilience Score (4 factores) | El mecanismo de scoring no depende de quién sea la persona — aplica igual a un estudiante que a una freelancer |
+| Guardrail de anomalía | Detección de gasto atípico, agnóstica de persona |
+| Acciones verificadas (mover a ahorro, detener fuga/suscripción, apartados con reparto proporcional) | Mismo patrón de verificación anti-alucinación, mismo código |
+| Chat con Gemini + verificación anti-alucinación de texto | No depende de la historia de fondo |
+| Reporte de confiabilidad | Se vuelve, si acaso, MÁS relevante: es la evidencia que el banco necesita para ver activación real |
+| Depósito de un tercero (dos cuentas Nessie reales) | Se re-narra de "pago de cliente freelance" a "mesada de los papás" — mismo pipeline técnico |
+| Los 89 tests de backend + 12 de frontend | Ninguno de estos deja de aplicar |
+
+**Qué se re-narra (mismo código, cambia el copy/los datos de ejemplo):**
+| Pieza | De → A | Estado |
+|---|---|---|
+| Persona | Mia, 24, freelance, ingreso irregular → **Ana, 19, estudiante universitaria, tarjeta-credencial bancaria emitida al inscribirse y nunca activada** | ✅ Seed de Nessie + DynamoDB listo (`user_id=ana`), en paralelo a Mia |
+| Narrativa de cierre del score | "camino a tarjeta secured" → "de tarjeta dormida a lista para su primera tarjeta de crédito con el mismo banco" | Pendiente en frontend |
+| Seed de Nessie | Misma estructura (depósitos + compras + bills), relabeleo de merchants/categorías a contexto de campus, montos en MXN | ✅ Hecho — ver detalle abajo |
+| Modelo de negocio | "se lo vendemos a Capital One sobre sus propios clientes" → dos líneas de ingreso: comisión del banco por estudiante activado + comisión por oferta de marca redimida (ver PITCH.md) | ✅ Documentado |
+
+**Detalle del re-seed de Ana (ya en vivo):** cliente y cuentas nuevas en Nessie (`user_id="ana"` en DynamoDB, en paralelo a Mia, nada se reemplazó). Mesada/pago de medio tiempo irregular en MXN ($1,150-$2,100), renta de cuarto, cafetería, transporte, plan celular (bill sano), FitZone Campus (bill fuga sin actividad). Al sembrar esta primera persona nueva se encontraron y corrigieron **dos bugs reales de arquitectura** que solo aparecían con un persona distinta a Mia — detalle completo en [PLAN.md](./PLAN.md) sección 8.2: (1) la detección de bills sanos usaba un mapeo de comercios hardcodeado a los nombres de Mia en vez del `merchant_name` real de cada compra, y (2) las acciones de dinero (ahorro, apartados) escribían siempre en la cuenta de Nessie de Mia sin importar qué persona las disparara. Ambos corregidos y probados en vivo end-to-end con la cuenta real de Ana.
+
+**Qué es nuevo de verdad (no construido todavía, backlog en PLAN.md sección 8):**
+- Señal de "activación" (qué tan dormida está la tarjeta) en `signal_engine.py`
+- Módulo de ofertas tipo *card-linked offers* (mapea categoría real de gasto → oferta relevante)
+- TAM/SAM/SOM y las dos líneas de ingreso documentadas en PITCH.md (esto sí ya está escrito)
+
+**Qué se quita/deja de mencionarse como argumento central:**
+- El argumento de "esto solo lo puede construir un banco por la licencia de money transmitter" — ya no aplica igual porque Spark no mueve dinero de terceros; ahora es una ventaja (no necesita esa licencia), no una limitación. Ver PITCH.md.
+- "Vender el score a Capital One" como único modelo de negocio — sigue siendo válido como argumento secundario, pero no es la tesis central.
 
 ## El reto
 
@@ -21,13 +55,15 @@ Agente financiero que califica a personas sin historial de crédito usando su co
 
 ## El problema
 
-**Persona: Mia, 24 años**, ingreso por proyecto/freelance, irregular. No tiene ningún archivo en Buró de crédito — no es historial "delgado", es inexistente ("credit invisible"). Ningún banco tradicional puede evaluarla con los modelos clásicos (FICO/VantageScore requieren historial previo que ella no tiene).
+**Persona objetivo (nueva tesis): Ana, 19 años**, segundo semestre de universidad. Al inscribirse, su universidad tiene convenio con un banco que le entregó una tarjeta-credencial (identificación + cuenta de débito) — la usó una vez para sacar efectivo y nunca más. No tiene ningún archivo en Buró de crédito ("credit invisible", no "historial delgado"). El banco pagó por emitir esa tarjeta y por el convenio universitario, y hoy no tiene ninguna señal de que esa inversión esté generando valor.
 
-**Tamaño de mercado:** ~7M credit invisible + ~25M unscorable en EE.UU. (corrección CFPB, 2025) — más el universo de ingreso variable (gig, freelance, por hora) que no está en esa cifra. TAM ampliado: base completa de clientes de Capital One, ya que el mismo algoritmo funciona para cualquier perfil de ingreso, solo aporta más donde nadie más compite hoy.
+**El patrón es real y verificado, no una anécdota aislada de una sola universidad:** Santander (México) tiene un producto formal para esto — "Cuenta Universitaria" / Tarjeta Universitaria Inteligente (TUI), tarjeta-credencial emitida vía convenio banco-universidad (verificado: [santander.com.mx](https://www.santander.com.mx/personas/cuentas/universitaria)). Es una categoría de producto reconocida, no algo que estemos infiriendo solo de una observación local.
 
-**Por qué encaja con Capital One:** ~34% de su cartera doméstica de tarjetas tenía score ≤660 (subprime) al Q3 2015 — significativamente más expuesto a este segmento que JPMorgan Chase o Citigroup en el mismo periodo (10-Q FY2015; también citado en análisis independientes sobre la fusión con Discover). **Es una cifra histórica de 2015, no del 10-K FY2025 más reciente** — si un juez pregunta la fuente en vivo, aclarar la fecha en vez de presentarla como actual. Su ventaja histórica fundacional fue underwriting basado en datos para encontrar buenos clientes en near-prime/subprime que otros bancos rechazaban por regla fija. Su cliente ideal declarado es el "profitable balance revolver". El score propuesto ayuda a identificar con seguridad a la próxima generación de esos clientes, no es solo una herramienta de bienestar financiero.
+**Tamaño de mercado (ver TAM/SAM/SOM completo en [PITCH.md](./PITCH.md)):** del orden de millones de estudiantes de educación superior en México, de los cuales un subconjunto ya identificable tiene tarjeta-credencial de un banco con convenio universitario activo.
 
-**Precedente de industria:** VantageScore 4plus ya usa datos alternativos/cash-flow para calificar a ~33M adultos que FICO no puede. CFPB, Fed, OCC y NCUA emitieron un comunicado conjunto respaldando el uso de datos alternativos en underwriting (con advertencia de fair lending).
+**Persona anterior (Mia, 24, freelance/ingreso irregular) — sigue siendo el contexto técnico del prototipo en vivo hasta que se complete el re-seed.** El motor de scoring/verificación no distingue entre ambas personas; el argumento de mercado y el modelo de negocio sí cambiaron — ver la nota de pivote arriba.
+
+**Precedente de industria (sigue aplicando, agnóstico de persona):** VantageScore 4plus ya usa datos alternativos/cash-flow para calificar a ~33M adultos que FICO no puede. CFPB, Fed, OCC y NCUA emitieron un comunicado conjunto respaldando el uso de datos alternativos en underwriting (con advertencia de fair lending).
 
 ## Panorama competitivo
 
@@ -37,7 +73,8 @@ Agente financiero que califica a personas sin historial de crédito usando su co
 | Rocket Money | Detecta y cancela suscripciones | No genera score, no hace forecast |
 | Monarch / Copilot | Forecast de cash-flow, insights con IA | Solo informa, no ejecuta nada |
 | Cleo | Chat de IA sobre finanzas | Cero acción real |
-| **Centinel One** | Score sin Buró + ejecuta acciones reales con verificación | — |
+| Cardlytics (verificado, cotiza en NASDAQ) | Ofertas ligadas a tarjeta (card-linked offers), pagado por la marca | No hace scoring, no educa, no ejecuta acciones sobre la cuenta del usuario |
+| **Spark** | Activación + educación + score sin Buró + ejecuta acciones reales con verificación, vendido al banco como solución a un KPI que ya tiene (activación) | — |
 
 ## Arquitectura
 
@@ -113,6 +150,8 @@ Validación real: Capital One ya tiene en su app la función "Block Future Charg
 
 ## Datos sembrados (seed)
 
+**Nota del pivote:** lo de abajo describe el seed de Mia (sigue vivo sin cambios). El seed de Ana (estudiante, MXN) ya existe en paralelo bajo `user_id="ana"` — ver detalle en la sección de pivote arriba y en [PLAN.md](./PLAN.md) sección 8.2. El frontend todavía apunta a Mia por default (`VITE_USER_ID`); apuntarlo a Ana es parte del re-skin de frontend pendiente.
+
 ~90 días de historial de Mia ya viven en el sandbox de Nessie (ver [`/seed`](./seed)):
 
 | | |
@@ -124,6 +163,12 @@ Validación real: Capital One ya tiene en su app la función "Block Future Charg
 | Balance real (ledger propio, no el de Nessie) | $506 |
 
 **Motor de señales corriendo contra estos datos ahora mismo:** score = 64/100, 1/2 bills sanos, fuga detectada en Gym Co (~$480/año), colchón cubre 12 días. Prototipo en Node en [`/backend/signal-engine.js`](./backend/signal-engine.js); versión real desplegada en Python en [`/backend/signals-lambda`](./backend/signals-lambda).
+
+## CI/CD del frontend — ✅ en vivo
+
+[`.github/workflows/deploy-frontend.yml`](./.github/workflows/deploy-frontend.yml): cada push a `main` que toque `frontend/` corre `npm ci` + `npm test` + `npm run build`, y si todo pasa, sincroniza `dist/` a S3 (`centinel-one-frontend`) e invalida la caché de CloudFront automáticamente — nadie del equipo tiene que acordarse de desplegar a mano. También se puede disparar manualmente desde la pestaña Actions de GitHub (`workflow_dispatch`) sin necesitar un commit.
+
+Las credenciales de AWS viven como GitHub Secrets de un usuario IAM dedicado (`centinel-frontend-ci`), con permiso mínimo: solo escribir/borrar en ese bucket específico y solo invalidar esa distribución específica de CloudFront — no tiene acceso a nada más de la cuenta. Probado en vivo end-to-end: el primer push que agregó este workflow disparó su propia corrida real, completó los 3 pasos de verificación (install/test/build) y el deploy en 19 segundos, sin intervención manual.
 
 ## Backend desplegado (ya en la cuenta oficial de AWS del equipo)
 
@@ -269,6 +314,22 @@ Probado en vivo de punta a punta, con las dos cuentas reales: `POST /envelopes/s
 
 **Nota de manejo de credenciales:** la api key de la cuenta del tercero vive únicamente como variable de entorno del Lambda (`EMPLOYER_NESSIE_API_KEY`), nunca en el código fuente ni en este repo — mismo tratamiento que la key principal (`NESSIE_API_KEY`).
 
+**Noveno y décimo tools de chat en vivo — simulador financiero educativo (backend, sin depender de UI nueva):**
+```
+POST /chat/message  { "message": "que pasaria con mi score si dejo de pagar el gimnasio?" }
+POST /chat/message  { "message": "como puedo mejorar mi score?" }
+```
+
+Con el pivote a Spark, "educar financieramente" pasó de ser un enunciado del pitch a un tool real: `simulate_decision` responde "¿qué pasaría si...?" (dejar de pagar un cargo, o reducir gasto discrecional un monto dado) reutilizando el **mismo** `signal_engine.compute_signals` que ya calcula el score real, sobre una copia hipotética de los datos — nunca toca Nessie ni DynamoDB, es puramente una proyección. `get_financial_lesson` identifica el factor más débil del score actual y explica por qué le pesa, usando el `detail` real ya calculado de los datos de la persona, no una lista de tips genéricos (eso ya se descartó a propósito en la sección de "Descartado" de este README).
+
+**Por qué esto no es "un chatbot dando consejos" (la trampa que el propio reto señala como débil):** la respuesta nunca la inventa el LLM — el número sale de correr el motor de señales real dos veces (antes/después) y comparar. El LLM solo narra un resultado ya calculado, igual que con cualquier otra tool del proyecto.
+
+**Bug encontrado y corregido en la primera prueba en vivo:** el monto de la simulación solo vivía dentro del texto de `lesson` (ej. "...FitZone Campus ($250/mes)...") — la capa anti-alucinación de texto (`find_unverified_amounts`, ver arriba) no puede verificar una cifra que solo aparece en prosa, así que el chat la reemplazaba por `[monto no confirmado]` aunque el número fuera correcto. Mismo patrón exacto que ya se había corregido una vez con `monthly_amount` en las alertas de `get_status`. Corregido igual: el monto ahora es un campo explícito (`monthly_amount`) en el resultado de la tool, no solo texto.
+
+Probado en vivo contra la cuenta real de Ana: *"¿qué pasaría con mi score si dejo de pagar FitZone Campus?"* → el chat llamó `simulate_decision`, calculó **57 → 69 puntos (+12)** y **1 → 3 días de colchón de liquidez**, explicó el porqué citando los pesos reales de cada factor, y ofreció ejecutar la acción de verdad si se confirma — sin inventar ningún número. 15 tests nuevos (`TestSimulateDecision`, `TestGetWeakestFactorLesson`, incluida una regresión directa del bug de arriba), 107 tests en total en el backend.
+
+**Nota para quien lleve el frontend:** igual que `get_envelopes_status`/`get_upcoming_expenses`, estas dos tools son de solo consulta/simulación (nunca ejecutan nada) — hay que agregarlas a la lista de exclusión del feed de acciones en `data.js` para que no se pinten como "acción rechazada".
+
 ## Auditoría propia (agente independiente, solo lectura) — 4 hallazgos reales corregidos
 
 Se lanzó una revisión de código independiente buscando específicamente el mismo patrón que ya se había encontrado una vez (un guardrail que aparenta estar activo pero nunca se ejecuta). Encontró 4 hallazgos reales, ya corregidos y desplegados:
@@ -372,8 +433,8 @@ Dos agentes de revisión (uno para backend, uno para frontend) auditaron todo el
 **Pendiente antes de la demo real (no bloquea seguir construyendo):**
 - ~~Confirmar cuota de la API key de Gemini o habilitar billing~~ — **ya resuelto.** Billing activo (Cloud Prepay, MXN 100), modelo de vuelta a `gemini-3.6-flash`, probado en vivo con ráfaga de 8 llamadas sin ningún 429.
 - Dominio `.tech` propio, si el equipo lo tiene — conectarlo a la distribución de CloudFront ya existente
-- Segundo escenario/persona (ingreso estable) — sigue siendo idea abierta, no comprometida
+- **Pivote de producto a Spark (persona Ana, re-seed, señal de activación, módulo de ofertas)** — documentación ya actualizada (este README, PLAN.md, PITCH.md); código pendiente, ver PLAN.md sección 8.
 
 ## Track
 
-Capital One Hackathon 2026 — Track 1: Consumer Financial Autonomy & Credit Building.
+Capital One Hackathon 2026 — Track 1: Consumer Financial Autonomy & Credit Building. La persona nueva (estudiante universitaria, "thin-file"/credit-invisible) encaja igual o mejor que la anterior con el texto explícito del track ("cash-flow-based credit scoring for thin-file consumers").

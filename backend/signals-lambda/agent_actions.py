@@ -18,8 +18,21 @@ from nessie_actions import stop_recurring_bill, sweep_to_savings, release_from_s
 
 REGION = "us-east-1"
 TABLE_NAME = "jarbis-financiero-data"
-CHECKING_ID = "3cbe83c6-e844-48b3-b86a-627b8a6e3028"
+CHECKING_ID = "3cbe83c6-e844-48b3-b86a-627b8a6e3028"  # Mia -- fallback para user_id no reconocidos
 SAVINGS_ID = "f9428a58-dbc4-49b3-9105-e69460a56a9a"
+ACCOUNTS_BY_USER = {
+    "mia": {"checking": CHECKING_ID, "savings": SAVINGS_ID},
+    "ana": {"checking": "3303b959-15c4-4a5d-aeea-1e0503712d37", "savings": "5616be1c-84c4-4e37-9736-9028d5d444a0"},
+}
+
+
+def get_account_ids(user_id):
+    """Cada persona tiene su propia cuenta real en Nessie -- sin esto, una
+    accion de dinero (mover a ahorro, apartados) disparada con user_id="ana"
+    escribiria de verdad en la cuenta de Mia, aunque el registro en DynamoDB
+    dijera "ana". Encontrado al sembrar la primera persona nueva del
+    proyecto (Ana, pivote a Spark)."""
+    return ACCOUNTS_BY_USER.get(user_id, ACCOUNTS_BY_USER["mia"])
 # Cuenta real de un tercero (otra app/otro dueno en el sandbox de Nessie, NO
 # nuestra) usada para la demo de "nomina de un tercero" -- ver
 # simulate_third_party_payroll.
@@ -104,6 +117,137 @@ def get_full_signals(deposits, purchases, bills_plain, user_id=None, as_of_date=
 def get_current_signals(user_id="mia"):
     deposits, purchases, bills_plain = load_data(user_id)
     return get_full_signals(deposits, purchases, bills_plain, user_id=user_id)
+
+
+SIMULATABLE_ACTIONS = {"stop_bill", "reduce_discretionary"}
+
+
+def simulate_decision(user_id, action, params=None):
+    """Simulador financiero educativo: responde '¿que pasaria con mi score
+    si...?' reutilizando el MISMO signal_engine.compute_signals que ya
+    calcula el score real, sobre una copia hipotetica de los datos -- nunca
+    toca Nessie ni DynamoDB. La comparacion antes/despues es honesta
+    (mismos calculos, no una aproximacion aparte), y el "lesson" que
+    regresa esta atado a los numeros reales de esta simulacion, no es un
+    consejo generico. Pensado para dejar que alguien pruebe una decision
+    antes de tomarla -- eso es educacion financiera aplicada, no solo un
+    dato mas en el dashboard."""
+    params = params or {}
+    if action not in SIMULATABLE_ACTIONS:
+        return {"ok": False, "reason": f"No se como simular '{action}'. Puedo simular: {', '.join(sorted(SIMULATABLE_ACTIONS))}."}
+
+    deposits, purchases, bills_plain = load_data(user_id)
+    total_income = sum(float(d["amount"]) for d in deposits)
+    total_expense = sum(float(p["amount"]) for p in purchases)
+    history = get_score_history(user_id) if user_id else []
+    current = compute_signals(deposits, purchases, bills_plain, total_income=total_income, total_expense=total_expense, score_history=history)
+
+    if action == "stop_bill":
+        payee = (params.get("bill_payee") or "").strip()
+        bill = next((b for b in bills_plain if b["payee"].lower() == payee.lower()), None)
+        if not bill:
+            return {"ok": False, "reason": f"No encontre ningun cargo llamado '{payee}' para simular."}
+        if bill["status"] != "recurring":
+            return {"ok": False, "reason": f"'{bill['payee']}' ya no esta activo (estado actual: {bill['status']}) -- no hay nada que simular."}
+        monthly_amount = float(bill["payment_amount"])
+        changed_amount = monthly_amount
+        hypothetical_bills = [dict(b, status="cancelled") if b["bill_id"] == bill["bill_id"] else b for b in bills_plain]
+        hypothetical = compute_signals(
+            deposits, purchases, hypothetical_bills,
+            total_income=total_income, total_expense=total_expense - monthly_amount,
+            score_history=history,
+        )
+        lesson = (
+            f"Dejar de pagar '{bill['payee']}' (${monthly_amount}/mes) mueve dos de los 4 factores del score a la vez: "
+            f"tu recurrencia de bills sube porque ese cargo deja de contar como una fuga sin monitorear (pesa 20%), y "
+            f"si ese dinero se queda en tu cuenta en vez de gastarse, tu colchon de liquidez tambien crece (pesa otro 20%). "
+            f"Por eso las suscripciones olvidadas pesan tanto: no es solo el gasto, es la señal de que nadie esta viendo a donde va el dinero."
+        )
+    else:  # reduce_discretionary
+        try:
+            target_amount = float(params.get("monthly_amount"))
+        except (TypeError, ValueError):
+            return {"ok": False, "reason": "Dime un monto valido para simular la reduccion de gasto discrecional."}
+        if target_amount <= 0:
+            return {"ok": False, "reason": "El monto tiene que ser mayor a cero."}
+        current_discretionary = sum(float(p["amount"]) for p in purchases if p["category"] == "discretionary")
+        if current_discretionary <= 0:
+            return {"ok": False, "reason": "No tienes gasto discrecional registrado todavia -- no hay nada que reducir en la simulacion."}
+        actual_reduction = min(target_amount, current_discretionary)
+        changed_amount = actual_reduction
+        scale = (current_discretionary - actual_reduction) / current_discretionary
+        hypothetical_purchases = [
+            {**p, "amount": float(p["amount"]) * scale} if p["category"] == "discretionary" else p
+            for p in purchases
+        ]
+        hypothetical_total_expense = sum(float(p["amount"]) for p in hypothetical_purchases)
+        hypothetical = compute_signals(
+            deposits, hypothetical_purchases, bills_plain,
+            total_income=total_income, total_expense=hypothetical_total_expense,
+            score_history=history,
+        )
+        lesson = (
+            f"Reducir ${round(actual_reduction)} de gasto discrecional sube directamente tu ratio esencial/discrecional "
+            f"(pesa 25% del score, el segundo factor mas pesado despues de la regularidad de ingreso) y tambien tu "
+            f"colchon de liquidez, porque ese dinero se queda disponible en vez de gastarse."
+        )
+        if actual_reduction < target_amount:
+            lesson += f" Nota: solo tienes ${round(current_discretionary)} de gasto discrecional registrado en este periodo, asi que la simulacion se limito a eso."
+
+    return {
+        "ok": True,
+        "monthly_amount": round(changed_amount, 2),
+        "score_now": current["score"]["value"],
+        "score_projected": hypothetical["score"]["value"],
+        "score_delta": hypothetical["score"]["value"] - current["score"]["value"],
+        "liquidity_days_now": current["liquidity"]["days_covered"],
+        "liquidity_days_projected": hypothetical["liquidity"]["days_covered"],
+        "lesson": lesson,
+    }
+
+
+FACTOR_LESSONS = {
+    "income_regularity": {
+        "why": "Pesa 35% del score, el factor mas pesado de los 4 -- mide que tan predecible es la fecha y el monto de tus depositos.",
+        "how": "No se puede simular con una decision de gasto (depende de tus fuentes de ingreso reales), pero declarar tu patron de nomina ayuda a que el sistema reconozca tus depositos reales de forma consistente.",
+    },
+    "essential_ratio": {
+        "why": "Pesa 25% del score, el segundo factor mas pesado -- mide que tan grande es tu gasto discrecional comparado con tu ingreso total.",
+        "how": "Prueba simular una reduccion de gasto discrecional (simulate_decision con action='reduce_discretionary') para ver el impacto exacto en tu score antes de decidir algo real.",
+    },
+    "bill_health": {
+        "why": "Pesa 20% del score -- mide cuantos de tus cargos recurrentes tienen actividad real relacionada, contra cuantos son fugas sin monitorear.",
+        "how": "Si tienes una fuga detectada, prueba simular que la detienes (simulate_decision con action='stop_bill') para ver el impacto exacto antes de decidir algo real.",
+    },
+    "liquidity_cushion": {
+        "why": "Pesa 20% del score -- mide cuantos dias de gasto esencial cubre tu balance actual.",
+        "how": "Resolver una fuga o reducir gasto discrecional tambien mejora este factor, porque deja mas dinero disponible en tu cuenta -- son las mismas dos simulaciones de arriba.",
+    },
+}
+
+
+def get_weakest_factor_lesson(user_id):
+    """Identifica el factor mas debil del score real de la persona y explica
+    por que le pesa, usando SUS propios numeros (el campo 'detail' ya viene
+    calculado por signal_engine a partir de datos reales) -- no una lista
+    de tips genericos, que es justo lo que este proyecto evita a proposito
+    en el resto del producto."""
+    signals = get_current_signals(user_id)
+    breakdown = signals["score"]["breakdown"]
+    if not breakdown:
+        return {"ok": False, "reason": "No hay suficientes datos todavia para identificar tu factor mas debil."}
+    weakest = min(breakdown, key=lambda item: item["value"])
+    lesson = FACTOR_LESSONS.get(weakest["key"], {})
+    return {
+        "ok": True,
+        "factor": weakest["key"],
+        "factor_label": weakest["label"],
+        "value": weakest["value"],
+        "weight": weakest["weight"],
+        "detail": weakest["detail"],
+        "why_it_matters": lesson.get("why", ""),
+        "how_to_improve": lesson.get("how", ""),
+    }
 
 
 def _savings_pool_available(purchases):
@@ -239,7 +383,8 @@ def verified_move_to_savings(user_id, amount, reason):
         return {"ok": False, "reason": f"Mover ${amount} dejaria tu colchon en solo {projected_liquidity['days_covered']} dias de gasto esencial -- menos de una semana. No lo voy a hacer sin que lo confirmes fuera del chat."}
 
     try:
-        sweep_to_savings(CHECKING_ID, SAVINGS_ID, amount, reason or "Ahorro solicitado por chat")
+        accounts = get_account_ids(user_id)
+        sweep_to_savings(accounts["checking"], accounts["savings"], amount, reason or "Ahorro solicitado por chat")
     except Exception as e:
         return {"ok": False, "reason": f"No se pudo mover el dinero en Nessie ahorita: {e}. No se hizo ningun cambio."}
 
@@ -283,7 +428,8 @@ def verified_release_buffer(user_id, amount, reason):
         return {"ok": False, "reason": f"Ya liberaste ${already_today} hoy -- liberar ${amount} mas pasaria el tope diario autonomo de ${MAX_AUTONOMOUS_SAVINGS}."}
 
     try:
-        release_from_savings(CHECKING_ID, SAVINGS_ID, amount, reason or "Suavizado de ingreso solicitado por chat")
+        accounts = get_account_ids(user_id)
+        release_from_savings(accounts["checking"], accounts["savings"], amount, reason or "Suavizado de ingreso solicitado por chat")
     except Exception as e:
         return {"ok": False, "reason": f"No se pudo liberar el dinero en Nessie ahorita: {e}. No se hizo ningun cambio."}
 
@@ -385,7 +531,8 @@ def simulate_third_party_payroll(user_id, employer_label="Estudio Creativo", amo
     on_date = on_date or resolve_reference_date(None, purchases) or date.today().isoformat()
 
     try:
-        movement = receive_from_third_party(EMPLOYER_ACCOUNT_ID, CHECKING_ID, amount, f"Pago de nomina - {employer_label}", on_date=on_date)
+        checking_id = get_account_ids(user_id)["checking"]
+        movement = receive_from_third_party(EMPLOYER_ACCOUNT_ID, checking_id, amount, f"Pago de nomina - {employer_label}", on_date=on_date)
     except Exception as e:
         return {"ok": False, "reason": f"No se pudo mover el dinero en Nessie: {e}"}
 
@@ -458,12 +605,13 @@ def get_envelope_balances(user_id, purchases=None):
 
 
 def _execute_allocation(user_id, proposals, on_date):
+    accounts = get_account_ids(user_id)
     executed = []
     for p in proposals:
         if p["amount"] <= 0:
             continue
         try:
-            sweep_to_savings(CHECKING_ID, SAVINGS_ID, p["amount"], f"Apartado automatico: {p['category']}", on_date=on_date)
+            sweep_to_savings(accounts["checking"], accounts["savings"], p["amount"], f"Apartado automatico: {p['category']}", on_date=on_date)
         except Exception:
             continue
         table.put_item(Item=to_decimal({
@@ -544,6 +692,21 @@ def verified_allocate_envelopes(user_id, deposit_amount, deposit_date):
         return {"ok": False, "reason": "No se pudo ejecutar el reparto en Nessie ahorita. No se hizo ningun cambio."}
     total_executed = sum(p["amount"] for p in executed)
     return {"ok": True, "amount": total_executed, "proposals": executed, "message": f"Reparti ${total_executed} entre tus apartados."}
+
+
+def get_pending_allocation(user_id):
+    """Expone si hay un reparto de nomina pausado por el guardrail de
+    liquidez -- sin esto, el frontend no tiene forma de distinguir 'la
+    nomina se repartio sola' de 'quedo pendiente de confirmar', y el boton
+    de confirmar aparece igual de disponible este pasivo o no."""
+    resp = table.get_item(Key={"user_id": user_id, "sk": PENDING_ALLOCATION_SK})
+    pending = resp.get("Item")
+    if not pending:
+        return None
+    return {
+        "total": float(pending["total"]), "deposit_date": pending["deposit_date"],
+        "proposals": [{"category": p["category"], "slug": p["slug"], "amount": float(p["amount"])} for p in pending["proposals"]],
+    }
 
 
 def confirm_pending_allocation(user_id):

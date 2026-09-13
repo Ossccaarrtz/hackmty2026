@@ -87,6 +87,7 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .transaction-amount.inflow,.detail-line strong.inflow{color:#1a7a4c}
 
 /* Login, footer, profile — reuse the dashboard's own glass/button language, additive only */
+<<<<<<< HEAD
 /* Comfortable card insets and scrollbars that blend with the glass surfaces. */
 html,.modal,.agent-feed,.chat-transcript{scrollbar-width:thin;scrollbar-color:#8c9fc5 transparent}
 ::-webkit-scrollbar{width:8px;height:8px}
@@ -123,6 +124,8 @@ input,select,textarea{transition:box-shadow .18s ease,border-color .18s ease}
 input:focus,select:focus,textarea:focus{outline:0;box-shadow:0 0 0 3px #0048781f;border-color:#004878}
 .login-input-wrap input:focus{box-shadow:none}
 @media(max-width:700px){.connected-dashboard .transactions{padding:22px 18px 16px}.connected-dashboard .transactions-heading h2{font-size:23px}.connected-dashboard .transactions-heading .small{font-size:11px;padding:10px 12px}.connected-dashboard .live-transaction{grid-template-columns:24px minmax(0,1fr) 39px 63px;gap:7px;font-size:12px}.modal{border-width:4px;padding:24px}}
+=======
+>>>>>>> 55704ea7e3b186f3add9ca476e33ec5ea62d86bc
 .category-spending{padding:26px 24px;margin-top:24px}
 .category-content{display:flex;align-items:center;gap:17px;margin-top:24px}
 .category-donut{position:relative;flex:0 0 142px;width:142px;height:142px}
@@ -283,4 +286,31 @@ input:focus,select:focus,textarea:focus{outline:0;box-shadow:0 0 0 3px #0048781f
   .connected-dashboard .right-column{align-items:stretch}
   .connected-dashboard .category-spending{width:100%;align-self:center;margin-left:auto;margin-right:auto}
   .connected-dashboard .stats-grid>.health-card{height:auto;min-height:270px}
+}
+
+/* Fondo único y continuo: azul grisáceo suave, sin una card envolvente. */
+body,.login-page{
+  min-height:100vh;
+  background:
+    radial-gradient(circle at 8% 10%,rgba(255,255,255,.82) 0,transparent 34%),
+    radial-gradient(circle at 88% 84%,rgba(80,142,173,.20) 0,transparent 42%),
+    linear-gradient(145deg,#f4f5f3 0%,#e7eded 27%,#d4e3e6 60%,#b8d4dd 100%);
+  background-attachment:fixed;
+}
+
+.dashboard{
+  background:transparent;
+  border:0;
+  box-shadow:none;
+  backdrop-filter:none;
+}
+
+@media(max-width:700px){
+  body,.login-page{
+    background:
+      radial-gradient(circle at 12% 5%,rgba(255,255,255,.76) 0,transparent 31%),
+      radial-gradient(circle at 92% 86%,rgba(80,142,173,.20) 0,transparent 40%),
+      linear-gradient(160deg,#f3f5f3 0%,#e2ebeb 37%,#c6dde2 72%,#afd0da 100%);
+    background-attachment:scroll;
+  }
 }
