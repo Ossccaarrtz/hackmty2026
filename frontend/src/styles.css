@@ -67,13 +67,17 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .detail-line small.score-factor-explainer{color:#34404b;font-size:13px;line-height:1.5;margin-top:8px}
 .detail-line small.score-factor-technical{color:#8a96a8;font-size:11px;margin-top:6px}
 @media(max-width:700px){.score-status-message{font-size:13px}}
-.budget-goal-card{padding:24px}
+.budget-goal-card{padding:28px 31px 24px;min-height:300px}
 .budget-goal-card .card-heading{margin:0 0 4px}
 .budget-edit-link{margin:0;padding:0}
-.budget-goal-month{margin-top:0;text-transform:capitalize}
-.budget-goal-numbers{margin-top:14px;font-size:26px;font-weight:600;letter-spacing:-.6px}
-.budget-goal-numbers>span{font-size:15px;font-weight:450;color:#8390a4;margin-left:4px}
-.budget-track{height:10px;border-radius:10px;background:#e5ecf6;overflow:hidden;margin-top:14px}
+.budget-goal-month{margin-top:6px;text-transform:capitalize}
+.budget-goal-hero{margin-top:6px}
+.budget-goal-hero.tone-good{color:#1a7a4c}
+.budget-goal-hero.tone-warn{color:#a35f26}
+.budget-goal-hero.tone-over{color:var(--c1-red)}
+.budget-goal-numbers{margin-top:4px;font-size:16px;font-weight:500;color:#536780}
+.budget-goal-numbers>strong{color:#14191c;font-weight:600}
+.budget-track{height:16px;border-radius:10px;background:#e5ecf6;overflow:hidden;margin-top:16px}
 .budget-fill{height:100%;border-radius:10px;transition:width .4s ease}
 .budget-fill.tone-good{background:#1a7a4c}
 .budget-fill.tone-warn{background:#c98a2e}
