@@ -336,6 +336,14 @@ Probado en vivo contra la cuenta real de Ana: *"¿qué pasaría con mi score si 
 
 **Nota para quien lleve el frontend:** igual que `get_envelopes_status`/`get_upcoming_expenses`, estas dos tools son de solo consulta/simulación (nunca ejecutan nada) — hay que agregarlas a la lista de exclusión del feed de acciones en `data.js` para que no se pinten como "acción rechazada".
 
+**Señal de "activación" — nuevo campo en `/signals` (backend, #8.3 del pivote a Spark):**
+
+`signal_engine.compute_activation_signal` mide qué tan dormida está la tarjeta (días desde la última compra real + frecuencia en los últimos 30 días) y devuelve un índice 0-100 con status `activa`/`en_riesgo`/`dormida` — deliberadamente **separado** del Cash-Flow Resilience Score. Son dos preguntas distintas: "¿está usando su tarjeta?" (le importa al banco, es el KPI de activación del convenio universitario) vs. "¿está lista para una tarjeta de crédito?" (el score de siempre). Mezclarlas en un solo número habría obligado a re-normalizar los pesos 35/25/20/20 ya probados y habría confundido a qué responde cada uno.
+
+Solo cuenta compras reales de comercio — un depósito de mesada o un reparto a apartados no prueba que el banco vea la tarjeta en uso, así que ambos quedan excluidos (mismo `is_neutral()` que ya usa el resto del motor). Genera una alerta nueva (`activation_warning`, "Tarjeta inactiva") cuando el status es `dormida`. Aparece automáticamente en `GET /signals` y en `get_status` del chat, sin tool nueva.
+
+Probado en vivo contra las dos cuentas reales: Ana y Mia salen `activa` (100/100, última compra hace 0 días, 20 y 26 compras respectivamente en los últimos 30 días) — el número tiene sentido porque ambas tienen historial de compras reciente sembrado hasta el día de hoy. 7 tests nuevos, 114 en total en el backend.
+
 ## Auditoría propia (agente independiente, solo lectura) — 4 hallazgos reales corregidos
 
 Se lanzó una revisión de código independiente buscando específicamente el mismo patrón que ya se había encontrado una vez (un guardrail que aparenta estar activo pero nunca se ejecuta). Encontró 4 hallazgos reales, ya corregidos y desplegados:
