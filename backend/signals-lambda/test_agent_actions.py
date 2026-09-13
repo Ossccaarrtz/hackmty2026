@@ -151,89 +151,6 @@ class TestVerifiedReleaseBuffer(BaseAgentActionsTest):
         mock_release.assert_called_once()
 
 
-class TestProjectPaydayAllocation(BaseAgentActionsTest):
-    """Sustituye al viejo verified_allocate_envelopes -- MISMA idea
-    pedagogica (aparta en cuanto llega tu nomina), CERO escrituras en
-    Nessie: no hay nada que pausar porque nada se mueve. El guardrail de
-    monto/liquidez desaparece; el unico que sobrevive es 'overcommitted'
-    (tus metas piden mas de lo que te llego), que no protege una
-    transferencia sino que evita proponer un presupuesto imposible."""
-
-    PATTERN = {"expected_amount": 500, "tolerance_pct": 0.25, "frequency_days": 15}
-    BUDGETS = [{"category": "transport", "label": "Transporte", "monthly_target": 800}]
-
-    def test_returns_none_when_deposit_does_not_match_pattern(self):
-        with patch.object(aa, "get_income_pattern", return_value=self.PATTERN):
-            plan = aa.project_payday_allocation("ana", 100, "2026-09-12")
-        self.assertIsNone(plan)
-
-    def test_returns_none_when_no_budget_categories(self):
-        with patch.object(aa, "get_income_pattern", return_value=self.PATTERN), \
-             patch.object(aa, "load_data", return_value=([], [], [])), \
-             patch.object(aa, "get_category_budgets", return_value=[]), \
-             patch.object(aa, "get_monthly_budget", return_value=None):
-            plan = aa.project_payday_allocation("ana", 500, "2026-09-12")
-        self.assertIsNone(plan)
-
-    @patch.object(aa, "sweep_to_savings")
-    def test_never_touches_nessie(self, mock_sweep):
-        """El punto central del rediseno: apartar (ahora 'presupuestar') ya
-        no mueve dinero real, a diferencia del viejo _execute_allocation."""
-        with patch.object(aa, "get_income_pattern", return_value=self.PATTERN), \
-             patch.object(aa, "load_data", return_value=([], [], [])), \
-             patch.object(aa, "get_category_budgets", return_value=self.BUDGETS), \
-             patch.object(aa, "get_monthly_budget", return_value=None):
-            plan = aa.project_payday_allocation("ana", 500, "2026-09-12")
-        self.assertIsNotNone(plan)
-        mock_sweep.assert_not_called()
-
-    def test_suggested_amount_discounts_what_was_already_spent(self):
-        """Diferencia clave contra el reparto viejo (monthly_target *
-        elapsed/30): esto SI descuenta lo que ya gastaste este mes."""
-        purchases = [{"date": "2026-09-01", "category": "transport", "amount": 300}]
-        with patch.object(aa, "get_income_pattern", return_value=self.PATTERN), \
-             patch.object(aa, "load_data", return_value=([], purchases, [])), \
-             patch.object(aa, "get_category_budgets", return_value=self.BUDGETS), \
-             patch.object(aa, "get_monthly_budget", return_value=None):
-            plan = aa.project_payday_allocation("ana", 500, "2026-09-05")
-        # pendiente = 800 - 300 = 500; dias restantes del mes desde el 5 = 26; gap declarado = 15 -> covered = 15
-        self.assertAlmostEqual(plan["lines"][0]["suggested"], round(500 * 15 / 26, 2), places=2)
-
-    def test_overcommitted_when_reserved_exceeds_deposit(self):
-        # 400 si matchea el patron (dentro de 500+-25%), pero la meta de
-        # transporte ($800, sin gasto previo) sola ya pide mas que eso.
-        with patch.object(aa, "get_income_pattern", return_value=self.PATTERN), \
-             patch.object(aa, "load_data", return_value=([], [], [])), \
-             patch.object(aa, "get_category_budgets", return_value=self.BUDGETS), \
-             patch.object(aa, "get_monthly_budget", return_value=None):
-            plan = aa.project_payday_allocation("ana", 400, "2026-09-12")
-        self.assertTrue(plan["overcommitted"])
-
-    def test_writes_payday_plan_for_later_retrieval(self):
-        with patch.object(aa, "get_income_pattern", return_value=self.PATTERN), \
-             patch.object(aa, "load_data", return_value=([], [], [])), \
-             patch.object(aa, "get_category_budgets", return_value=self.BUDGETS), \
-             patch.object(aa, "get_monthly_budget", return_value=None):
-            aa.project_payday_allocation("ana", 500, "2026-09-12")
-        saved_item = aa.table.put_item.call_args.kwargs["Item"]
-        self.assertEqual(saved_item["sk"], aa.PAYDAY_PLAN_SK)
-
-
-class TestGetLastPaydayPlan(BaseAgentActionsTest):
-    def test_returns_none_when_nothing_stored(self):
-        aa.table.get_item.return_value = {}
-        self.assertIsNone(aa.get_last_payday_plan("ana"))
-
-    def test_returns_stored_plan_without_dynamo_keys(self):
-        aa.table.get_item.return_value = {"Item": {
-            "user_id": "ana", "sk": aa.PAYDAY_PLAN_SK, "deposit_amount": 500, "reserved": 300,
-        }}
-        plan = aa.get_last_payday_plan("ana")
-        self.assertNotIn("user_id", plan)
-        self.assertNotIn("sk", plan)
-        self.assertEqual(plan["deposit_amount"], 500)
-
-
 class TestGetBudgetStatus(BaseAgentActionsTest):
     """Sin saldo acumulado ni transferencias: 'gastado' se deriva de
     transacciones reales ya categorizadas, filtradas por mes -- a
@@ -368,77 +285,6 @@ class TestStopBillTwoStepFlow(BaseAgentActionsTest):
         self.assertTrue(result["ok"])
 
 
-class TestDepositMatchesIncomePattern(unittest.TestCase):
-    def test_no_pattern_never_matches(self):
-        self.assertFalse(aa.deposit_matches_income_pattern(None, 500))
-
-    def test_within_tolerance_matches(self):
-        pattern = {"expected_amount": 500, "tolerance_pct": 0.25}
-        self.assertTrue(aa.deposit_matches_income_pattern(pattern, 580))  # 16% de diferencia
-
-    def test_outside_tolerance_does_not_match(self):
-        pattern = {"expected_amount": 500, "tolerance_pct": 0.25}
-        self.assertFalse(aa.deposit_matches_income_pattern(pattern, 100))  # un deposito random tipo "amigo te presta $100"
-
-
-class TestSuggestedIncomeTolerance(BaseAgentActionsTest):
-    """Regresion directa del hallazgo: con +-25% fijo, 2 de los 8 depositos
-    reales de Ana (mesada/medio tiempo real: 1150, 1200, 1350, 1450, 1700,
-    1800, 1900, 2100 MXN) quedaban FUERA de su propio patron de nomina --
-    justo el perfil de ingreso irregular que el proyecto dice servir,
-    rechazado por su propia verificacion."""
-
-    ANA_DEPOSITS = [{"amount": a, "category": "income"} for a in [1200, 1450, 1800, 1350, 1900, 1150, 1700, 2100]]
-
-    def test_default_floor_with_insufficient_history(self):
-        with patch.object(aa, "load_data", return_value=([{"amount": 500, "category": "income"}], [], [])):
-            self.assertEqual(aa.suggested_income_tolerance("ana"), aa.DEFAULT_INCOME_TOLERANCE)
-
-    def test_derived_tolerance_covers_all_of_anas_real_deposits(self):
-        with patch.object(aa, "load_data", return_value=(self.ANA_DEPOSITS, [], [])):
-            tolerance = aa.suggested_income_tolerance("ana")
-        mean = sum(d["amount"] for d in self.ANA_DEPOSITS) / len(self.ANA_DEPOSITS)
-        pattern = {"expected_amount": mean, "tolerance_pct": tolerance}
-        for d in self.ANA_DEPOSITS:
-            self.assertTrue(aa.deposit_matches_income_pattern(pattern, d["amount"]), f"deposito real ${d['amount']} deberia matchear su propio patron")
-
-    def test_derived_tolerance_still_rejects_random_deposit(self):
-        with patch.object(aa, "load_data", return_value=(self.ANA_DEPOSITS, [], [])):
-            tolerance = aa.suggested_income_tolerance("ana")
-        mean = sum(d["amount"] for d in self.ANA_DEPOSITS) / len(self.ANA_DEPOSITS)
-        pattern = {"expected_amount": mean, "tolerance_pct": tolerance}
-        self.assertFalse(aa.deposit_matches_income_pattern(pattern, 100))  # un amigo prestando $100 sigue sin colar
-
-    def test_fixed_25_percent_would_have_missed_some_of_anas_deposits(self):
-        """No es un test del codigo actual -- documenta el bug original
-        para que nadie baje la tolerancia derivada de vuelta a un 25% fijo
-        sin darse cuenta de lo que rompe."""
-        mean = sum(d["amount"] for d in self.ANA_DEPOSITS) / len(self.ANA_DEPOSITS)
-        pattern = {"expected_amount": mean, "tolerance_pct": 0.25}
-        missed = [d["amount"] for d in self.ANA_DEPOSITS if not aa.deposit_matches_income_pattern(pattern, d["amount"])]
-        self.assertEqual(len(missed), 2)
-
-
-class TestSetIncomePattern(BaseAgentActionsTest):
-    def test_rejects_invalid_amount(self):
-        result = aa.set_income_pattern("ana", "no-es-numero", 15)
-        self.assertFalse(result["ok"])
-
-    def test_uses_derived_tolerance_when_not_specified(self):
-        with patch.object(aa, "load_data", return_value=([{"amount": a, "category": "income"} for a in [300, 720]] * 2, [], [])):
-            result = aa.set_income_pattern("ana", 500, 15)
-        self.assertTrue(result["ok"])
-        saved_item = aa.table.put_item.call_args.kwargs["Item"]
-        self.assertNotEqual(float(saved_item["tolerance_pct"]), 0.25)
-
-    def test_explicit_tolerance_overrides_derived_one(self):
-        with patch.object(aa, "load_data", return_value=([{"amount": a, "category": "income"} for a in [300, 720]] * 2, [], [])):
-            result = aa.set_income_pattern("ana", 500, 15, tolerance_pct=0.10)
-        self.assertTrue(result["ok"])
-        saved_item = aa.table.put_item.call_args.kwargs["Item"]
-        self.assertEqual(float(saved_item["tolerance_pct"]), 0.10)
-
-
 class TestSetMonthlyBudget(BaseAgentActionsTest):
     def test_rejects_invalid_amount(self):
         result = aa.set_monthly_budget("ana", "no-es-numero")
@@ -501,13 +347,240 @@ class TestSetCategoryBudget(BaseAgentActionsTest):
         self.assertFalse(result["ok"])
 
 
+class TestMonthsBetween(unittest.TestCase):
+    def test_full_months_apart(self):
+        self.assertEqual(aa._months_between("2026-01-15", "2026-07-15"), 6)
+
+    def test_same_month_still_counts_as_one(self):
+        self.assertEqual(aa._months_between("2026-01-05", "2026-01-20"), 1)
+
+
+class TestSlugifyLabel(unittest.TestCase):
+    def test_strips_accents_and_spaces(self):
+        self.assertEqual(aa._slugify_label("Viaje a Japón"), "viaje_a_japon")
+
+    def test_empty_label_falls_back_to_meta(self):
+        self.assertEqual(aa._slugify_label("   "), "meta")
+
+
+def months_ago(n):
+    """Fecha ISO exactamente n meses calendario antes de hoy -- para tests
+    de on_track que no dependan del dia del mes en que corran."""
+    today = date.today()
+    month = today.month - n
+    year = today.year
+    while month <= 0:
+        month += 12
+        year -= 1
+    return date(year, month, 1).isoformat()
+
+
+class TestCreateGoal(BaseAgentActionsTest):
+    """create_goal arma un plan (meses + aporte mensual) segun el
+    disponible real de Ana -- nunca mueve ni aparta nada, solo lo guarda.
+    El avance real se registra despues con log_goal_contribution."""
+
+    def test_rejects_missing_label(self):
+        result = aa.create_goal("ana", "", 30000)
+        self.assertFalse(result["ok"])
+
+    def test_rejects_non_numeric_target(self):
+        result = aa.create_goal("ana", "Viaje a Japon", "no-es-numero")
+        self.assertFalse(result["ok"])
+
+    def test_rejects_non_positive_target(self):
+        result = aa.create_goal("ana", "Viaje a Japon", 0)
+        self.assertFalse(result["ok"])
+
+    def test_rejects_when_no_disposable_income_and_no_date(self):
+        aa.table.get_item.return_value = {}
+        with patch.object(aa, "estimate_monthly_disposable", return_value=0):
+            result = aa.create_goal("ana", "Viaje a Japon", 30000)
+        self.assertFalse(result["ok"])
+        aa.table.put_item.assert_not_called()
+
+    def test_estimates_months_from_disposable_income_when_no_date_given(self):
+        aa.table.get_item.return_value = {}
+        with patch.object(aa, "estimate_monthly_disposable", return_value=3000):
+            result = aa.create_goal("ana", "Viaje a Japon", 30000)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["realistic"])
+        self.assertEqual(result["months"], 10)
+        self.assertEqual(result["monthly_contribution"], 3000)
+        saved_item = aa.table.put_item.call_args.kwargs["Item"]
+        self.assertEqual(saved_item["slug"], "viaje_a_japon")
+        self.assertEqual(float(saved_item["contributed"]), 0)
+
+    def test_slugifies_accented_label(self):
+        aa.table.get_item.return_value = {}
+        with patch.object(aa, "estimate_monthly_disposable", return_value=1000):
+            result = aa.create_goal("ana", "Viaje a Japón", 5000)
+        self.assertEqual(result["slug"], "viaje_a_japon")
+
+    def test_uses_target_date_instead_of_disposable_when_given(self):
+        aa.table.get_item.return_value = {}
+        target_date = "2099-12-31"  # bien en el futuro, sin importar cuando corra el test
+        expected_months = aa._months_between(date.today().isoformat(), target_date)
+        with patch.object(aa, "estimate_monthly_disposable", return_value=1):
+            result = aa.create_goal("ana", "Viaje a Japon", expected_months * 1000, target_date=target_date)
+        self.assertEqual(result["months"], expected_months)
+        self.assertEqual(result["monthly_contribution"], 1000)
+        self.assertFalse(result["realistic"])  # pide 1000/mes, solo hay 1 disponible
+
+    def test_updating_existing_goal_keeps_contributed_and_created_at(self):
+        aa.table.get_item.return_value = {"Item": {
+            "slug": "viaje_a_japon", "label": "Viaje a Japon", "target_amount": 20000,
+            "monthly_contribution": 2000, "estimated_months": 10, "contributed": 4000, "created_at": "2026-01-01",
+        }}
+        with patch.object(aa, "estimate_monthly_disposable", return_value=3000):
+            result = aa.create_goal("ana", "Viaje a Japon", 30000)
+        self.assertIn("actualizada", result["message"])
+        saved_item = aa.table.put_item.call_args.kwargs["Item"]
+        self.assertEqual(float(saved_item["contributed"]), 4000)
+        self.assertEqual(saved_item["created_at"], "2026-01-01")
+
+
+class TestGetGoalsWithProgress(BaseAgentActionsTest):
+    def test_computes_percent_and_remaining(self):
+        with patch.object(aa, "get_goals", return_value=[{
+            "slug": "japon", "label": "Japon", "target_amount": 10000,
+            "monthly_contribution": 1000, "estimated_months": 10,
+            "contributed": 2500, "created_at": date.today().isoformat(),
+        }]):
+            goals = aa.get_goals_with_progress("ana")
+        self.assertEqual(goals[0]["remaining"], 7500)
+        self.assertEqual(goals[0]["percent"], 25)
+
+    def test_on_track_when_contributed_meets_expected_pace(self):
+        with patch.object(aa, "get_goals", return_value=[{
+            "slug": "japon", "label": "Japon", "target_amount": 10000,
+            "monthly_contribution": 1000, "estimated_months": 10,
+            "contributed": 2000, "created_at": months_ago(2),
+        }]):
+            goals = aa.get_goals_with_progress("ana")
+        self.assertTrue(goals[0]["on_track"])
+
+    def test_off_track_when_contributed_below_expected_pace(self):
+        with patch.object(aa, "get_goals", return_value=[{
+            "slug": "japon", "label": "Japon", "target_amount": 10000,
+            "monthly_contribution": 1000, "estimated_months": 10,
+            "contributed": 500, "created_at": months_ago(2),
+        }]):
+            goals = aa.get_goals_with_progress("ana")
+        self.assertFalse(goals[0]["on_track"])
+
+
+class TestLogGoalContribution(BaseAgentActionsTest):
+    def test_rejects_unknown_goal(self):
+        aa.table.get_item.return_value = {}
+        result = aa.log_goal_contribution("ana", "japon", 500)
+        self.assertFalse(result["ok"])
+
+    def test_rejects_non_positive_amount(self):
+        result = aa.log_goal_contribution("ana", "japon", 0)
+        self.assertFalse(result["ok"])
+
+    def test_accumulates_on_top_of_existing_contribution(self):
+        aa.table.get_item.return_value = {"Item": {
+            "slug": "japon", "label": "Japon", "target_amount": 10000, "contributed": 2000,
+        }}
+        result = aa.log_goal_contribution("ana", "japon", 500)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["contributed"], 2500)
+        saved_item = aa.table.put_item.call_args.kwargs["Item"]
+        self.assertEqual(float(saved_item["contributed"]), 2500)
+
+    def test_marks_done_when_target_reached(self):
+        aa.table.get_item.return_value = {"Item": {
+            "slug": "japon", "label": "Japon", "target_amount": 1000, "contributed": 800,
+        }}
+        result = aa.log_goal_contribution("ana", "japon", 300)
+        self.assertTrue(result["done"])
+        self.assertEqual(result["remaining"], 0)
+
+
+class TestComputeSmartAllocation(BaseAgentActionsTest):
+    """Reparto inteligente bajo demanda: a diferencia del viejo plan de
+    nomina, corre sobre el saldo actual, no espera un deposito que
+    matchee un patron. Sigue sin mover nada -- protege el mismo colchon
+    minimo (LIQUIDITY_WARNING_DAYS) que cualquier movimiento real, y
+    escala proporcionalmente en vez de solo reportar que no alcanza."""
+
+    def setUp(self):
+        super().setUp()
+        self.load_data_patch = patch.object(aa, "load_data", return_value=([], [], []))
+        self.load_data_patch.start()
+        self.addCleanup(self.load_data_patch.stop)
+
+    def test_stops_when_anomaly_detected(self):
+        with patch.object(aa, "get_full_signals", return_value=signals_with(anomaly_detected=True, anomaly_reason="gasto raro")):
+            result = aa.compute_smart_allocation("ana")
+        self.assertFalse(result["ok"])
+        self.assertIn("gasto raro", result["reason"])
+
+    def test_rejects_when_no_categories_and_no_goals(self):
+        with patch.object(aa, "get_full_signals", return_value=signals_with()), \
+             patch.object(aa, "get_budget_status", return_value={"categories": []}), \
+             patch.object(aa, "get_goals_with_progress", return_value=[]):
+            result = aa.compute_smart_allocation("ana")
+        self.assertFalse(result["ok"])
+
+    def test_reserves_cushion_before_suggesting_anything(self):
+        signals = signals_with(current_balance=1000)
+        signals["liquidity"] = {"days_covered": 20}  # avg diario = 1000/20 = 50; colchon = 50*7 = 350
+        budgets = {"categories": [{"category": "transport", "label": "Transporte", "monthly_target": 800, "spent": 0}]}
+        with patch.object(aa, "get_full_signals", return_value=signals), \
+             patch.object(aa, "get_budget_status", return_value=budgets), \
+             patch.object(aa, "get_goals_with_progress", return_value=[]):
+            result = aa.compute_smart_allocation("ana")
+        self.assertEqual(result["cushion_floor"], 350)
+        self.assertEqual(result["available"], 650)
+
+    def test_scales_down_proportionally_when_overcommitted(self):
+        signals = signals_with(current_balance=1000)
+        signals["liquidity"] = {"days_covered": 999}  # sin gasto esencial detectado -> colchon 0
+        budgets = {"categories": [
+            {"category": "transport", "label": "Transporte", "monthly_target": 800, "spent": 0},
+            {"category": "rent", "label": "Renta", "monthly_target": 800, "spent": 0},
+        ]}
+        with patch.object(aa, "get_full_signals", return_value=signals), \
+             patch.object(aa, "get_budget_status", return_value=budgets), \
+             patch.object(aa, "get_goals_with_progress", return_value=[]):
+            result = aa.compute_smart_allocation("ana")
+        self.assertTrue(result["scaled"])
+        self.assertAlmostEqual(result["lines"][0]["suggested"], 500, places=2)
+        self.assertAlmostEqual(result["reserved"], 1000, places=2)
+
+    def test_no_scaling_when_everything_fits(self):
+        signals = signals_with(current_balance=1000)
+        signals["liquidity"] = {"days_covered": 999}
+        budgets = {"categories": [{"category": "transport", "label": "Transporte", "monthly_target": 300, "spent": 0}]}
+        with patch.object(aa, "get_full_signals", return_value=signals), \
+             patch.object(aa, "get_budget_status", return_value=budgets), \
+             patch.object(aa, "get_goals_with_progress", return_value=[]):
+            result = aa.compute_smart_allocation("ana")
+        self.assertFalse(result["scaled"])
+        self.assertEqual(result["lines"][0]["suggested"], 300)
+        self.assertEqual(result["free"], 700)
+
+    def test_goal_need_is_capped_by_what_is_still_missing(self):
+        signals = signals_with(current_balance=1000)
+        signals["liquidity"] = {"days_covered": 999}
+        goal = {"slug": "japon", "label": "Japon", "monthly_contribution": 2000, "remaining": 300}
+        with patch.object(aa, "get_full_signals", return_value=signals), \
+             patch.object(aa, "get_budget_status", return_value={"categories": []}), \
+             patch.object(aa, "get_goals_with_progress", return_value=[goal]):
+            result = aa.compute_smart_allocation("ana")
+        self.assertEqual(result["lines"][0]["needed"], 300)  # tope: lo que falta, no el aporte mensual completo
+
+
 class TestSimulateThirdPartyPayroll(BaseAgentActionsTest):
     """Nomina real de un tercero (otra cuenta Nessie, no la nuestra) -- ver
     backend/signals-lambda/agent_actions.py::simulate_third_party_payroll.
-    A proposito NO se prueba aqui que arme un plan de presupuesto: eso lo
-    decide el mismo camino reactivo de cualquier deposito (lambda_notifier
-    -> project_payday_allocation), ya cubierto por TestProjectPaydayAllocation.
-    Esta funcion solo es responsable de mover el dinero y escribir el deposito."""
+    Ya no hay patron de nomina que matchear: el monto siempre es explicito,
+    y esta funcion solo es responsable de mover el dinero y escribir el
+    deposito -- compute_smart_allocation (bajo demanda) es lo que despues
+    usa ese saldo, no un trigger reactivo al depositar."""
 
     def setUp(self):
         super().setUp()
@@ -516,49 +589,35 @@ class TestSimulateThirdPartyPayroll(BaseAgentActionsTest):
         self.addCleanup(self.load_data_patch.stop)
 
     @patch.object(aa, "receive_from_third_party")
-    def test_uses_declared_income_pattern_amount_when_not_specified(self, mock_receive):
-        aa.table.get_item.return_value = {"Item": {"expected_amount": 565, "frequency_days": 15, "tolerance_pct": 0.3}}
+    def test_moves_the_explicit_amount(self, mock_receive):
         mock_receive.return_value = {"withdrawal": {}, "deposit": {}}
-        result = aa.simulate_third_party_payroll("ana")
+        result = aa.simulate_third_party_payroll("ana", 565)
         self.assertTrue(result["ok"])
         self.assertEqual(result["amount"], 565.0)
-        self.assertTrue(result["matches_income_pattern"])
         mock_receive.assert_called_once()
         self.assertEqual(mock_receive.call_args.args[2], 565.0)
 
-    def test_rejects_when_no_amount_and_no_pattern_declared(self):
-        aa.table.get_item.return_value = {}
-        result = aa.simulate_third_party_payroll("ana")
+    def test_rejects_non_numeric_amount(self):
+        result = aa.simulate_third_party_payroll("ana", "no-es-numero")
         self.assertFalse(result["ok"])
 
-    @patch.object(aa, "receive_from_third_party")
-    def test_flags_amount_that_does_not_match_income_pattern(self, mock_receive):
-        aa.table.get_item.return_value = {"Item": {"expected_amount": 565, "frequency_days": 15, "tolerance_pct": 0.3}}
-        mock_receive.return_value = {"withdrawal": {}, "deposit": {}}
-        result = aa.simulate_third_party_payroll("ana", amount=100)
-        self.assertTrue(result["ok"])  # el deposito si se hace/registra
-        self.assertFalse(result["matches_income_pattern"])  # pero no se reparte solo
+    def test_rejects_non_positive_amount(self):
+        result = aa.simulate_third_party_payroll("ana", 0)
+        self.assertFalse(result["ok"])
 
     @patch.object(aa, "receive_from_third_party", side_effect=RuntimeError("Nessie caido"))
     def test_nessie_failure_does_not_write_deposit(self, mock_receive):
-        aa.table.get_item.return_value = {"Item": {"expected_amount": 565, "frequency_days": 15, "tolerance_pct": 0.3}}
-        result = aa.simulate_third_party_payroll("ana")
+        result = aa.simulate_third_party_payroll("ana", 565)
         self.assertFalse(result["ok"])
         aa.table.put_item.assert_not_called()
 
     @patch.object(aa, "receive_from_third_party")
     def test_writes_deposit_with_third_party_category_for_reset_cleanup(self, mock_receive):
-        aa.table.get_item.return_value = {"Item": {"expected_amount": 565, "frequency_days": 15, "tolerance_pct": 0.3}}
         mock_receive.return_value = {"withdrawal": {}, "deposit": {}}
-        aa.simulate_third_party_payroll("ana")
+        aa.simulate_third_party_payroll("ana", 565)
         saved_item = aa.table.put_item.call_args.kwargs["Item"]
         self.assertEqual(saved_item["type"], "deposit")
         self.assertEqual(saved_item["category"], aa.THIRD_PARTY_INCOME_CATEGORY)
-
-    def test_rejects_non_positive_explicit_amount(self):
-        aa.table.get_item.return_value = {}
-        result = aa.simulate_third_party_payroll("ana", amount=0)
-        self.assertFalse(result["ok"])
 
 
 class TestLogExternalExpense(BaseAgentActionsTest):

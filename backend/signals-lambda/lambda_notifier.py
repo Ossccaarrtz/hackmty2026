@@ -2,19 +2,16 @@
 Lambda disparado por DynamoDB Streams -- el "webhook tras cada transaccion".
 Se ejecuta automaticamente cuando algo cambia en jarbis-financiero-data, sin
 que nadie tenga que llamar nada. Reacciona a los eventos que realmente
-importan para Ana: dinero que se mueve de/a ahorro (real), un bill que se
-detiene (solo local -- Kivo deja de contarlo, no toca el banco), y un
-deposito que dispara el plan de presupuesto (informativo, no ejecuta nada).
-Funciona igual sin importar si la accion vino del chat o de advance-day --
-ambos escriben en la misma tabla.
+importan para Ana: dinero que se mueve de/a ahorro (real), y un bill que se
+detiene (solo local -- Kivo deja de contarlo, no toca el banco). Funciona
+igual sin importar si la accion vino del chat o de advance-day -- ambos
+escriben en la misma tabla.
 """
 import json
 import time
 import boto3
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
-
-import agent_actions as actions
 
 REGION = "us-east-1"
 TABLE_NAME = "jarbis-financiero-data"
@@ -88,29 +85,5 @@ def lambda_handler(event, context):
                 "(esto no lo cancela con el banco ni el comercio).",
                 time.strftime("%Y-%m-%d")
             )
-
-        elif event_name == "INSERT" and new_image.get("type") == "deposit":
-            # Plan de presupuesto informativo -- solo se arma si el deposito
-            # matchea el patron de nomina que el usuario declaro (un deposito
-            # random, ej. un amigo mandando $100, no dispara nada porque no
-            # matchea). Kivo no mueve ni aparta nada aqui: solo calcula como
-            # se veria el dinero repartido entre las metas de presupuesto.
-            try:
-                plan = actions.project_payday_allocation(user_id, new_image.get("amount"), new_image.get("date", ""))
-            except Exception:
-                plan = None
-            if plan and plan.get("overcommitted"):
-                write_notification(
-                    user_id,
-                    f"Te llegaron ${plan['deposit_amount']}. Ojo: tus metas de presupuesto piden ${plan['reserved']} -- no alcanza.",
-                    new_image.get("date", "")
-                )
-            elif plan:
-                write_notification(
-                    user_id,
-                    f"Te llegaron ${plan['deposit_amount']}. Si respetas tus metas de presupuesto, ${plan['reserved']} ya estan "
-                    f"comprometidos y te quedan ${plan['free']} libres (~${plan['free_per_day']}/dia). Kivo no movio nada.",
-                    new_image.get("date", "")
-                )
 
     return {"statusCode": 200}

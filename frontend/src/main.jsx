@@ -70,9 +70,9 @@ const ACTION_TYPE_LABELS = {
   chat_rejected: 'Acción no realizada', savings_moved: 'Dinero movido a ahorro',
   stop_subscription: 'Suscripción detenida', confirm_stop_bill: 'Cargo detenido',
   move_to_savings: 'Dinero movido a ahorro', release_savings_buffer: 'Ahorro liberado',
-  set_category_budget: 'Meta de presupuesto guardada', set_income_pattern: 'Patrón de nómina guardado',
-  log_external_expense: 'Gasto externo registrado',
-  set_monthly_budget: 'Meta de gasto actualizada',
+  set_category_budget: 'Meta de presupuesto guardada', log_external_expense: 'Gasto externo registrado',
+  set_monthly_budget: 'Meta de gasto actualizada', create_goal: 'Meta de ahorro guardada',
+  log_goal_contribution: 'Aporte a meta registrado', get_smart_allocation: 'Reparto inteligente consultado',
 };
 const actionTypeLabel = type => ACTION_TYPE_LABELS[type] || type.replaceAll('_', ' ');
 // "Revisar" en una alerta llevaba al chat en blanco -- la estudiante tenia que
@@ -307,9 +307,12 @@ function App() {
   const [newBudgetCategory, setNewBudgetCategory] = useState('');
   const [newBudgetTarget, setNewBudgetTarget] = useState('');
   const [newBudgetLabel, setNewBudgetLabel] = useState('');
-  const [incomeAmount, setIncomeAmount] = useState('');
-  const [incomeFrequency, setIncomeFrequency] = useState('');
   const [payrollBusy, setPayrollBusy] = useState(false);
+  const [smartAllocation, setSmartAllocation] = useState(null);
+  const [smartAllocationLoading, setSmartAllocationLoading] = useState(false);
+  const [smartAllocationError, setSmartAllocationError] = useState('');
+  const [contributionGoal, setContributionGoal] = useState('');
+  const [contributionAmount, setContributionAmount] = useState('');
   const [chatInput, setChatInput] = useState('');
   // localStorage es solo el valor optimista mientras carga -- en cuanto refresh()
   // trae `monthly_budget` del backend (fijado aqui mismo o por chat via
@@ -405,50 +408,38 @@ function App() {
     } catch (err) { setBudgetError(err.message); }
     finally { setBudgetBusy(false); }
   }
-  async function submitIncomePattern(event) {
-    event.preventDefault();
-    if (budgetBusy) return;
-    setBudgetBusy(true);
-    setBudgetNotice('');
-    setBudgetError('');
-    try {
-      const result = await api.setIncomePattern(incomeAmount, incomeFrequency);
-      setBudgetNotice(result.message || 'Patrón de nómina guardado.');
-      setIncomeAmount(''); setIncomeFrequency('');
-      await loadBudget();
-    } catch (err) { setBudgetError(err.message); }
-    finally { setBudgetBusy(false); }
-  }
   async function simulatePayroll() {
     if (payrollBusy) return;
     setPayrollBusy(true);
     setBudgetNotice('');
     setBudgetError('');
     try {
-      const result = await api.simulateThirdPartyPayroll('Estudio Creativo');
-      if (!result.matches_income_pattern) {
-        setBudgetNotice(`${result.message}`);
-        await loadBudget();
-        return;
-      }
-      setBudgetNotice(`${result.message} Calculando tu plan de presupuesto…`);
-      // El plan no es sincrono con esta respuesta: lo arma DynamoDB Streams
-      // -> lambda_notifier unos segundos despues, no esta llamada HTTP. Sin
-      // este sondeo breve, la pantalla se queda mostrando el plan viejo y
-      // parece que el boton "no hizo nada".
-      let updated = null;
-      for (let attempt = 0; attempt < 5; attempt++) {
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        updated = await api.getBudget();
-        if (updated.payday_plan?.deposit_date === result.date) break;
-      }
-      if (updated) setBudgetData(updated);
-      setBudgetNotice(updated?.payday_plan?.deposit_date === result.date
-        ? `${result.message} Revisa tu plan de nómina abajo.`
-        : `${result.message} (Puede tardar unos segundos más -- si el plan no cambia, vuelve a abrir esta pestaña.)`);
+      const result = await api.simulateThirdPartyPayroll(1500, 'Estudio Creativo');
+      setBudgetNotice(`${result.message} Ese saldo ya lo puede usar el reparto inteligente de abajo.`);
       await refresh();
     } catch (err) { setBudgetError(err.message); }
     finally { setPayrollBusy(false); }
+  }
+  async function loadSmartAllocation() {
+    setSmartAllocationLoading(true);
+    setSmartAllocationError('');
+    try { setSmartAllocation((await api.getSmartAllocation()).smart_allocation); }
+    catch (err) { setSmartAllocationError(err.message); }
+    finally { setSmartAllocationLoading(false); }
+  }
+  async function submitGoalContribution(event) {
+    event.preventDefault();
+    if (budgetBusy || !contributionGoal || !contributionAmount) return;
+    setBudgetBusy(true);
+    setBudgetNotice('');
+    setBudgetError('');
+    try {
+      const result = await api.logGoalContribution(contributionGoal, contributionAmount);
+      setBudgetNotice(result.message || 'Aporte registrado.');
+      setContributionGoal(''); setContributionAmount('');
+      await loadBudget();
+    } catch (err) { setBudgetError(err.message); }
+    finally { setBudgetBusy(false); }
   }
   function submitBudget(event) {
     event.preventDefault();
@@ -572,7 +563,7 @@ function App() {
 
   return <>
   <motion.main className={`dashboard connected-dashboard ${isFullPage ? 'full-page-layout page-focused' : ''}`} variants={dashboardContainer} initial="hidden" animate="visible">
-    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Kivo', 'chat'], [Wallet, 'Movimientos', 'transactions'], [CalendarDays, 'Calendario de gastos', 'calendar'], [PiggyBank, 'Presupuesto', 'envelopes'], [Gift, 'Beneficios', 'benefits']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
+    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Kivo', 'chat'], [Wallet, 'Movimientos', 'transactions'], [CalendarDays, 'Calendario de gastos', 'calendar'], [PiggyBank, 'Gastos', 'envelopes'], [Gift, 'Beneficios', 'benefits']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
     <section className="main-column">
       <motion.header className="page-header" variants={dashboardItem}><div><div className="page-brand"><img src="/kivo-logo.png" alt="" className="page-brand-logo" /><h1 className="sr-only">Kivo</h1></div><p>Hola, Ana. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></motion.header>
       {error && <div className="error-banner" role="alert">{error} <button disabled={loading || busy} onClick={refresh}>Reintentar lectura</button></div>}
@@ -664,8 +655,8 @@ function App() {
         {page === 'envelopes' && <motion.section className="glass page-panel" key="envelopes-page"
           initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
           transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
-          <header className="card-heading"><h2>Presupuesto</h2>{backToHome}</header>
-          <p className="muted-copy">Kivo no aparta ni mueve tu dinero. Pon una meta por categoría y te muestro cuánto llevas gastado de verdad este mes en cada una -- incluye lo que registraste en efectivo o con otra tarjeta.</p>
+          <header className="card-heading"><h2>Gastos y metas</h2>{backToHome}</header>
+          <p className="muted-copy">Kivo no aparta ni mueve tu dinero. Pon una meta por categoría o una meta de ahorro y te muestro cuánto llevas de verdad -- incluye lo que registraste en efectivo o con otra tarjeta.</p>
           {budgetLoading && <p className="empty">Cargando presupuesto…</p>}
           {budgetError && <div className="error-banner" role="alert">{budgetError}</div>}
           {budgetNotice && <p className="operation-notice" role="status">{budgetNotice}</p>}
@@ -705,20 +696,38 @@ function App() {
               <button className="black-button small" type="submit" disabled={budgetBusy}>{editingBudgetCategory ? 'Actualizar meta' : 'Crear meta'}</button>
               {editingBudgetCategory && <button type="button" className="text-button" onClick={() => { setNewBudgetCategory(''); setNewBudgetTarget(''); setNewBudgetLabel(''); }}>Cancelar edición</button>}
             </form>
-            <h3>Patrón de nómina</h3>
-            {budgetData.income_pattern ? <div className="detail-line"><span>Declarado<small>Tolerancia {Math.round(budgetData.income_pattern.tolerance_pct * 100)}%</small></span><strong>{money(budgetData.income_pattern.expected_amount)} cada {budgetData.income_pattern.frequency_days} días</strong></div> : <p className="empty">Sin declarar -- Kivo no puede armarte un plan de nómina hasta que definas esto.</p>}
-            <form className="envelope-form" onSubmit={submitIncomePattern}>
-              <label className="ledger-filter"><span>Monto esperado</span><input type="number" min="0" step="0.01" required value={incomeAmount} onChange={event => setIncomeAmount(event.target.value)} /></label>
-              <label className="ledger-filter"><span>Frecuencia (días)</span><input type="number" min="1" step="1" required value={incomeFrequency} onChange={event => setIncomeFrequency(event.target.value)} /></label>
-              <button className="outline-button small" type="submit" disabled={budgetBusy}>{budgetData.income_pattern ? 'Actualizar patrón' : 'Declarar patrón'}</button>
-            </form>
-            {budgetData.payday_plan && <>
-              <h3>Último plan de nómina</h3>
-              <p className="muted-copy">Te llegaron {money(budgetData.payday_plan.deposit_amount)} el {dateLabel(budgetData.payday_plan.deposit_date)}. Kivo no movió nada -- esto es solo cómo se vería tu dinero si respetas tus metas.</p>
-              {budgetData.payday_plan.overcommitted
-                ? <p className="empty">Tus metas piden {money(budgetData.payday_plan.reserved)} -- no alcanza. Revisa cuáles bajar.</p>
-                : <p className="operation-notice" role="status">Ya están comprometidos {money(budgetData.payday_plan.reserved)}; te quedan {money(budgetData.payday_plan.free)} libres (~{money(budgetData.payday_plan.free_per_day)}/día hasta tu próximo depósito).</p>}
-            </>}
+            <h3>Metas de ahorro ({budgetData.budget.goals.length})</h3>
+            <p className="muted-copy">A diferencia de las metas de categoría, estas acumulan un total a lo largo de varios meses (ej. un viaje). Créalas hablando con Kivo en el chat -- dile cuánto quieres juntar y para qué, y te dice en cuánto tiempo es realista según tu dinero libre real. <button type="button" className="text-button" onClick={() => setPage('chat')}>Ir al chat</button></p>
+            {budgetData.budget.goals.length ? budgetData.budget.goals.map(goal => <div className="envelope-row" key={goal.slug}>
+              <div className="envelope-row-top"><span>{goal.label}<small>Meta total: {money(goal.target_amount)} · ~{money(goal.monthly_contribution)}/mes · {goal.estimated_months} meses</small></span><strong>{money(goal.contributed)} <span className="muted-copy">de {money(goal.target_amount)}</span></strong></div>
+              <div className="envelope-progress"><progress max={goal.target_amount || 1} value={Math.min(goal.contributed, goal.target_amount || 1)} aria-label={`Progreso de ${goal.label}`} /></div>
+              <small className={`budget-pace tone-${goal.percent >= 100 ? 'good' : goal.on_track ? 'good' : 'warn'}`}>
+                {goal.percent >= 100 ? 'Meta cumplida.' : goal.on_track ? 'Vas a buen ritmo.' : `Ibas a llevar ~${money(goal.expected_by_now)} para esta fecha -- vas atrás.`}
+              </small>
+            </div>) : <p className="empty">Todavía no tienes metas de ahorro -- pídele a Kivo en el chat que te arme una.</p>}
+            {budgetData.budget.goals.length > 0 && <form className="envelope-form" onSubmit={submitGoalContribution}>
+              <label className="ledger-filter"><span>Meta</span>
+                <select required value={contributionGoal} onChange={event => setContributionGoal(event.target.value)}>
+                  <option value="">Elige una meta</option>
+                  {budgetData.budget.goals.map(goal => <option key={goal.slug} value={goal.slug}>{goal.label}</option>)}
+                </select>
+              </label>
+              <label className="ledger-filter"><span>Ya aparté</span><input type="number" min="0.01" step="0.01" required value={contributionAmount} onChange={event => setContributionAmount(event.target.value)} placeholder="Ej. 500" /></label>
+              <button className="black-button small" type="submit" disabled={budgetBusy}>Registrar aporte</button>
+            </form>}
+            <h3>Reparto inteligente</h3>
+            <p className="muted-copy">Con tu saldo actual, reparte lo que falta de tus metas de categoría y de ahorro -- sin mover nada, y sin tocar tu colchón mínimo de seguridad.</p>
+            <button className="outline-button small" onClick={loadSmartAllocation} disabled={smartAllocationLoading}>{smartAllocationLoading ? 'Calculando…' : 'Calcular reparto inteligente'}</button>
+            {smartAllocationError && <div className="error-banner" role="alert">{smartAllocationError}</div>}
+            {smartAllocation && (smartAllocation.ok ? <>
+              <div className="detail-line"><span>Saldo actual</span><strong>{money(smartAllocation.current_balance)}</strong></div>
+              <div className="detail-line"><span>Colchón mínimo protegido<small>No se toca, sin importar lo demás</small></span><strong>{money(smartAllocation.cushion_floor)}</strong></div>
+              <div className="detail-line"><span>Disponible para repartir</span><strong>{money(smartAllocation.available)}</strong></div>
+              {smartAllocation.scaled && <p className="empty">Lo que piden tus metas no cabe en lo disponible -- se escaló todo proporcionalmente.</p>}
+              {smartAllocation.lines.map(line => <div className="detail-line" key={line.key}><span>{line.label}<small>{line.kind === 'goal' ? 'Meta de ahorro' : 'Meta de categoría'} · pendiente {money(line.needed)}</small></span><strong>{money(line.suggested)}</strong></div>)}
+              <div className="detail-line"><span>Total sugerido</span><strong>{money(smartAllocation.reserved)}</strong></div>
+              <div className="detail-line"><span>Te quedaría libre</span><strong>{money(smartAllocation.free)}</strong></div>
+            </> : <p className="empty">{smartAllocation.reason}</p>)}
           </>}
         </motion.section>}
         {page === 'benefits' && <motion.section className="glass page-panel benefits-page" key="benefits-page"

@@ -7,8 +7,11 @@ El LLM del chat nunca decide montos ni ejecuta directo: solo puede invocar
 estas funciones, y estas funciones son las que deciden si procede o no.
 """
 import calendar
+import math
+import re
 import time
 import statistics
+import unicodedata
 import boto3
 from datetime import date
 from decimal import Decimal
@@ -40,8 +43,7 @@ THIRD_PARTY_INCOME_CATEGORY = "income_third_party_demo"
 MAX_AUTONOMOUS_SAVINGS = 100  # tope por transaccion Y por dia -- el chat no puede mover mas que esto solo
 
 BUDGET_PREFIX = "BUDGET#"
-INCOME_PATTERN_SK = "INCOME_PATTERN"
-PAYDAY_PLAN_SK = "PAYDAY_PLAN"
+GOAL_PREFIX = "GOAL#"
 MONTHLY_BUDGET_SK = "MONTHLY_BUDGET"
 
 dynamodb = boto3.resource("dynamodb", region_name=REGION)
@@ -533,54 +535,6 @@ def verified_release_buffer(user_id, amount, reason):
     return {"ok": True, "amount": amount, "message": f"Libere ${amount} de tu ahorro a tu cuenta corriente. {reason or ''}".strip()}
 
 
-def get_income_pattern(user_id):
-    resp = table.get_item(Key={"user_id": user_id, "sk": INCOME_PATTERN_SK})
-    return resp.get("Item")
-
-
-DEFAULT_INCOME_TOLERANCE = 0.30  # piso minimo cuando no hay suficiente historial de depositos para derivar uno propio
-
-
-def suggested_income_tolerance(user_id):
-    """Deriva la tolerancia del patron de nomina del propio historial real
-    de depositos en vez de un porcentaje fijo arbitrario. Con Ana: un
-    +-25% fijo deja fuera 2 de sus 8 depositos reales (mesada/medio tiempo
-    real: $1,150-$2,100 MXN, media $1,581) -- exactamente el perfil de
-    ingreso irregular que el proyecto dice servir, rechazado por su propia
-    verificacion. +-2 desviaciones estandar sobre el historial real (41%
-    en su caso, verificado en vivo) cubre las 8 ocurrencias de Ana y sigue
-    rechazando un deposito random fuera de rango (ej. un amigo mandando $100)."""
-    deposits, _, _ = load_data(user_id)
-    amounts = [float(d["amount"]) for d in deposits if d.get("category") != "savings_release"]
-    if len(amounts) < 3:
-        return DEFAULT_INCOME_TOLERANCE
-    mean = statistics.mean(amounts)
-    if mean <= 0:
-        return DEFAULT_INCOME_TOLERANCE
-    stdev = statistics.pstdev(amounts)
-    return max(DEFAULT_INCOME_TOLERANCE, round((2 * stdev) / mean, 2))
-
-
-def set_income_pattern(user_id, expected_amount, frequency_days, tolerance_pct=None):
-    try:
-        expected_amount = float(expected_amount)
-        frequency_days = int(frequency_days)
-    except (TypeError, ValueError):
-        return {"ok": False, "reason": "El monto o la frecuencia no son numeros validos."}
-    if expected_amount <= 0 or frequency_days <= 0:
-        return {"ok": False, "reason": "El monto y la frecuencia tienen que ser mayores a cero."}
-    if tolerance_pct is None:
-        tolerance_pct = suggested_income_tolerance(user_id)
-    else:
-        tolerance_pct = float(tolerance_pct)
-    table.put_item(Item=to_decimal({
-        "user_id": user_id, "sk": INCOME_PATTERN_SK,
-        "expected_amount": expected_amount, "frequency_days": frequency_days,
-        "tolerance_pct": tolerance_pct,
-    }))
-    return {"ok": True, "message": f"Guarde tu patron de ingreso: ~${expected_amount} cada {frequency_days} dias, con una tolerancia de {round(tolerance_pct * 100)}% derivada de tu historial real de depositos. Los depositos que no coincidan con esto no van a repartirse a tus apartados."}
-
-
 def get_monthly_budget(user_id):
     resp = table.get_item(Key={"user_id": user_id, "sk": MONTHLY_BUDGET_SK})
     return resp.get("Item")
@@ -597,38 +551,17 @@ def set_monthly_budget(user_id, amount):
     return {"ok": True, "amount": amount, "message": f"Guarde tu meta de gasto mensual: ${amount}."}
 
 
-def deposit_matches_income_pattern(pattern, deposit_amount):
-    """No adivinamos si un deposito es nomina -- lo comparamos contra un
-    patron que el propio usuario declaro una vez. Asi un amigo mandandote
-    $100 nunca dispara un reparto a apartados por accidente."""
-    if not pattern:
-        return False
-    expected = float(pattern["expected_amount"])
-    tolerance = float(pattern.get("tolerance_pct", 0.25))
-    return abs(float(deposit_amount) - expected) <= expected * tolerance
-
-
-def simulate_third_party_payroll(user_id, employer_label="Papa y mama", amount=None, on_date=None):
+def simulate_third_party_payroll(user_id, amount, employer_label="Papa y mama", on_date=None):
     """Mueve dinero DE VERDAD desde la cuenta de un tercero (otra app/otro
     dueno en el sandbox de Nessie, no la nuestra) a la cuenta de Ana, y lo
-    registra como cualquier deposito real. A proposito NO llama
-    project_payday_allocation directamente: escribe el deposito y deja que
-    el mismo camino reactivo de cualquier deposito real (DynamoDB Streams ->
-    lambda_notifier -> project_payday_allocation) decida si arma el plan de
-    presupuesto -- exactamente lo que pasaria si la nomina llegara sin que
-    nadie de nuestro lado la dispare a mano. Esta SI es una escritura real en
-    Nessie: no es Kivo moviendo el dinero de Ana, es Kivo observando que un
-    tercero se lo mando."""
-    pattern = get_income_pattern(user_id)
-    if amount is None:
-        if not pattern:
-            return {"ok": False, "reason": "No hay un patron de nomina declarado -- especifica un monto o declara un patron primero."}
-        amount = float(pattern["expected_amount"])
-    else:
-        try:
-            amount = float(amount)
-        except (TypeError, ValueError):
-            return {"ok": False, "reason": "El monto no es un numero valido."}
+    registra como cualquier deposito real -- util para la demo y para
+    alimentar el saldo que despues usa compute_smart_allocation. Esta SI es
+    una escritura real en Nessie: no es Kivo moviendo el dinero de Ana, es
+    Kivo observando que un tercero se lo mando."""
+    try:
+        amount = float(amount)
+    except (TypeError, ValueError):
+        return {"ok": False, "reason": "El monto no es un numero valido."}
     if amount <= 0:
         return {"ok": False, "reason": "El monto tiene que ser mayor a cero."}
 
@@ -647,15 +580,135 @@ def simulate_third_party_payroll(user_id, employer_label="Papa y mama", amount=N
         "category": THIRD_PARTY_INCOME_CATEGORY, "category_label": f"Nomina - {employer_label}",
         "merchant_name": None, "description": f"Pago recibido de {employer_label} (cuenta de un tercero, verificable en Nessie)",
     }))
-    matches = deposit_matches_income_pattern(pattern, amount)
     return {
-        "ok": True, "amount": amount, "date": on_date, "matches_income_pattern": matches,
-        "nessie": movement,
-        "message": (
-            f"Se recibieron ${amount} de {employer_label} en tu cuenta el {on_date}. "
-            + ("Te arme un plan de como se veria repartido entre tu presupuesto -- no mueve nada, solo te lo muestra." if matches
-               else "Este monto no coincide con tu patron de nomina declarado, asi que no te arme un plan de presupuesto.")
-        ),
+        "ok": True, "amount": amount, "date": on_date, "nessie": movement,
+        "message": f"Se recibieron ${amount} de {employer_label} en tu cuenta el {on_date}.",
+    }
+
+
+def _slugify_label(label):
+    normalized = unicodedata.normalize("NFKD", label).encode("ascii", "ignore").decode()
+    slug = re.sub(r"[^a-z0-9]+", "_", normalized.strip().lower()).strip("_")
+    return slug or "meta"
+
+
+def _months_between(start_iso, end_iso):
+    start, end = date.fromisoformat(start_iso), date.fromisoformat(end_iso)
+    return max((end.year - start.year) * 12 + (end.month - start.month), 1)
+
+
+def estimate_monthly_disposable(user_id, exclude_goal_slug=None):
+    """Cuanto dinero real le queda libre a Ana por mes, al ritmo actual --
+    ingreso real menos gasto real (bank-only, mismo criterio que
+    compute_totals) menos lo que ya comprometio en otras metas de ahorro.
+    NO resta las metas de categoria: esas son techos sobre gasto que YA
+    esta contado en total_expense, restarlas tambien contaria ese gasto
+    dos veces."""
+    deposits, purchases, bills_plain = load_data(user_id)
+    signals = get_full_signals(deposits, purchases, bills_plain, user_id=user_id, persist=False)
+    elapsed_days = max(signals["_debug"]["elapsed_days"], 1)
+    monthly_income = signals["_debug"]["total_income"] / elapsed_days * 30
+    monthly_expense = signals["_debug"]["total_expense"] / elapsed_days * 30
+    committed_goals = sum(
+        float(g["monthly_contribution"]) for g in get_goals(user_id) if g["slug"] != exclude_goal_slug
+    )
+    return round(monthly_income - monthly_expense - committed_goals, 2)
+
+
+def create_goal(user_id, label, target_amount, target_date=None):
+    """Meta de ahorro de largo plazo (ej. 'viaje a Japon') -- a diferencia
+    de una meta de categoria, esta SI acumula un total a lo largo de
+    varios meses. Kivo no mueve ni aparta nada: solo calcula cuanto tiempo
+    es realista segun tu disponible real, y guarda el plan. El avance de
+    verdad se registra con log_goal_contribution cuando tu apartas el
+    dinero por tu cuenta."""
+    label = (label or "").strip()
+    if not label:
+        return {"ok": False, "reason": "Falta el nombre de la meta."}
+    try:
+        target_amount = float(target_amount)
+    except (TypeError, ValueError):
+        return {"ok": False, "reason": "El monto objetivo no es un numero valido."}
+    if target_amount <= 0:
+        return {"ok": False, "reason": "El monto objetivo tiene que ser mayor a cero."}
+
+    slug = _slugify_label(label)
+    disposable = estimate_monthly_disposable(user_id, exclude_goal_slug=slug)
+
+    if target_date:
+        months = _months_between(date.today().isoformat(), target_date)
+        monthly_contribution = round(target_amount / months, 2)
+        realistic = disposable <= 0 or monthly_contribution <= disposable
+    elif disposable <= 0:
+        return {"ok": False, "reason": f"Con tu ingreso y gasto real actual no veo dinero libre por mes para ahorrar (~${disposable}) -- todavia no puedo armarte un plan realista. Baja una meta de categoria o ajusta tu gasto primero."}
+    else:
+        months = max(math.ceil(target_amount / disposable), 1)
+        monthly_contribution = round(target_amount / months, 2)
+        realistic = True
+
+    existing = table.get_item(Key={"user_id": user_id, "sk": f"{GOAL_PREFIX}{slug}"}).get("Item")
+    table.put_item(Item=to_decimal({
+        "user_id": user_id, "sk": f"{GOAL_PREFIX}{slug}", "type": "goal",
+        "slug": slug, "label": label, "target_amount": target_amount,
+        "monthly_contribution": monthly_contribution, "estimated_months": months,
+        "contributed": existing["contributed"] if existing else 0,
+        "created_at": existing["created_at"] if existing else date.today().isoformat(),
+    }))
+    verb = "actualizada" if existing else "creada"
+    if realistic:
+        message = f"Meta '{label}' {verb}: ${target_amount} en ~{months} meses (~${monthly_contribution}/mes segun tu disponible real). No aparto nada -- usa log_goal_contribution cuando de verdad apartes dinero para esto."
+    else:
+        message = f"Meta '{label}' {verb}: para llegar a ${target_amount} el {target_date} necesitas ~${monthly_contribution}/mes, mas de lo que veo disponible hoy (~${disposable}/mes). La guarde de todos modos, pero puede que tengas que mover la fecha o bajar otra meta."
+    return {"ok": True, "slug": slug, "months": months, "monthly_contribution": monthly_contribution, "realistic": realistic, "message": message}
+
+
+def get_goals(user_id):
+    resp = table.query(KeyConditionExpression=Key("user_id").eq(user_id) & Key("sk").begins_with(GOAL_PREFIX))
+    return resp["Items"]
+
+
+def get_goals_with_progress(user_id):
+    today = date.today()
+    goals = []
+    for g in get_goals(user_id):
+        target_amount = float(g["target_amount"])
+        contributed = float(g.get("contributed", 0))
+        created = date.fromisoformat(g["created_at"])
+        months_elapsed = max((today.year - created.year) * 12 + (today.month - created.month), 0)
+        expected_by_now = round(min(float(g["monthly_contribution"]) * months_elapsed, target_amount), 2)
+        goals.append({
+            "slug": g["slug"], "label": g["label"], "target_amount": target_amount,
+            "monthly_contribution": float(g["monthly_contribution"]), "estimated_months": int(g["estimated_months"]),
+            "contributed": contributed, "remaining": round(max(target_amount - contributed, 0), 2),
+            "percent": round(contributed / target_amount * 100) if target_amount else 0,
+            "on_track": contributed >= expected_by_now,
+            "expected_by_now": expected_by_now,
+        })
+    return goals
+
+
+def log_goal_contribution(user_id, goal_slug, amount, note=None):
+    """Registra que Ana aparto dinero para una meta POR SU CUENTA (fuera de
+    Nessie, igual que log_external_expense) -- Kivo no mueve nada, solo
+    lleva la cuenta de cuanto lleva acumulado hacia esa meta."""
+    try:
+        amount = float(amount)
+    except (TypeError, ValueError):
+        return {"ok": False, "reason": "El monto no es un numero valido."}
+    if amount <= 0:
+        return {"ok": False, "reason": "El monto tiene que ser mayor a cero."}
+    key = {"user_id": user_id, "sk": f"{GOAL_PREFIX}{goal_slug}"}
+    goal = table.get_item(Key=key).get("Item")
+    if not goal:
+        return {"ok": False, "reason": "No encontre esa meta."}
+    new_total = round(float(goal.get("contributed", 0)) + amount, 2)
+    updated = {**goal, "contributed": new_total}
+    table.put_item(Item=to_decimal(updated))
+    remaining = round(float(goal["target_amount"]) - new_total, 2)
+    done = remaining <= 0
+    return {
+        "ok": True, "contributed": new_total, "remaining": max(remaining, 0), "done": done,
+        "message": f"Anotado: llevas ${new_total} de ${float(goal['target_amount'])} para '{goal['label']}'." + (" Ya la cumpliste!" if done else ""),
     }
 
 
@@ -715,6 +768,7 @@ def get_budget_status(user_id, as_of_date=None, purchases=None):
             "month": None, "reference_date": None, "day_of_month": None, "days_in_month": None,
             "categories": [], "unbudgeted": [], "unbudgeted_spend": 0,
             "total_targets": 0, "total_spent": 0, "monthly_budget": None,
+            "goals": get_goals_with_progress(user_id),
         }
     month = reference[:7]
     spent = {}
@@ -761,55 +815,55 @@ def get_budget_status(user_id, as_of_date=None, purchases=None):
         "total_targets": round(sum(c["monthly_target"] for c in categories), 2),
         "total_spent": round(sum(c["spent"] for c in categories) + sum(u["spent"] for u in unbudgeted), 2),
         "monthly_budget": float(mb["amount"]) if mb else None,
+        "goals": get_goals_with_progress(user_id),
     }
 
 
-def project_payday_allocation(user_id, deposit_amount, deposit_date):
-    """Sustituye al reparto automatico de apartados. MISMA idea pedagogica
-    ("aparta en cuanto te llega la nomina"), CERO escrituras en el banco:
-    sin sweep_to_savings, sin transaccion sintetica, sin pending_allocation
-    ni guardrail de liquidez -- no hay nada que pausar porque nada se
-    mueve. Lo unico que se guarda es un plan informativo para mostrar."""
-    pattern = get_income_pattern(user_id)
-    if not deposit_matches_income_pattern(pattern, deposit_amount):
-        return None
-    _, purchases, _ = load_data(user_id)
-    status = get_budget_status(user_id, as_of_date=deposit_date, purchases=purchases)
-    if not status["categories"]:
-        return None
+def compute_smart_allocation(user_id):
+    """Reparto inteligente bajo demanda -- sustituye al viejo plan de
+    nomina reactivo (que solo se armaba cuando un deposito matcheaba un
+    patron declarado). Este corre cuando el usuario lo pide, usando su
+    saldo actual, y sigue sin mover nada: aplica los mismos criterios que
+    ya protegen cualquier movimiento real en esta app (no toca el colchon
+    minimo de LIQUIDITY_WARNING_DAYS, se detiene si hay una anomalia
+    activa), mas el mismo prorrateo por pendiente que el plan viejo. Si lo
+    que piden tus metas no cabe en lo disponible, escala todo
+    proporcionalmente en vez de solo reportar que no alcanza."""
+    deposits, purchases, bills_plain = load_data(user_id)
+    signals = get_full_signals(deposits, purchases, bills_plain, user_id=user_id, persist=False)
+    if signals["anomaly"]["detected"]:
+        return {"ok": False, "reason": f"No arme un reparto ahorita por seguridad: {signals['anomaly']['reason']}"}
 
-    gap = int(pattern.get("frequency_days", 15))
-    days_left = max(status["days_in_month"] - status["day_of_month"] + 1, 1)
-    covered = max(min(gap, days_left), 1)
+    status = get_budget_status(user_id, purchases=purchases)
+    goals = get_goals_with_progress(user_id)
+    if not status["categories"] and not goals:
+        return {"ok": False, "reason": "No tienes metas de gasto ni de ahorro configuradas todavia -- crea al menos una para poder armarte un reparto."}
 
-    lines = []
-    for c in status["categories"]:
-        # Lo que TE FALTA de la meta, no la meta completa -- a diferencia
-        # del reparto viejo (monthly_target * elapsed/30), esto SI descuenta
-        # lo que ya gastaste este mes en esa categoria.
-        pending = max(c["monthly_target"] - c["spent"], 0)
-        lines.append({**c, "suggested": round(pending * covered / days_left, 2)})
+    current_balance = signals["_debug"]["current_balance"]
+    days_covered = signals["liquidity"]["days_covered"]
+    avg_daily_essential = current_balance / days_covered if 0 < days_covered < 999 else 0
+    cushion_floor = round(avg_daily_essential * LIQUIDITY_WARNING_DAYS, 2)
+    available = max(round(current_balance - cushion_floor, 2), 0)
+
+    lines = [
+        {"kind": "category", "key": c["category"], "label": c["label"], "needed": max(round(c["monthly_target"] - c["spent"], 2), 0)}
+        for c in status["categories"]
+    ] + [
+        {"kind": "goal", "key": g["slug"], "label": g["label"], "needed": max(round(min(g["monthly_contribution"], g["remaining"]), 2), 0)}
+        for g in goals
+    ]
+    lines = [l for l in lines if l["needed"] > 0]
+
+    total_needed = round(sum(l["needed"] for l in lines), 2)
+    scale = 1.0 if total_needed <= available or total_needed == 0 else round(available / total_needed, 4)
+    for l in lines:
+        l["suggested"] = round(l["needed"] * scale, 2)
 
     reserved = round(sum(l["suggested"] for l in lines), 2)
-    deposit_amount = float(deposit_amount)
-    free = round(deposit_amount - reserved, 2)
-    plan = {
-        "deposit_amount": deposit_amount, "deposit_date": deposit_date,
-        "lines": lines, "reserved": reserved, "free": free,
-        "days_covered": covered, "free_per_day": round(free / covered, 2),
-        # Unico guardrail que sobrevive -- y sigue siendo real: no protege
-        # una transferencia, protege de proponer un presupuesto imposible.
-        "overcommitted": reserved > deposit_amount,
+    return {
+        "ok": True, "current_balance": current_balance, "cushion_floor": cushion_floor,
+        "available": available, "lines": lines, "reserved": reserved,
+        "free": round(available - reserved, 2), "scaled": scale < 1.0,
     }
-    table.put_item(Item=to_decimal({"user_id": user_id, "sk": PAYDAY_PLAN_SK, **plan}))
-    return plan
-
-
-def get_last_payday_plan(user_id):
-    resp = table.get_item(Key={"user_id": user_id, "sk": PAYDAY_PLAN_SK})
-    item = resp.get("Item")
-    if not item:
-        return None
-    return {k: v for k, v in item.items() if k not in ("user_id", "sk")}
 
 

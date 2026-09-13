@@ -105,18 +105,6 @@ TOOLS = [{
             },
         },
         {
-            "name": "set_income_pattern",
-            "description": "Declara el patron de nomina de Ana (monto aproximado y frecuencia en dias) para que el sistema sepa distinguir su nomina de un deposito random (ej. un amigo mandandole dinero). Los apartados solo se reparten cuando un deposito coincide con este patron.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "expected_amount": {"type": "number"},
-                    "frequency_days": {"type": "integer", "description": "Cada cuantos dias le llega su nomina, ej. 15"},
-                },
-                "required": ["expected_amount", "frequency_days"],
-            },
-        },
-        {
             "name": "set_monthly_budget",
             "description": "Fija o actualiza la meta de cuanto quiere gastar Ana como maximo este mes. El dashboard compara su gasto real del mes contra este monto. Usala cuando Ana diga algo como 'quiero gastar maximo 8000 este mes' o 'cambia mi meta a 5000'.",
             "parameters": {
@@ -128,9 +116,34 @@ TOOLS = [{
             },
         },
         {
-            "name": "get_payday_plan",
-            "description": "Consulta el ultimo calculo de como se veria repartida la nomina de Ana entre sus metas de presupuesto. Es solo informativo -- Kivo nunca ejecuta este reparto, solo lo muestra.",
+            "name": "get_smart_allocation",
+            "description": "Calcula un reparto sugerido del saldo actual de Ana entre sus metas de gasto por categoria y sus metas de ahorro pendientes, respetando un colchon minimo de seguridad. Es solo informativo -- Kivo NUNCA mueve el dinero, solo muestra como se veria repartido. Usa esto cuando Ana pregunte algo como '¿como debería repartir mi dinero?' o '¿cuanto me sobra este mes?'.",
             "parameters": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "create_goal",
+            "description": "Crea o actualiza una meta de ahorro de largo plazo (ej. 'viaje a Japon', 'laptop nueva') -- a diferencia de una meta de categoria (que se reinicia cada mes), esta acumula un total. Calcula automaticamente cuantos meses es realista segun el dinero libre real de Ana si no te da una fecha. Kivo NUNCA aparta ni mueve dinero para esto -- solo arma el plan; usa log_goal_contribution cuando Ana diga que YA aparto dinero para la meta.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string", "description": "Nombre de la meta, ej. 'Viaje a Japon'"},
+                    "target_amount": {"type": "number", "description": "Monto total que quiere juntar"},
+                    "target_date": {"type": "string", "description": "Fecha limite deseada en formato YYYY-MM-DD, SOLO si Ana la menciono explicitamente. Si no la menciono, omite este campo y deja que se calcule sola segun su disponible real."},
+                },
+                "required": ["label", "target_amount"],
+            },
+        },
+        {
+            "name": "log_goal_contribution",
+            "description": "Registra que Ana YA aparto dinero por su cuenta hacia una meta de ahorro existente (fuera de Nessie, ella lo hizo desde su banco). Kivo no mueve nada, solo lleva la cuenta del acumulado. Usa esto cuando Ana diga algo como 'ya aparte 500 para lo de Japon' o 'metí 1000 a mi meta de la laptop'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "goal_slug": {"type": "string", "description": "Identificador de la meta -- usa el 'slug' que te devolvio create_goal o get_budget_status para esa meta, no inventes uno."},
+                    "amount": {"type": "number"},
+                },
+                "required": ["goal_slug", "amount"],
+            },
         },
         {
             "name": "get_upcoming_expenses",
@@ -184,7 +197,7 @@ SYSTEM_INSTRUCTION = (
     "3) stop_subscription SIEMPRE es un proceso de dos pasos: la primera llamada solo propone (nunca detiene nada de verdad) y te va a devolver una advertencia de riesgo contractual para que se la muestres a Ana tal cual. Si Ana confirma explicitamente despues de leer esa advertencia, llama confirm_stop_bill -- no vuelvas a llamar stop_subscription. "
     "4) Si una herramienta rechaza la accion, explicale a Ana por que en lenguaje simple, no insistas ni la reintentes con otros valores. "
     "5) release_savings_buffer es para semanas de ingreso bajo -- no lo ofrezcas a menos que Ana mencione que le entro poco dinero o necesita liquidez extra. "
-    "6) set_category_budget fija una META de referencia por categoria (rent, groceries, transport, utilities, discretionary) -- Kivo NUNCA aparta, mueve ni transfiere dinero por esto, solo compara el gasto real contra la meta. Si Ana dice algo como 'aparta X para...' o 'quiero apartar dinero para...', aclarale que Kivo no mueve dinero: puedes ponerle una meta de presupuesto para que la vigiles juntos, pero separar el dinero de verdad lo tiene que hacer ella desde su banco. Si aun no ha declarado su patron de nomina y quiere ver un plan de como se repartiria (get_payday_plan), pidele primero el monto y frecuencia aproximada de su mesada/ingreso (set_income_pattern). "
+    "6) set_category_budget fija una META de referencia por categoria (rent, groceries, transport, utilities, discretionary) -- Kivo NUNCA aparta, mueve ni transfiere dinero por esto, solo compara el gasto real contra la meta. create_goal es para metas de ahorro de largo plazo (ej. 'viaje a Japon') que SI acumulan un total a lo largo de varios meses -- calcula sola cuantos meses es realista segun el disponible real de Ana si ella no da una fecha, y tampoco mueve dinero, solo arma el plan. Si Ana dice algo como 'aparta X para...' o 'quiero apartar dinero para...', aclarale que Kivo no mueve dinero de verdad: puedes ponerle una meta (de categoria o de ahorro) para vigilarla juntos, pero separar el dinero lo tiene que hacer ella desde su banco -- cuando lo haga, usa log_goal_contribution para anotar el avance. get_smart_allocation es solo informativo: sugiere como repartir su saldo ACTUAL entre sus metas pendientes respetando un colchon de seguridad, nunca ejecuta nada. "
     "7) simulate_decision y get_financial_lesson NUNCA ejecutan nada real -- son simulaciones educativas, no acciones. Puedes llamarlas libremente sin pedir confirmacion, y explica siempre que el resultado es una proyeccion, no un cambio ya hecho. Si Ana pregunta '¿que pasaria si...?' sobre un cargo o su gasto, usa simulate_decision en vez de estimar tu mismo el impacto. "
     "8) log_external_expense es solo para gasto que el usuario declara en efectivo o con OTRA tarjeta -- si menciona 'other_card' como fuente y no dijo con que tarjeta pago, PREGUNTASELO primero y espera su respuesta antes de llamar la tool; nunca inventes ni dejes vacio el nombre de la tarjeta. La categoria debe ser exactamente una de: rent, groceries, transport, utilities, discretionary -- si no es obvio cual, pregunta o usa discretionary. "
     "9) Se breve y claro, en español."
@@ -302,12 +315,14 @@ def execute_tool(name, args, user_id):
             return sanitize({"ok": True, **actions.get_budget_status(user_id)})
         if name == "set_category_budget":
             return sanitize(actions.set_category_budget(user_id, args.get("category", ""), args.get("monthly_target"), args.get("label")))
-        if name == "set_income_pattern":
-            return sanitize(actions.set_income_pattern(user_id, args.get("expected_amount"), args.get("frequency_days")))
         if name == "set_monthly_budget":
             return sanitize(actions.set_monthly_budget(user_id, args.get("amount")))
-        if name == "get_payday_plan":
-            return sanitize({"ok": True, "plan": actions.get_last_payday_plan(user_id)})
+        if name == "get_smart_allocation":
+            return sanitize(actions.compute_smart_allocation(user_id))
+        if name == "create_goal":
+            return sanitize(actions.create_goal(user_id, args.get("label", ""), args.get("target_amount"), args.get("target_date")))
+        if name == "log_goal_contribution":
+            return sanitize(actions.log_goal_contribution(user_id, args.get("goal_slug", ""), args.get("amount")))
         if name == "get_upcoming_expenses":
             return sanitize({"ok": True, "upcoming_expenses": actions.get_current_signals(user_id)["upcoming_expenses"]})
         if name == "simulate_decision":
