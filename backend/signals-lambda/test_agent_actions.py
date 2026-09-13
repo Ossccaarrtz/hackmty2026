@@ -13,6 +13,7 @@ puedan volver a colarse sin que un test falle.
 
 Correr con: python -m unittest test_agent_actions -v
 """
+import time
 import unittest
 from datetime import date
 from unittest.mock import MagicMock, patch
@@ -475,6 +476,89 @@ class TestSimulateThirdPartyPayroll(BaseAgentActionsTest):
         aa.table.get_item.return_value = {}
         result = aa.simulate_third_party_payroll("mia", amount=0)
         self.assertFalse(result["ok"])
+
+
+class TestLogExternalExpense(BaseAgentActionsTest):
+    """Gasto declarado por el usuario en efectivo u otra tarjeta -- no paso
+    por la tarjeta del banco aliado. Prioridad de estos tests: (1)
+    validacion estricta (monto, fuente, categoria, nombre de tarjeta), y
+    (2) que quede marcado con el 'source' correcto para que el resto del
+    motor (activacion, balance) lo excluya donde debe."""
+
+    def setUp(self):
+        super().setUp()
+        self.load_data_patch = patch.object(aa, "load_data", return_value=([], [], []))
+        self.load_data_patch.start()
+        self.addCleanup(self.load_data_patch.stop)
+
+    def test_rejects_invalid_amount(self):
+        result = aa.log_external_expense("mia", "no-es-numero", "groceries", "tacos", "cash")
+        self.assertFalse(result["ok"])
+
+    def test_rejects_non_positive_amount(self):
+        result = aa.log_external_expense("mia", 0, "groceries", "tacos", "cash")
+        self.assertFalse(result["ok"])
+
+    def test_rejects_unknown_source(self):
+        result = aa.log_external_expense("mia", 100, "groceries", "tacos", "crypto")
+        self.assertFalse(result["ok"])
+
+    def test_rejects_unknown_category(self):
+        result = aa.log_external_expense("mia", 100, "mascotas", "perrijunior", "cash")
+        self.assertFalse(result["ok"])
+
+    def test_other_card_without_card_name_asks_for_it(self):
+        result = aa.log_external_expense("mia", 100, "groceries", "tacos", "other_card")
+        self.assertFalse(result["ok"])
+        self.assertIn("tarjeta", result["reason"].lower())
+        aa.table.put_item.assert_not_called()
+
+    def test_valid_cash_expense_writes_correct_item(self):
+        result = aa.log_external_expense("mia", 150, "discretionary", "tacos con amigos", "cash")
+        self.assertTrue(result["ok"])
+        saved = aa.table.put_item.call_args.kwargs["Item"]
+        self.assertEqual(saved["source"], "cash")
+        self.assertIsNone(saved["card_name"])
+        self.assertEqual(saved["type"], "purchase")
+        self.assertEqual(float(saved["amount"]), 150)
+
+    def test_valid_other_card_expense_writes_card_name(self):
+        result = aa.log_external_expense("mia", 300, "transport", "gasolina", "other_card", card_name="Banorte")
+        self.assertTrue(result["ok"])
+        saved = aa.table.put_item.call_args.kwargs["Item"]
+        self.assertEqual(saved["source"], "other_card")
+        self.assertEqual(saved["card_name"], "Banorte")
+
+    def test_duplicate_within_window_is_rejected(self):
+        existing = {
+            "sk": "TXN#2026-09-12#external1", "type": "purchase", "date": "2026-09-12",
+            "amount": 150, "category": "discretionary", "source": "cash", "card_name": None,
+            "logged_at_ms": int(time.time() * 1000),
+        }
+        with patch.object(aa, "load_data", return_value=([], [existing], [])):
+            result = aa.log_external_expense("mia", 150, "discretionary", "tacos", "cash")
+        self.assertFalse(result["ok"])
+        aa.table.put_item.assert_not_called()
+
+    def test_different_amount_within_window_is_not_a_duplicate(self):
+        existing = {
+            "sk": "TXN#2026-09-12#external1", "type": "purchase", "date": "2026-09-12",
+            "amount": 150, "category": "discretionary", "source": "cash", "card_name": None,
+            "logged_at_ms": int(time.time() * 1000),
+        }
+        with patch.object(aa, "load_data", return_value=([], [existing], [])):
+            result = aa.log_external_expense("mia", 200, "discretionary", "cine", "cash")
+        self.assertTrue(result["ok"])
+
+    def test_old_entry_outside_window_is_not_a_duplicate(self):
+        stale = {
+            "sk": "TXN#2026-09-12#external1", "type": "purchase", "date": "2026-09-12",
+            "amount": 150, "category": "discretionary", "source": "cash", "card_name": None,
+            "logged_at_ms": int(time.time() * 1000) - (aa.EXTERNAL_DEDUP_WINDOW_MS + 5000),
+        }
+        with patch.object(aa, "load_data", return_value=([], [stale], [])):
+            result = aa.log_external_expense("mia", 150, "discretionary", "tacos otra vez", "cash")
+        self.assertTrue(result["ok"])
 
 
 class TestSimulateDecision(BaseAgentActionsTest):

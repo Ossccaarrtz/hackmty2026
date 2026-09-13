@@ -143,6 +143,21 @@ TOOLS = [{
             "description": "Identifica el factor mas debil del score actual del usuario y explica por que le pesa, con sus propios numeros reales -- usa esto cuando el usuario pregunte algo general como '¿como puedo mejorar mi score?' o '¿en que estoy fallando?', antes de sugerir una simulacion especifica con simulate_decision.",
             "parameters": {"type": "object", "properties": {}},
         },
+        {
+            "name": "log_external_expense",
+            "description": "Registra un gasto que el usuario menciona haber hecho en EFECTIVO o con OTRA tarjeta (no la tarjeta del banco aliado que ya rastreamos por Nessie). Usa esto cada vez que el usuario diga que pago algo en efectivo, o con una tarjeta distinta a la que ya conoces. NO uses esto para gastos que ya vienen de get_status/las transacciones rastreadas -- es solo para lo que el usuario declara manualmente.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "amount": {"type": "number", "description": "Monto del gasto"},
+                    "category": {"type": "string", "description": "Una de exactamente: rent, groceries, transport, utilities, discretionary"},
+                    "description": {"type": "string", "description": "Descripcion breve, ej. 'tacos con amigos'"},
+                    "source": {"type": "string", "description": "'cash' si fue en efectivo, 'other_card' si fue con otra tarjeta"},
+                    "card_name": {"type": "string", "description": "Nombre de la tarjeta/banco, SOLO si source es 'other_card'. Si el usuario no lo menciono, PREGUNTALE antes de llamar esta tool -- no lo inventes ni lo dejes vacio."},
+                },
+                "required": ["amount", "category", "source"],
+            },
+        },
     ]
 }]
 
@@ -157,7 +172,8 @@ SYSTEM_INSTRUCTION = (
     "5) release_savings_buffer es para semanas de ingreso bajo -- no lo ofrezcas a menos que Mia mencione que le entro poco dinero o necesita liquidez extra. "
     "6) Los apartados (create_envelope) se reparten solos cuando llega un deposito que coincide con el patron de nomina declarado (set_income_pattern) -- si Mia no ha declarado su patron todavia y quiere crear un apartado, pidele primero el monto y frecuencia aproximada de su nomina. "
     "7) simulate_decision y get_financial_lesson NUNCA ejecutan nada real -- son simulaciones educativas, no acciones. Puedes llamarlas libremente sin pedir confirmacion, y explica siempre que el resultado es una proyeccion, no un cambio ya hecho. Si Mia pregunta '¿que pasaria si...?' sobre un cargo o su gasto, usa simulate_decision en vez de estimar tu mismo el impacto. "
-    "8) Se breve y claro, en español."
+    "8) log_external_expense es solo para gasto que el usuario declara en efectivo o con OTRA tarjeta -- si menciona 'other_card' como fuente y no dijo con que tarjeta pago, PREGUNTASELO primero y espera su respuesta antes de llamar la tool; nunca inventes ni dejes vacio el nombre de la tarjeta. La categoria debe ser exactamente una de: rent, groceries, transport, utilities, discretionary -- si no es obvio cual, pregunta o usa discretionary. "
+    "9) Se breve y claro, en español."
 )
 
 
@@ -283,6 +299,11 @@ def execute_tool(name, args, user_id):
             return sanitize(actions.simulate_decision(user_id, args.get("action", ""), params))
         if name == "get_financial_lesson":
             return sanitize(actions.get_weakest_factor_lesson(user_id))
+        if name == "log_external_expense":
+            return sanitize(actions.log_external_expense(
+                user_id, args.get("amount"), args.get("category", ""),
+                args.get("description", ""), args.get("source", ""), args.get("card_name"),
+            ))
         return {"ok": False, "reason": f"Herramienta desconocida: {name}"}
     except Exception as e:
         return {"ok": False, "reason": f"Algo fallo revisando tu cuenta ({e}) -- no se ejecuto ninguna accion."}

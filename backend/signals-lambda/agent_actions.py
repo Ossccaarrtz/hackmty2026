@@ -102,7 +102,10 @@ def get_full_signals(deposits, purchases, bills_plain, user_id=None, as_of_date=
     # el punto de historial (eso si es correcto: es cuando se registro,
     # no una fecha de referencia para anomalia/pronostico).
     total_income = sum(float(d["amount"]) for d in deposits)
-    total_expense = sum(float(p["amount"]) for p in purchases)
+    # Bank-only, igual que signal_engine.compute_totals: el gasto declarado
+    # en efectivo/otra tarjeta (log_external_expense) nunca salio de la
+    # cuenta que este balance representa.
+    total_expense = sum(float(p["amount"]) for p in purchases if p.get("source", "bank") == "bank")
     history = get_score_history(user_id) if user_id else []
     signals = compute_signals(
         deposits, purchases, bills_plain,
@@ -117,6 +120,89 @@ def get_full_signals(deposits, purchases, bills_plain, user_id=None, as_of_date=
 def get_current_signals(user_id="mia"):
     deposits, purchases, bills_plain = load_data(user_id)
     return get_full_signals(deposits, purchases, bills_plain, user_id=user_id)
+
+
+EXTERNAL_SOURCES = {"cash", "other_card"}
+# Mismas categorias que ya usa el resto del motor de senales (rent/groceries/
+# transport/utilities/discretionary) -- a proposito NO se inventa una
+# taxonomia nueva para gasto externo, porque score_essential_ratio necesita
+# que la categoria caiga en ESSENTIAL_CATEGORIES o no para calcular el ratio
+# correctamente, sin importar si el gasto vino del banco o fue declarado.
+EXTERNAL_EXPENSE_CATEGORIES = {"rent", "groceries", "transport", "utilities", "discretionary"}
+EXTERNAL_CATEGORY_LABELS = {
+    "rent": "Renta", "groceries": "Comida/Despensa", "transport": "Transporte",
+    "utilities": "Servicios", "discretionary": "Discrecional",
+}
+EXTERNAL_DEDUP_WINDOW_MS = 120_000  # 2 minutos -- mismo criterio que el chat de Jarbis (agent/tools/expenses.py)
+
+
+def _find_recent_duplicate_external_expense(user_id, amount, category, source, card_name):
+    """Si el LLM llama la tool dos veces para el mismo mensaje (reintento,
+    doble confirmacion), no se debe duplicar el gasto -- mismo problema que
+    ya resolvio el proyecto hermano Jarbis con su propia deteccion de
+    duplicados en save_expense."""
+    _, purchases, _ = load_data(user_id)
+    now_ms = int(time.time() * 1000)
+    candidates = [p for p in purchases if p.get("source") in EXTERNAL_SOURCES]
+    for p in sorted(candidates, key=lambda p: p.get("logged_at_ms", 0), reverse=True):
+        logged_at = p.get("logged_at_ms")
+        if not logged_at or now_ms - int(logged_at) > EXTERNAL_DEDUP_WINDOW_MS:
+            continue
+        if (float(p["amount"]) == float(amount) and p["category"] == category
+                and p.get("source") == source and (p.get("card_name") or None) == (card_name or None)):
+            return p
+    return None
+
+
+def log_external_expense(user_id, amount, category, description, source, card_name=None):
+    """Registra un gasto que NO paso por la tarjeta del banco aliado --
+    efectivo o una tarjeta distinta. Sin esto, el score/ratio esencial-
+    discrecional y el indice de activacion solo verian la fraccion de la
+    vida financiera real del estudiante que pasa por Nessie, lo cual
+    subestimaria su comportamiento financiero real y sobreestimaria cuanto
+    "ahorra" dentro de lo que el banco si ve.
+
+    Se guarda como una transaccion mas en DynamoDB (misma tabla, mismo
+    patron TXN#), marcada con source= para que:
+    - la senal de activacion (compute_activation_signal) la EXCLUYA --
+      mide especificamente uso de la tarjeta del banco, no gasto en general.
+    - el balance/colchon de liquidez (compute_totals/score_liquidity) la
+      EXCLUYA -- ese dinero nunca salio de la cuenta que representan.
+    - el ratio esencial/discrecional y wallet_share SI la incluyan -- son
+      las dos senales que necesitan la foto completa del comportamiento."""
+    try:
+        amount = float(amount)
+    except (TypeError, ValueError):
+        return {"ok": False, "reason": "El monto no es un numero valido."}
+    if amount <= 0:
+        return {"ok": False, "reason": "El monto tiene que ser mayor a cero."}
+    if source not in EXTERNAL_SOURCES:
+        return {"ok": False, "reason": f"No reconozco la fuente '{source}'. Usa 'cash' (efectivo) u 'other_card' (otra tarjeta)."}
+    category = (category or "").strip().lower()
+    if category not in EXTERNAL_EXPENSE_CATEGORIES:
+        return {"ok": False, "reason": f"'{category}' no es una categoria valida. Usa una de: {', '.join(sorted(EXTERNAL_EXPENSE_CATEGORIES))}."}
+    card_name = (card_name or "").strip() or None
+    if source == "other_card" and not card_name:
+        return {"ok": False, "reason": "¿Con que tarjeta se pago? Necesito el nombre (ej. 'Banorte') antes de registrarlo."}
+
+    duplicate = _find_recent_duplicate_external_expense(user_id, amount, category, source, card_name)
+    if duplicate:
+        return {"ok": False, "reason": "Ya registre un gasto identico hace unos segundos -- no lo dupliqué. Si de verdad son dos gastos distintos, dilo explicitamente."}
+
+    today = date.today().isoformat()
+    now_ms = int(time.time() * 1000)
+    table.put_item(Item=to_decimal({
+        "user_id": user_id, "sk": f"TXN#{today}#external{now_ms}",
+        "type": "purchase", "date": today, "amount": amount,
+        "category": category, "category_label": EXTERNAL_CATEGORY_LABELS[category],
+        "merchant_name": None, "description": description or "Gasto registrado manualmente",
+        "source": source, "card_name": card_name, "logged_at_ms": now_ms,
+    }))
+    label = "efectivo" if source == "cash" else f"tu tarjeta {card_name}"
+    return {
+        "ok": True, "amount": amount, "category": category, "source": source,
+        "message": f"Registre ${amount} en {label} ({EXTERNAL_CATEGORY_LABELS[category]}). Esto se suma a tu presupuesto, pero no cuenta como uso de tu tarjeta del banco.",
+    }
 
 
 SIMULATABLE_ACTIONS = {"stop_bill", "reduce_discretionary"}
@@ -138,7 +224,7 @@ def simulate_decision(user_id, action, params=None):
 
     deposits, purchases, bills_plain = load_data(user_id)
     total_income = sum(float(d["amount"]) for d in deposits)
-    total_expense = sum(float(p["amount"]) for p in purchases)
+    total_expense = sum(float(p["amount"]) for p in purchases if p.get("source", "bank") == "bank")
     history = get_score_history(user_id) if user_id else []
     current = compute_signals(deposits, purchases, bills_plain, total_income=total_income, total_expense=total_expense, score_history=history)
 
@@ -180,7 +266,7 @@ def simulate_decision(user_id, action, params=None):
             {**p, "amount": float(p["amount"]) * scale} if p["category"] == "discretionary" else p
             for p in purchases
         ]
-        hypothetical_total_expense = sum(float(p["amount"]) for p in hypothetical_purchases)
+        hypothetical_total_expense = sum(float(p["amount"]) for p in hypothetical_purchases if p.get("source", "bank") == "bank")
         hypothetical = compute_signals(
             deposits, hypothetical_purchases, bills_plain,
             total_income=total_income, total_expense=hypothetical_total_expense,

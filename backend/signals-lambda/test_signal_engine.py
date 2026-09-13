@@ -18,8 +18,11 @@ import unittest
 import signal_engine as se
 
 
-def purchase(date, category, amount, category_label=None, merchant_name=None):
-    return {"date": date, "category": category, "amount": amount, "category_label": category_label or category, "merchant_name": merchant_name}
+def purchase(date, category, amount, category_label=None, merchant_name=None, source=None):
+    item = {"date": date, "category": category, "amount": amount, "category_label": category_label or category, "merchant_name": merchant_name}
+    if source is not None:
+        item["source"] = source
+    return item
 
 
 class TestResolveReferenceDate(unittest.TestCase):
@@ -275,6 +278,96 @@ class TestComputeActivationSignal(unittest.TestCase):
         result = se.compute_signals(deposits, purchases, [], as_of_date="2026-09-12")
         self.assertEqual(result["activation"]["status"], "activa")
         self.assertFalse(any(a["type"] == "activation_warning" for a in result["alerts"]))
+
+    def test_external_source_purchases_excluded_from_activation(self):
+        """Regresion directa: gasto declarado en efectivo/otra tarjeta NO
+        prueba que el banco vea la tarjeta en uso -- solo compras con
+        source='bank' (el default) cuentan."""
+        purchases = [purchase(f"2026-09-{d:02d}", "groceries", 50, source="cash") for d in range(5, 12)]
+        result = se.compute_activation_signal(purchases, as_of_date="2026-09-12")
+        self.assertEqual(result["status"], "sin_datos")
+
+
+class TestComputeTotalsExcludesExternalSource(unittest.TestCase):
+    """El gasto declarado en efectivo/otra tarjeta (log_external_expense en
+    agent_actions.py) nunca salio de la cuenta del banco -- si se sumara
+    al total de gasto, el colchon de liquidez mostraria menos dinero del
+    que la cuenta real tiene."""
+
+    def test_bank_and_external_purchases_only_bank_counts_as_expense(self):
+        deposits = [{"date": "2026-09-01", "amount": 1000, "category": "income"}]
+        purchases = [
+            purchase("2026-09-05", "groceries", 200),  # bank (default)
+            purchase("2026-09-06", "discretionary", 300, source="cash"),
+        ]
+        income, expense = se.compute_totals(deposits, purchases)
+        self.assertEqual(income, 1000)
+        self.assertEqual(expense, 200)  # el gasto en efectivo NO cuenta
+
+    def test_savings_release_still_treated_as_income_when_bank_source(self):
+        deposits = []
+        purchases = [purchase("2026-09-05", "savings_release", 100)]
+        income, expense = se.compute_totals(deposits, purchases)
+        self.assertEqual(income, 100)
+        self.assertEqual(expense, 0)
+
+
+class TestScoreLiquidityExcludesExternalSource(unittest.TestCase):
+    def test_external_essential_spend_does_not_lower_days_covered(self):
+        bank_only = [purchase("2026-09-01", "rent", 900)]
+        with_external = bank_only + [purchase("2026-09-02", "groceries", 900, source="cash")]
+        bank_result = se.score_liquidity(300, bank_only, elapsed_days=30)
+        mixed_result = se.score_liquidity(300, with_external, elapsed_days=30)
+        self.assertEqual(bank_result["days_covered"], mixed_result["days_covered"])
+
+
+class TestComputeWalletShare(unittest.TestCase):
+    """Indice de 'wallet share' -- que porcion del gasto TOTAL real (banco +
+    declarado por el usuario) pasa por la tarjeta del banco aliado. Pregunta
+    de negocio distinta de compute_activation_signal: un estudiante puede
+    estar activo y aun asi mandar la mayoria de su gasto real a otro lado."""
+
+    def test_no_purchases_returns_none_value(self):
+        result = se.compute_wallet_share([])
+        self.assertIsNone(result["value"])
+
+    def test_all_bank_spend_is_100_percent(self):
+        purchases = [purchase("2026-09-01", "groceries", 100), purchase("2026-09-02", "transport", 50)]
+        result = se.compute_wallet_share(purchases)
+        self.assertEqual(result["value"], 100)
+        self.assertEqual(result["external_amount"], 0.0)
+
+    def test_all_external_spend_is_0_percent(self):
+        purchases = [purchase("2026-09-01", "groceries", 100, source="cash")]
+        result = se.compute_wallet_share(purchases)
+        self.assertEqual(result["value"], 0)
+        self.assertEqual(result["bank_amount"], 0.0)
+
+    def test_mixed_spend_computes_correct_percentage(self):
+        purchases = [
+            purchase("2026-09-01", "groceries", 300),  # bank
+            purchase("2026-09-02", "discretionary", 100, source="cash"),
+            purchase("2026-09-03", "transport", 100, source="other_card"),
+        ]
+        result = se.compute_wallet_share(purchases)
+        self.assertEqual(result["value"], 60)  # 300 / 500
+        self.assertEqual(result["bank_amount"], 300.0)
+        self.assertEqual(result["external_amount"], 200.0)
+
+    def test_neutral_categories_excluded_from_both_buckets(self):
+        purchases = [
+            purchase("2026-09-01", "groceries", 300),
+            purchase("2026-09-02", "savings_transfer", 9999),
+            purchase("2026-09-03", "envelope:renta", 9999, source="cash"),
+        ]
+        result = se.compute_wallet_share(purchases)
+        self.assertEqual(result["value"], 100)  # los 9999 no deben contaminar ningun lado
+
+    def test_compute_signals_includes_wallet_share(self):
+        deposits = [{"date": "2026-09-01", "amount": 500, "category": "income"}]
+        purchases = [purchase("2026-09-05", "groceries", 100, source="cash")]
+        result = se.compute_signals(deposits, purchases, [], as_of_date="2026-09-12")
+        self.assertEqual(result["wallet_share"]["value"], 0)
 
 
 if __name__ == "__main__":

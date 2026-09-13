@@ -136,11 +136,16 @@ def compute_activation_signal(purchases, as_of_date=None):
     un solo numero habria obligado a re-normalizar los pesos ya probados
     del score existente, y habria confundido a que responde cada uno.
 
-    Solo cuenta actividad real de comercio (purchases), no depositos ni
-    reasignaciones internas de dinero (apartados, ahorro) -- una mesada
-    que llega a la cuenta no prueba que el banco vea la tarjeta en uso."""
+    Solo cuenta actividad real de comercio (purchases) hecha CON LA
+    TARJETA DEL BANCO (source='bank', el default) -- ni depositos, ni
+    reasignaciones internas de dinero (apartados, ahorro), ni gasto
+    declarado en efectivo/otra tarjeta (log_external_expense en
+    agent_actions.py). Un estudiante puede gastar mucho en general y aun
+    asi tener la tarjeta del banco dormida -- eso es precisamente lo que
+    el banco necesita saber, y es distinto de 'wallet share' (cuanto de SU
+    gasto total captura el banco, ver compute_wallet_share)."""
     reference = resolve_reference_date(as_of_date, purchases)
-    real_purchases = [p for p in purchases if not is_neutral(p["category"])]
+    real_purchases = [p for p in purchases if not is_neutral(p["category"]) and p.get("source", "bank") == "bank"]
     if not real_purchases or not reference:
         return {
             "value": 0, "status": "sin_datos",
@@ -172,8 +177,45 @@ def compute_activation_signal(purchases, as_of_date=None):
     }
 
 
+def compute_wallet_share(purchases, as_of_date=None):
+    """Que porcion de TODO el gasto real (banco + declarado por el usuario:
+    efectivo u otra tarjeta) pasa por la tarjeta del banco aliado -- una
+    pregunta de negocio distinta de 'esta dormida la tarjeta'
+    (compute_activation_signal). Un estudiante puede estar activo (la usa
+    de vez en cuando) y aun asi mandar la mayoria de su gasto real a otro
+    lado -- ese es el caso mas accionable para el banco (recuperar ese
+    gasto con una oferta especifica), y sin el registro manual de gasto
+    externo esta pregunta seria invisible por completo: solo veriamos lo
+    que ya pasa por su tarjeta, nunca lo que se le esta yendo."""
+    real_purchases = [p for p in purchases if not is_neutral(p["category"])]
+    if not real_purchases:
+        return {"value": None, "bank_amount": 0.0, "external_amount": 0.0, "detail": "No hay gasto registrado todavia."}
+
+    bank_amount = sum(float(p["amount"]) for p in real_purchases if p.get("source", "bank") == "bank")
+    external_amount = sum(float(p["amount"]) for p in real_purchases if p.get("source", "bank") != "bank")
+    total = bank_amount + external_amount
+    if total <= 0:
+        return {"value": None, "bank_amount": 0.0, "external_amount": 0.0, "detail": "No hay gasto registrado todavia."}
+
+    value = round(bank_amount / total * 100)
+    return {
+        "value": value,
+        "bank_amount": round(bank_amount, 2),
+        "external_amount": round(external_amount, 2),
+        "detail": f"{value}% de tu gasto total pasa por tu tarjeta del banco; {100 - value}% es efectivo u otra tarjeta.",
+    }
+
+
 def score_liquidity(current_balance, purchases, elapsed_days):
-    essential_spend = sum(float(p["amount"]) for p in purchases if p["category"] in ESSENTIAL_CATEGORIES and p["category"] != "income")
+    # Bank-only a proposito, igual que compute_totals: current_balance ya
+    # representa solo la cuenta del banco, asi que el ritmo de consumo con
+    # el que se compara tiene que salir de la misma fuente -- mezclar
+    # balance de banco con ritmo de gasto que incluye efectivo/otra
+    # tarjeta daria un colchon de liquidez internamente inconsistente.
+    essential_spend = sum(
+        float(p["amount"]) for p in purchases
+        if p["category"] in ESSENTIAL_CATEGORIES and p["category"] != "income" and p.get("source", "bank") == "bank"
+    )
     avg_daily = essential_spend / elapsed_days if elapsed_days else 0
     days_covered = int(current_balance / avg_daily) if avg_daily > 0 else 999
     cushion_ratio = (current_balance / (avg_daily * 14)) if avg_daily > 0 else 2
@@ -294,10 +336,22 @@ def compute_totals(deposits, purchases):
     """Total de ingreso/gasto para el balance. 'savings_release' se guarda
     con type=purchase (para que la verificacion en agent_actions.py opere
     parejo sobre la lista de purchases), pero para el balance es dinero
-    ENTRANDO, no saliendo -- se trata como ingreso aqui pase lo que pase."""
+    ENTRANDO, no saliendo -- se trata como ingreso aqui pase lo que pase.
+
+    Gasto declarado por el usuario que NO paso por la tarjeta del banco
+    (source='cash'/'other_card', ver log_external_expense en
+    agent_actions.py) se EXCLUYE de este total -- ese dinero nunca salio
+    de la cuenta que este balance representa. Si se sumara aqui, el
+    colchon de liquidez mostraria menos dinero del que la cuenta del banco
+    de verdad tiene, solo porque el usuario gasto efectivo. Ese gasto SI
+    debe contar para el ratio esencial/discrecional (ve mas abajo en
+    score_essential_ratio, que no filtra por source a proposito) -- son
+    dos preguntas distintas sobre los mismos datos."""
     income = sum(float(d["amount"]) for d in deposits)
     expense = 0.0
     for p in purchases:
+        if p.get("source", "bank") != "bank":
+            continue
         amt = float(p["amount"])
         if p.get("category") == "savings_release":
             income += amt
@@ -337,6 +391,7 @@ def compute_signals(deposits, purchases, bills, total_income=None, total_expense
     liquidity = score_liquidity(current_balance, purchases, elapsed_days)
     anomaly = detect_anomaly(purchases, as_of_date)
     activation = compute_activation_signal(purchases, as_of_date)
+    wallet_share = compute_wallet_share(purchases, as_of_date)
 
     final_score = round(
         income_regularity["value"] * WEIGHTS["income"]
@@ -395,6 +450,7 @@ def compute_signals(deposits, purchases, bills, total_income=None, total_expense
         "alerts": alerts,
         "anomaly": anomaly,
         "activation": activation,
+        "wallet_share": wallet_share,
         "upcoming_expenses": forecast_upcoming_expenses(purchases, as_of_date),
         "liquidity": {"days_covered": liquidity["days_covered"]},
         "projection": {"weeks_to_ready": project_readiness(score_history, final_score), "product": "tarjeta secured"},
