@@ -253,4 +253,9 @@ Estado actual de Ana: income pattern declarado (~$1,581 cada 12 días, toleranci
 - Nombre del "empleador" en la simulación de depósito de un tercero: de "Estudio Creativo" a algo tipo "Papá y mamá" o "Beca/Trabajo de medio tiempo".
 - Nombre del banco ficticio en la demo: **no usar "Santander" literal** (evitar implicar un partnership real que no existe) — usar un nombre ficticio, ej. "Banco Aurora", y citar a Santander solo como evidencia de mercado en el pitch, no en la demo misma.
 
+**8.6 — Simulador financiero educativo (`simulate_decision` + `get_financial_lesson`) — ✅ hecho, backend + chat, sin depender de frontend nuevo**
+- Mientras el frontend está ocupado con otro trabajo, se identificó esto como el ítem de mayor valor que backend puede avanzar solo: dos tools de chat nuevas que responden "¿que pasaria con mi score si...?" (dejar un cargo, reducir gasto discrecional) reutilizando `signal_engine.compute_signals` sobre una copia hipotética de los datos, más una lección atada al factor más débil real del score. Detalle completo, incluyendo un bug de anti-alucinación encontrado y corregido en la primera prueba en vivo, en el [README](./README.md#backend-desplegado-ya-en-la-cuenta-oficial-de-aws-del-equipo), sección "Noveno y décimo tools de chat en vivo".
+- 15 tests nuevos, 107 en total. Probado en vivo contra la cuenta real de Ana.
+- Pendiente (frontend, no bloqueante): agregar `simulate_decision`/`get_financial_lesson` a la lista de exclusión del feed de acciones en `data.js` (mismo patrón que `get_envelopes_status`/`get_upcoming_expenses`), para que no se pinten como "acción rechazada".
+
 **Nombre de producto elegido para el pivote: "Spark"** (discutido y elegido sobre otras opciones — Lanix, Activa, Kick, Boost, Pulse — por ser corto, fácil de decir en el pitch, y conectar directo con la tesis de "encender una tarjeta dormida").

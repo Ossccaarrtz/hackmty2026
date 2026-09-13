@@ -477,6 +477,141 @@ class TestSimulateThirdPartyPayroll(BaseAgentActionsTest):
         self.assertFalse(result["ok"])
 
 
+class TestSimulateDecision(BaseAgentActionsTest):
+    """Simulador financiero educativo -- responde '¿que pasaria con mi
+    score si...?' sin ejecutar nada real. Prioridad de estos tests: (1)
+    nunca debe escribir nada (ni put_item ni update_item), sin importar la
+    accion o el resultado, y (2) el numero que regresa debe salir del MISMO
+    signal_engine.compute_signals que usa el dashboard real, no una formula
+    aparte inventada para la simulacion."""
+
+    DEPOSITS = [
+        {"date": "2026-07-01", "amount": 600, "category": "income"},
+        {"date": "2026-08-01", "amount": 600, "category": "income"},
+        {"date": "2026-09-01", "amount": 600, "category": "income"},
+    ]
+    PURCHASES = [
+        {"date": "2026-07-05", "amount": 400, "category": "rent", "merchant_name": "Landlord"},
+        {"date": "2026-08-05", "amount": 400, "category": "rent", "merchant_name": "Landlord"},
+        {"date": "2026-09-05", "amount": 400, "category": "rent", "merchant_name": "Landlord"},
+        {"date": "2026-09-08", "amount": 300, "category": "discretionary", "merchant_name": "CineMax"},
+        {"date": "2026-09-09", "amount": 200, "category": "discretionary", "merchant_name": "CineMax"},
+    ]
+    BILLS = [{"payee": "Gym Co", "status": "recurring", "payment_amount": 40, "bill_id": "b1"}]
+
+    def setUp(self):
+        super().setUp()
+        self.load_data_patch = patch.object(aa, "load_data", return_value=(self.DEPOSITS, self.PURCHASES, self.BILLS))
+        self.load_data_patch.start()
+        self.addCleanup(self.load_data_patch.stop)
+        self.history_patch = patch.object(aa, "get_score_history", return_value=[])
+        self.history_patch.start()
+        self.addCleanup(self.history_patch.stop)
+
+    def test_rejects_unknown_action(self):
+        result = aa.simulate_decision("mia", "delete_everything")
+        self.assertFalse(result["ok"])
+
+    def test_stop_bill_rejects_nonexistent_payee(self):
+        result = aa.simulate_decision("mia", "stop_bill", {"bill_payee": "Netflix"})
+        self.assertFalse(result["ok"])
+
+    def test_stop_bill_rejects_already_cancelled_bill(self):
+        bills = [{"payee": "Gym Co", "status": "cancelled", "payment_amount": 40, "bill_id": "b1"}]
+        with patch.object(aa, "load_data", return_value=(self.DEPOSITS, self.PURCHASES, bills)):
+            result = aa.simulate_decision("mia", "stop_bill", {"bill_payee": "Gym Co"})
+        self.assertFalse(result["ok"])
+
+    def test_stop_bill_projects_equal_or_better_score(self):
+        result = aa.simulate_decision("mia", "stop_bill", {"bill_payee": "Gym Co"})
+        self.assertTrue(result["ok"])
+        self.assertGreaterEqual(result["score_projected"], result["score_now"])
+        self.assertIn("Gym Co", result["lesson"])
+
+    def test_stop_bill_exposes_monthly_amount_as_explicit_field(self):
+        """Regresion directa de un hallazgo real en produccion: el monto solo
+        vivia dentro del texto de 'lesson' -- find_unverified_amounts (la
+        capa anti-alucinacion de lambda_chat.py) no puede verificar una
+        cifra que solo aparece en prosa, asi que el chat la reemplazaba por
+        '[monto no confirmado]' aunque el numero fuera correcto. Mismo
+        patron que ya se corrigio una vez con 'monthly_amount' en las
+        alertas de get_status."""
+        result = aa.simulate_decision("mia", "stop_bill", {"bill_payee": "Gym Co"})
+        self.assertEqual(result["monthly_amount"], 40.0)
+
+    def test_reduce_discretionary_rejects_invalid_amount(self):
+        result = aa.simulate_decision("mia", "reduce_discretionary", {"monthly_amount": "no-es-numero"})
+        self.assertFalse(result["ok"])
+
+    def test_reduce_discretionary_rejects_non_positive_amount(self):
+        result = aa.simulate_decision("mia", "reduce_discretionary", {"monthly_amount": 0})
+        self.assertFalse(result["ok"])
+
+    def test_reduce_discretionary_rejects_when_no_discretionary_spend(self):
+        purchases = [p for p in self.PURCHASES if p["category"] != "discretionary"]
+        with patch.object(aa, "load_data", return_value=(self.DEPOSITS, purchases, self.BILLS)):
+            result = aa.simulate_decision("mia", "reduce_discretionary", {"monthly_amount": 100})
+        self.assertFalse(result["ok"])
+
+    def test_reduce_discretionary_projects_equal_or_better_score(self):
+        result = aa.simulate_decision("mia", "reduce_discretionary", {"monthly_amount": 200})
+        self.assertTrue(result["ok"])
+        self.assertGreaterEqual(result["score_projected"], result["score_now"])
+
+    def test_reduce_discretionary_caps_at_available_amount(self):
+        # Solo hay $500 de discrecional en total (300+200) -- pedir 1000 se topa ahi.
+        result = aa.simulate_decision("mia", "reduce_discretionary", {"monthly_amount": 1000})
+        self.assertTrue(result["ok"])
+        self.assertIn("solo tienes", result["lesson"].lower())
+        self.assertEqual(result["monthly_amount"], 500.0)  # topado al disponible, no al pedido
+
+    def test_reduce_discretionary_exposes_actual_reduction_as_explicit_field(self):
+        result = aa.simulate_decision("mia", "reduce_discretionary", {"monthly_amount": 200})
+        self.assertEqual(result["monthly_amount"], 200.0)
+
+    def test_never_writes_anything_regardless_of_action_or_outcome(self):
+        aa.simulate_decision("mia", "stop_bill", {"bill_payee": "Gym Co"})
+        aa.simulate_decision("mia", "stop_bill", {"bill_payee": "No Existe"})
+        aa.simulate_decision("mia", "reduce_discretionary", {"monthly_amount": 50})
+        aa.simulate_decision("mia", "reduce_discretionary", {"monthly_amount": -5})
+        aa.table.put_item.assert_not_called()
+        aa.table.update_item.assert_not_called()
+
+
+class TestGetWeakestFactorLesson(BaseAgentActionsTest):
+    """Lección de educación financiera atada al comportamiento real de la
+    persona -- identifica el factor más débil del score y explica por qué,
+    usando el 'detail' que signal_engine ya calculó de datos reales, no una
+    lista de tips genéricos (eso ya se descartó explícitamente en el
+    README como contrario a la tesis del proyecto)."""
+
+    def test_identifies_lowest_value_factor(self):
+        fake_signals = {"score": {"value": 60, "breakdown": [
+            {"key": "income_regularity", "label": "Regularidad de ingreso", "weight": 35, "value": 90, "detail": "8 depositos regulares"},
+            {"key": "essential_ratio", "label": "Ratio esencial/discrecional", "weight": 25, "value": 20, "detail": "gasto discrecional es 60% del ingreso total"},
+            {"key": "bill_health", "label": "Recurrencia sana", "weight": 20, "value": 100, "detail": "2/2 bills sanos"},
+            {"key": "liquidity_cushion", "label": "Colchon de liquidez", "weight": 20, "value": 80, "detail": "cubre 20 dias"},
+        ]}}
+        with patch.object(aa, "get_current_signals", return_value=fake_signals):
+            result = aa.get_weakest_factor_lesson("mia")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["factor"], "essential_ratio")
+        self.assertIn("60%", result["detail"])
+        self.assertTrue(result["why_it_matters"])
+        self.assertTrue(result["how_to_improve"])
+
+    def test_empty_breakdown_is_handled_gracefully(self):
+        with patch.object(aa, "get_current_signals", return_value={"score": {"value": 0, "breakdown": []}}):
+            result = aa.get_weakest_factor_lesson("mia")
+        self.assertFalse(result["ok"])
+
+    def test_all_four_known_factors_have_a_lesson_defined(self):
+        for key in ("income_regularity", "essential_ratio", "bill_health", "liquidity_cushion"):
+            self.assertIn(key, aa.FACTOR_LESSONS)
+            self.assertTrue(aa.FACTOR_LESSONS[key]["why"])
+            self.assertTrue(aa.FACTOR_LESSONS[key]["how"])
+
+
 class TestVerifiedActionHistoryDedup(BaseAgentActionsTest):
     def _mock_two_queries(self, action_items, notif_items):
         # get_verified_action_history llama table.query() dos veces en orden

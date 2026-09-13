@@ -308,6 +308,22 @@ Probado en vivo de punta a punta, con las dos cuentas reales: `POST /envelopes/s
 
 **Nota de manejo de credenciales:** la api key de la cuenta del tercero vive únicamente como variable de entorno del Lambda (`EMPLOYER_NESSIE_API_KEY`), nunca en el código fuente ni en este repo — mismo tratamiento que la key principal (`NESSIE_API_KEY`).
 
+**Noveno y décimo tools de chat en vivo — simulador financiero educativo (backend, sin depender de UI nueva):**
+```
+POST /chat/message  { "message": "que pasaria con mi score si dejo de pagar el gimnasio?" }
+POST /chat/message  { "message": "como puedo mejorar mi score?" }
+```
+
+Con el pivote a Spark, "educar financieramente" pasó de ser un enunciado del pitch a un tool real: `simulate_decision` responde "¿qué pasaría si...?" (dejar de pagar un cargo, o reducir gasto discrecional un monto dado) reutilizando el **mismo** `signal_engine.compute_signals` que ya calcula el score real, sobre una copia hipotética de los datos — nunca toca Nessie ni DynamoDB, es puramente una proyección. `get_financial_lesson` identifica el factor más débil del score actual y explica por qué le pesa, usando el `detail` real ya calculado de los datos de la persona, no una lista de tips genéricos (eso ya se descartó a propósito en la sección de "Descartado" de este README).
+
+**Por qué esto no es "un chatbot dando consejos" (la trampa que el propio reto señala como débil):** la respuesta nunca la inventa el LLM — el número sale de correr el motor de señales real dos veces (antes/después) y comparar. El LLM solo narra un resultado ya calculado, igual que con cualquier otra tool del proyecto.
+
+**Bug encontrado y corregido en la primera prueba en vivo:** el monto de la simulación solo vivía dentro del texto de `lesson` (ej. "...FitZone Campus ($250/mes)...") — la capa anti-alucinación de texto (`find_unverified_amounts`, ver arriba) no puede verificar una cifra que solo aparece en prosa, así que el chat la reemplazaba por `[monto no confirmado]` aunque el número fuera correcto. Mismo patrón exacto que ya se había corregido una vez con `monthly_amount` en las alertas de `get_status`. Corregido igual: el monto ahora es un campo explícito (`monthly_amount`) en el resultado de la tool, no solo texto.
+
+Probado en vivo contra la cuenta real de Ana: *"¿qué pasaría con mi score si dejo de pagar FitZone Campus?"* → el chat llamó `simulate_decision`, calculó **57 → 69 puntos (+12)** y **1 → 3 días de colchón de liquidez**, explicó el porqué citando los pesos reales de cada factor, y ofreció ejecutar la acción de verdad si se confirma — sin inventar ningún número. 15 tests nuevos (`TestSimulateDecision`, `TestGetWeakestFactorLesson`, incluida una regresión directa del bug de arriba), 107 tests en total en el backend.
+
+**Nota para quien lleve el frontend:** igual que `get_envelopes_status`/`get_upcoming_expenses`, estas dos tools son de solo consulta/simulación (nunca ejecutan nada) — hay que agregarlas a la lista de exclusión del feed de acciones en `data.js` para que no se pinten como "acción rechazada".
+
 ## Auditoría propia (agente independiente, solo lectura) — 4 hallazgos reales corregidos
 
 Se lanzó una revisión de código independiente buscando específicamente el mismo patrón que ya se había encontrado una vez (un guardrail que aparenta estar activo pero nunca se ejecuta). Encontró 4 hallazgos reales, ya corregidos y desplegados:

@@ -125,6 +125,24 @@ TOOLS = [{
             "description": "Consulta gastos recurrentes que se esperan pronto (ej. gasolina cada ~14 dias) segun la cadencia real observada en su historial -- no son montos inventados, se calculan de transacciones reales pasadas.",
             "parameters": {"type": "object", "properties": {}},
         },
+        {
+            "name": "simulate_decision",
+            "description": "Simulador educativo: responde '¿que pasaria con mi score si...?' sin ejecutar nada real -- ni Nessie ni la cuenta se tocan, es puramente una proyeccion. Usa esto cuando el usuario pregunte hipoteticamente por el impacto de una decision antes de tomarla, por ejemplo '¿que pasa si dejo el gimnasio?' o '¿como me ayudaria gastar 200 menos al mes en salidas?'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "description": "'stop_bill' para simular dejar de pagar un cargo recurrente, o 'reduce_discretionary' para simular reducir gasto discrecional mensual."},
+                    "bill_payee": {"type": "string", "description": "Nombre exacto del cargo a simular deteniendo, solo si action es 'stop_bill', ej. 'Gym Co'."},
+                    "monthly_amount": {"type": "number", "description": "Monto mensual a simular reduciendo, solo si action es 'reduce_discretionary'."},
+                },
+                "required": ["action"],
+            },
+        },
+        {
+            "name": "get_financial_lesson",
+            "description": "Identifica el factor mas debil del score actual del usuario y explica por que le pesa, con sus propios numeros reales -- usa esto cuando el usuario pregunte algo general como '¿como puedo mejorar mi score?' o '¿en que estoy fallando?', antes de sugerir una simulacion especifica con simulate_decision.",
+            "parameters": {"type": "object", "properties": {}},
+        },
     ]
 }]
 
@@ -138,7 +156,8 @@ SYSTEM_INSTRUCTION = (
     "4) Si una herramienta rechaza la accion, explicale a Mia por que en lenguaje simple, no insistas ni la reintentes con otros valores. "
     "5) release_savings_buffer es para semanas de ingreso bajo -- no lo ofrezcas a menos que Mia mencione que le entro poco dinero o necesita liquidez extra. "
     "6) Los apartados (create_envelope) se reparten solos cuando llega un deposito que coincide con el patron de nomina declarado (set_income_pattern) -- si Mia no ha declarado su patron todavia y quiere crear un apartado, pidele primero el monto y frecuencia aproximada de su nomina. "
-    "7) Se breve y claro, en español."
+    "7) simulate_decision y get_financial_lesson NUNCA ejecutan nada real -- son simulaciones educativas, no acciones. Puedes llamarlas libremente sin pedir confirmacion, y explica siempre que el resultado es una proyeccion, no un cambio ya hecho. Si Mia pregunta '¿que pasaria si...?' sobre un cargo o su gasto, usa simulate_decision en vez de estimar tu mismo el impacto. "
+    "8) Se breve y claro, en español."
 )
 
 
@@ -259,6 +278,11 @@ def execute_tool(name, args, user_id):
             return sanitize(actions.confirm_pending_allocation(user_id))
         if name == "get_upcoming_expenses":
             return sanitize({"ok": True, "upcoming_expenses": actions.get_current_signals(user_id)["upcoming_expenses"]})
+        if name == "simulate_decision":
+            params = {"bill_payee": args.get("bill_payee"), "monthly_amount": args.get("monthly_amount")}
+            return sanitize(actions.simulate_decision(user_id, args.get("action", ""), params))
+        if name == "get_financial_lesson":
+            return sanitize(actions.get_weakest_factor_lesson(user_id))
         return {"ok": False, "reason": f"Herramienta desconocida: {name}"}
     except Exception as e:
         return {"ok": False, "reason": f"Algo fallo revisando tu cuenta ({e}) -- no se ejecuto ninguna accion."}
