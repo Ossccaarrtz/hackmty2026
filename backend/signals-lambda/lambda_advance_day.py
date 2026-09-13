@@ -322,7 +322,6 @@ def _handle_reset(user_id):
     table.delete_item(Key={"user_id": user_id, "sk": "STATE#simulation"})
     table.delete_item(Key={"user_id": user_id, "sk": "CHAT_HISTORY"})
     table.delete_item(Key={"user_id": user_id, "sk": "PENDING_STOP_BILL"})
-    table.delete_item(Key={"user_id": user_id, "sk": "PAYDAY_PLAN"})
     try:
         resp = table.query(KeyConditionExpression=Key("user_id").eq(user_id))
         for item in resp["Items"]:

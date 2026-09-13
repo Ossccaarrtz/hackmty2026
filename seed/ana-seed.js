@@ -120,7 +120,7 @@ async function main() {
 
   console.log("\n=== 3. Sembrando ingreso irregular (mesada + trabajo de medio tiempo, MXN) ===");
   const incomeSchedule = [88, 74, 67, 53, 39, 32, 18, 4]; // dias atras, mismo patron de cadencia que Mia
-  const incomeAmounts = [1200, 1450, 1800, 1350, 1900, 1150, 1700, 2100];
+  const incomeAmounts = [1750, 2100, 2600, 1950, 2750, 1650, 2450, 3000];
   const incomeDescriptions = [
     "Mesada de mis papas", "Mesada de mis papas", "Pago medio tiempo - cafeteria",
     "Mesada de mis papas", "Pago medio tiempo - cafeteria", "Mesada de mis papas",
