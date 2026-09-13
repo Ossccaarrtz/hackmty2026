@@ -63,6 +63,18 @@ TOOLS = [{
             "parameters": {"type": "object", "properties": {}},
         },
         {
+            "name": "dismiss_leak",
+            "description": "Usa esto cuando el usuario te diga que SI sigue usando un cargo que aparece marcado como fuga (ej. 'si voy al gym', 'esa suscripcion si la uso') y NO quiera cancelarlo. Silencia esa alerta especifica por un tiempo (30 dias por default) -- IMPORTANTE: esto no cambia su score ni 'arregla' nada de verdad, solo deja de avisarle. Si para cuando venza el plazo sigue sin actividad real relacionada, la alerta vuelve a aparecer sola. Nunca uses esto en vez de stop_subscription si el usuario en realidad quiere cancelarlo.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "bill_title": {"type": "string", "description": "Nombre exacto del comercio tal como aparece en la alerta, ej. 'FitZone Campus'"},
+                    "days": {"type": "integer", "description": "Cuantos dias callar la alerta. Omite para usar el default (30)."},
+                },
+                "required": ["bill_title"],
+            },
+        },
+        {
             "name": "move_to_savings",
             "description": "Mueve un monto de la cuenta corriente al ahorro. Se rechaza si el monto es mayor al limite autonomo permitido, si ya se movio el tope diario, si hay una anomalia de gasto sin resolver, o si dejaria el colchon de liquidez por debajo de una semana.",
             "parameters": {
@@ -321,6 +333,8 @@ def execute_tool(name, args, user_id):
             return sanitize(actions.propose_stop_bill(user_id, args.get("bill_title", "")))
         if name == "confirm_stop_bill":
             return sanitize(actions.confirm_stop_bill(user_id))
+        if name == "dismiss_leak":
+            return sanitize(actions.dismiss_leak(user_id, args.get("bill_title", ""), args.get("days")))
         if name == "move_to_savings":
             return sanitize(actions.verified_move_to_savings(user_id, args.get("amount"), args.get("reason", "")))
         if name == "release_savings_buffer":

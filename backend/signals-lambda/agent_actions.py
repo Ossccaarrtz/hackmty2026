@@ -13,7 +13,7 @@ import time
 import statistics
 import unicodedata
 import boto3
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 
@@ -45,6 +45,8 @@ MAX_AUTONOMOUS_SAVINGS = 100  # tope por transaccion Y por dia -- el chat no pue
 BUDGET_PREFIX = "BUDGET#"
 GOAL_PREFIX = "GOAL#"
 MONTHLY_BUDGET_SK = "MONTHLY_BUDGET"
+DISMISSED_LEAK_PREFIX = "DISMISSED_LEAK#"
+LEAK_DISMISS_DAYS = 30  # cuanto tiempo se calla una alerta de fuga descartada antes de re-evaluarla
 
 dynamodb = boto3.resource("dynamodb", region_name=REGION)
 table = dynamodb.Table(TABLE_NAME)
@@ -92,6 +94,42 @@ def record_score(user_id, as_of_date, value):
     }))
 
 
+def get_dismissed_leak_titles(user_id):
+    """Comercios cuya alerta de fuga la usuaria pidio explicitamente que se
+    callara por un tiempo (ver dismiss_leak) -- solo los que no vencieron."""
+    resp = table.query(KeyConditionExpression=Key("user_id").eq(user_id) & Key("sk").begins_with(DISMISSED_LEAK_PREFIX))
+    today = date.today().isoformat()
+    return {item["bill_title"] for item in resp["Items"] if item.get("dismissed_until", "") >= today}
+
+
+def dismiss_leak(user_id, bill_title, days=None):
+    """Silencia la alerta de 'fuga' de un cargo por un tiempo, cuando la
+    usuaria confirma que si lo sigue usando. A proposito NO toca el score
+    ni evaluate_bills -- 'Recurrencia sana' se sigue calculando solo con
+    actividad real (ver evaluate_bills en signal_engine.py), asi que decirle
+    a Kivo 'si la uso' nunca puede mejorar el score por si solo. Esto solo
+    calla el AVISO; si para cuando venza el plazo sigue sin haber actividad
+    real relacionada, la alerta vuelve a aparecer sola."""
+    bill_title = (bill_title or "").strip()
+    if not bill_title:
+        return {"ok": False, "reason": "Falta el nombre del cargo."}
+    try:
+        days = int(days) if days is not None else LEAK_DISMISS_DAYS
+    except (TypeError, ValueError):
+        return {"ok": False, "reason": "Los dias no son un numero valido."}
+    if days <= 0:
+        return {"ok": False, "reason": "Los dias tienen que ser mayores a cero."}
+    dismissed_until = (date.today() + timedelta(days=days)).isoformat()
+    table.put_item(Item=to_decimal({
+        "user_id": user_id, "sk": f"{DISMISSED_LEAK_PREFIX}{bill_title}",
+        "bill_title": bill_title, "dismissed_until": dismissed_until,
+    }))
+    return {
+        "ok": True, "bill_title": bill_title, "dismissed_until": dismissed_until, "days": days,
+        "message": f"Entendido, no te voy a avisar de '{bill_title}' por {days} dias. Esto no cambia tu score -- si para entonces sigue sin actividad real, te lo vuelvo a mencionar.",
+    }
+
+
 def get_full_signals(deposits, purchases, bills_plain, user_id=None, as_of_date=None, persist=True):
     # as_of_date=None solia significar "no evalues anomalia ni gastos
     # proximos" -- corregido primero forzando date.today() aqui, pero eso
@@ -116,6 +154,12 @@ def get_full_signals(deposits, purchases, bills_plain, user_id=None, as_of_date=
     )
     if persist and user_id:
         record_score(user_id, as_of_date, signals["score"]["value"])
+    if user_id:
+        # Solo se calla el AVISO -- signals["score"] ya se calculo arriba con
+        # el bill_health real, sin importar que se descarte despues.
+        dismissed = get_dismissed_leak_titles(user_id)
+        if dismissed:
+            signals["alerts"] = [a for a in signals["alerts"] if not (a["type"] == "leak" and a["title"] in dismissed)]
     return signals
 
 

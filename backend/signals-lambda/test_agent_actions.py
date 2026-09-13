@@ -15,7 +15,7 @@ Correr con: python -m unittest test_agent_actions -v
 """
 import time
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 
 import agent_actions as aa
@@ -510,6 +510,94 @@ class TestLogGoalContribution(BaseAgentActionsTest):
         result = aa.log_goal_contribution("ana", "japon", 300)
         self.assertTrue(result["done"])
         self.assertEqual(result["remaining"], 0)
+
+
+class TestDismissLeak(BaseAgentActionsTest):
+    """dismiss_leak calla el AVISO de una fuga cuando la usuaria confirma
+    que si sigue usando el cargo -- nunca debe tocar el score (ver
+    TestGetFullSignalsFiltersDismissedLeaks)."""
+
+    def test_rejects_missing_bill_title(self):
+        result = aa.dismiss_leak("ana", "")
+        self.assertFalse(result["ok"])
+
+    def test_rejects_non_positive_days(self):
+        result = aa.dismiss_leak("ana", "FitZone Campus", days=0)
+        self.assertFalse(result["ok"])
+
+    def test_rejects_non_numeric_days(self):
+        result = aa.dismiss_leak("ana", "FitZone Campus", days="no-es-numero")
+        self.assertFalse(result["ok"])
+
+    def test_saves_dismissal_with_default_days(self):
+        result = aa.dismiss_leak("ana", "FitZone Campus")
+        self.assertTrue(result["ok"])
+        expected_until = (date.today() + timedelta(days=aa.LEAK_DISMISS_DAYS)).isoformat()
+        self.assertEqual(result["dismissed_until"], expected_until)
+        saved_item = aa.table.put_item.call_args.kwargs["Item"]
+        self.assertEqual(saved_item["bill_title"], "FitZone Campus")
+        self.assertEqual(saved_item["dismissed_until"], expected_until)
+
+    def test_saves_dismissal_with_custom_days(self):
+        result = aa.dismiss_leak("ana", "FitZone Campus", days=10)
+        expected_until = (date.today() + timedelta(days=10)).isoformat()
+        self.assertEqual(result["dismissed_until"], expected_until)
+
+
+class TestGetFullSignalsFiltersDismissedLeaks(BaseAgentActionsTest):
+    """get_full_signals es donde se filtra la alerta -- signal_engine.py
+    sigue sin saber nada de dismissals (se mantiene puro, sin DynamoDB)."""
+
+    LEAK_ALERT = {
+        "id": "b1", "type": "leak", "severity": "high", "title": "FitZone Campus",
+        "detail": "Sin actividad relacionada", "monthly_amount": 40.0, "annual_cost": 480.0, "status": "detected",
+    }
+
+    def fake_signals(self):
+        return {
+            "score": {"value": 60, "trend": "flat", "breakdown": []},
+            "alerts": [dict(self.LEAK_ALERT)],
+            "anomaly": {"detected": False}, "activation": {}, "wallet_share": {},
+            "upcoming_expenses": [], "liquidity": {"days_covered": 20},
+            "projection": {"weeks_to_ready": None, "product": "tarjeta secured"},
+            "_debug": {},
+        }
+
+    def test_active_dismissal_filters_the_leak_alert(self):
+        aa.table.query.return_value = {"Items": [
+            {"bill_title": "FitZone Campus", "dismissed_until": (date.today() + timedelta(days=10)).isoformat()},
+        ]}
+        with patch.object(aa, "compute_signals", return_value=self.fake_signals()), \
+             patch.object(aa, "get_score_history", return_value=[]):
+            signals = aa.get_full_signals([], [], [], user_id="ana", persist=False)
+        self.assertEqual(signals["alerts"], [])
+
+    def test_dismissal_does_not_change_the_score(self):
+        aa.table.query.return_value = {"Items": [
+            {"bill_title": "FitZone Campus", "dismissed_until": (date.today() + timedelta(days=10)).isoformat()},
+        ]}
+        with patch.object(aa, "compute_signals", return_value=self.fake_signals()), \
+             patch.object(aa, "get_score_history", return_value=[]):
+            signals = aa.get_full_signals([], [], [], user_id="ana", persist=False)
+        self.assertEqual(signals["score"]["value"], 60)  # bill_health ya se calculo antes de filtrar el aviso
+
+    def test_expired_dismissal_does_not_filter(self):
+        aa.table.query.return_value = {"Items": [
+            {"bill_title": "FitZone Campus", "dismissed_until": (date.today() - timedelta(days=1)).isoformat()},
+        ]}
+        with patch.object(aa, "compute_signals", return_value=self.fake_signals()), \
+             patch.object(aa, "get_score_history", return_value=[]):
+            signals = aa.get_full_signals([], [], [], user_id="ana", persist=False)
+        self.assertEqual(len(signals["alerts"]), 1)
+
+    def test_dismissal_for_a_different_bill_does_not_filter(self):
+        aa.table.query.return_value = {"Items": [
+            {"bill_title": "Otro Comercio", "dismissed_until": (date.today() + timedelta(days=10)).isoformat()},
+        ]}
+        with patch.object(aa, "compute_signals", return_value=self.fake_signals()), \
+             patch.object(aa, "get_score_history", return_value=[]):
+            signals = aa.get_full_signals([], [], [], user_id="ana", persist=False)
+        self.assertEqual(len(signals["alerts"]), 1)
 
 
 class TestComputeSmartAllocation(BaseAgentActionsTest):
