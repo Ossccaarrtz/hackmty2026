@@ -8,7 +8,14 @@ import './styles.css';
 import CategorySpending from './CategorySpending.jsx';
 
 const money = value => Number.isFinite(value) ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value) : '—';
-const slugify = category => category.trim().toLowerCase().replaceAll(' ', '_'); // debe calzar con agent_actions._slug() del backend
+// Debe calzar con EXTERNAL_EXPENSE_CATEGORIES/EXTERNAL_CATEGORY_LABELS en
+// agent_actions.py -- son las mismas 5 categorias que usa el resto del
+// motor de senales, a proposito no se inventa una taxonomia nueva.
+const BUDGET_CATEGORY_OPTIONS = [
+  { value: 'rent', label: 'Renta' }, { value: 'groceries', label: 'Comida/Despensa' },
+  { value: 'transport', label: 'Transporte' }, { value: 'utilities', label: 'Servicios' },
+  { value: 'discretionary', label: 'Discrecional' },
+];
 const dateLabel = date => new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`));
 const monthLabel = yearMonth => new Intl.DateTimeFormat('es-MX', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${yearMonth}-01T00:00:00Z`));
 const WEEKDAY_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -51,8 +58,8 @@ const ACTION_TYPE_LABELS = {
   chat_rejected: 'Acción no realizada', savings_moved: 'Dinero movido a ahorro',
   stop_subscription: 'Suscripción detenida', confirm_stop_bill: 'Cargo detenido',
   move_to_savings: 'Dinero movido a ahorro', release_savings_buffer: 'Ahorro liberado',
-  create_envelope: 'Apartado creado', set_income_pattern: 'Patrón de nómina guardado',
-  confirm_pending_allocation: 'Reparto confirmado', log_external_expense: 'Gasto externo registrado',
+  set_category_budget: 'Meta de presupuesto guardada', set_income_pattern: 'Patrón de nómina guardado',
+  log_external_expense: 'Gasto externo registrado',
   set_monthly_budget: 'Meta de gasto actualizada',
 };
 const actionTypeLabel = type => ACTION_TYPE_LABELS[type] || type.replaceAll('_', ' ');
@@ -155,7 +162,7 @@ function readAuthed() {
 const FAQS = [
   { q: '¿Qué es el Cash-Flow Resilience Score?', a: 'Un indicador propio (0-100) de qué tan resiliente es tu flujo de efectivo, calculado a partir de tu comportamiento real: regularidad de ingreso, ratio esencial/discrecional, recurrencia de bills y colchón de liquidez. No es un score de Buró y no requiere historial crediticio previo.' },
   { q: '¿Cómo detecta Kivo una fuga de dinero?', a: 'Compara tus bills recurrentes contra actividad relacionada real (por ejemplo, un cargo de gimnasio sin visitas asociadas). Si no encuentra esa actividad por un periodo prolongado, la marca como posible fuga y te avisa antes de hacer nada.' },
-  { q: '¿Kivo puede mover mi dinero sin avisarme?', a: 'Solo en un caso: mover dinero a tu propio ahorro, porque es reversible y no involucra a terceros. Detener un cargo recurrente siempre pide tu confirmación explícita primero, y te advierte si podría tener implicaciones contractuales.' },
+  { q: '¿Kivo puede mover mi dinero sin avisarme?', a: 'Solo en un caso: mover dinero a tu propio ahorro, porque es reversible y no involucra a terceros. Detener un cargo y las metas de presupuesto NUNCA mueven dinero -- son solo la vista y los recordatorios de Kivo; detener un cargo recurrente siempre pide tu confirmación explícita primero, y te advierte si podría tener implicaciones contractuales con el comercio.' },
   { q: '¿Qué pasa con mis datos financieros?', a: 'El modelo de lenguaje nunca ve tu historial crudo de transacciones -- solo señales ya derivadas (ej. "score=57, fuga detectada: FitZone Campus"). Toda la demo corre sobre el sandbox de Capital One Nessie, no datos reales.' },
   { q: '¿Qué significa "Sin anomalías"?', a: 'Kivo compara tu actividad reciente contra tu propio historial. Si detecta un patrón fuera de lo normal, pausa cualquier acción autónoma y te pide confirmar antes de continuar, en vez de actuar solo.' },
 ];
@@ -284,13 +291,14 @@ function App() {
   const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
   const [summaryCopied, setSummaryCopied] = useState(false);
   const [statementMonth, setStatementMonth] = useState('');
-  const [envelopes, setEnvelopes] = useState(null);
-  const [envelopesLoading, setEnvelopesLoading] = useState(false);
-  const [envelopesError, setEnvelopesError] = useState('');
-  const [envelopesNotice, setEnvelopesNotice] = useState('');
-  const [envelopesBusy, setEnvelopesBusy] = useState(false);
-  const [newEnvelopeCategory, setNewEnvelopeCategory] = useState('');
-  const [newEnvelopeTarget, setNewEnvelopeTarget] = useState('');
+  const [budgetData, setBudgetData] = useState(null);
+  const [budgetLoading, setBudgetLoading] = useState(false);
+  const [budgetError, setBudgetError] = useState('');
+  const [budgetNotice, setBudgetNotice] = useState('');
+  const [budgetBusy, setBudgetBusy] = useState(false);
+  const [newBudgetCategory, setNewBudgetCategory] = useState('');
+  const [newBudgetTarget, setNewBudgetTarget] = useState('');
+  const [newBudgetLabel, setNewBudgetLabel] = useState('');
   const [incomeAmount, setIncomeAmount] = useState('');
   const [incomeFrequency, setIncomeFrequency] = useState('');
   const [payrollBusy, setPayrollBusy] = useState(false);
@@ -329,7 +337,7 @@ function App() {
   ).sort((a, b) => b[1] - a[1]);
   const statementOpening = statementTransactions.length ? statementTransactions[0].running_balance - statementTransactions[0].signed_amount : null;
   const statementClosing = statementTransactions.length ? statementTransactions.at(-1).running_balance : null;
-  const editingEnvelope = newEnvelopeCategory.trim() && envelopes?.envelopes.some(env => env.slug === slugify(newEnvelopeCategory));
+  const editingBudgetCategory = newBudgetCategory && budgetData?.budget.categories.some(cat => cat.category === newBudgetCategory);
   // "Mes actual" = el mes mas reciente con movimientos en el ledger, no la fecha real
   // del dispositivo -- la simulacion puede estar parada en cualquier dia sembrado.
   // Deliberadamente independiente de `statementMonth` (el selector de Estado de
@@ -387,89 +395,73 @@ function App() {
       window.setTimeout(() => setSummaryCopied(false), 2000);
     }).catch(() => { /* clipboard is best-effort */ });
   }
-  async function loadEnvelopes() {
-    setEnvelopesLoading(true);
-    setEnvelopesError('');
+  async function loadBudget() {
+    setBudgetLoading(true);
+    setBudgetError('');
     try {
-      const result = await api.getEnvelopes();
-      setEnvelopes(result);
+      const result = await api.getBudget();
+      setBudgetData(result);
       if (result?.monthly_budget?.amount != null) { setMonthlyBudget(Number(result.monthly_budget.amount)); setBudgetSource('backend'); }
-    } catch (err) { setEnvelopesError(err.message); }
-    finally { setEnvelopesLoading(false); }
+    } catch (err) { setBudgetError(err.message); }
+    finally { setBudgetLoading(false); }
   }
-  async function submitNewEnvelope(event) {
+  async function submitCategoryBudget(event) {
     event.preventDefault();
-    if (envelopesBusy) return;
-    setEnvelopesBusy(true);
-    setEnvelopesNotice('');
-    setEnvelopesError('');
+    if (budgetBusy || !newBudgetCategory) return;
+    setBudgetBusy(true);
+    setBudgetNotice('');
+    setBudgetError('');
     try {
-      const result = await api.createEnvelope(newEnvelopeCategory, newEnvelopeTarget);
-      setEnvelopesNotice(result.message || 'Apartado guardado.');
-      setNewEnvelopeCategory(''); setNewEnvelopeTarget('');
-      await loadEnvelopes();
-    } catch (err) { setEnvelopesError(err.message); }
-    finally { setEnvelopesBusy(false); }
+      const result = await api.setCategoryBudget(newBudgetCategory, newBudgetTarget, newBudgetLabel);
+      setBudgetNotice(result.message || 'Meta guardada.');
+      setNewBudgetCategory(''); setNewBudgetTarget(''); setNewBudgetLabel('');
+      await loadBudget();
+    } catch (err) { setBudgetError(err.message); }
+    finally { setBudgetBusy(false); }
   }
   async function submitIncomePattern(event) {
     event.preventDefault();
-    if (envelopesBusy) return;
-    setEnvelopesBusy(true);
-    setEnvelopesNotice('');
-    setEnvelopesError('');
+    if (budgetBusy) return;
+    setBudgetBusy(true);
+    setBudgetNotice('');
+    setBudgetError('');
     try {
       const result = await api.setIncomePattern(incomeAmount, incomeFrequency);
-      setEnvelopesNotice(result.message || 'Patrón de nómina guardado.');
+      setBudgetNotice(result.message || 'Patrón de nómina guardado.');
       setIncomeAmount(''); setIncomeFrequency('');
-      await loadEnvelopes();
-    } catch (err) { setEnvelopesError(err.message); }
-    finally { setEnvelopesBusy(false); }
-  }
-  async function confirmAllocation() {
-    if (envelopesBusy) return;
-    setEnvelopesBusy(true);
-    setEnvelopesNotice('');
-    setEnvelopesError('');
-    try {
-      const result = await api.confirmPendingAllocation();
-      setEnvelopesNotice(result.message || 'Reparto confirmado.');
-      await loadEnvelopes();
-    } catch (err) { setEnvelopesError(err.message); }
-    finally { setEnvelopesBusy(false); }
+      await loadBudget();
+    } catch (err) { setBudgetError(err.message); }
+    finally { setBudgetBusy(false); }
   }
   async function simulatePayroll() {
     if (payrollBusy) return;
     setPayrollBusy(true);
-    setEnvelopesNotice('');
-    setEnvelopesError('');
+    setBudgetNotice('');
+    setBudgetError('');
     try {
       const result = await api.simulateThirdPartyPayroll('Estudio Creativo');
       if (!result.matches_income_pattern) {
-        setEnvelopesNotice(`${result.message} No se reparte solo a tus apartados.`);
-        await loadEnvelopes();
+        setBudgetNotice(`${result.message}`);
+        await loadBudget();
         return;
       }
-      setEnvelopesNotice(`${result.message} Esperando a que el sistema reparta el dinero…`);
-      // El reparto no es sincrono con esta respuesta: lo dispara DynamoDB
-      // Streams -> lambda_notifier unos segundos despues, no esta llamada
-      // HTTP. Sin este sondeo breve, la pantalla se queda mostrando saldos
-      // viejos y parece que el boton "no hizo nada".
+      setBudgetNotice(`${result.message} Calculando tu plan de presupuesto…`);
+      // El plan no es sincrono con esta respuesta: lo arma DynamoDB Streams
+      // -> lambda_notifier unos segundos despues, no esta llamada HTTP. Sin
+      // este sondeo breve, la pantalla se queda mostrando el plan viejo y
+      // parece que el boton "no hizo nada".
       let updated = null;
       for (let attempt = 0; attempt < 5; attempt++) {
         await new Promise(resolve => setTimeout(resolve, 1500));
-        updated = await api.getEnvelopes();
-        if (updated.pending_allocation || updated.envelopes.some(env => env.balance > 0)) break;
+        updated = await api.getBudget();
+        if (updated.payday_plan?.deposit_date === result.date) break;
       }
-      if (updated) setEnvelopes(updated);
-      if (updated?.pending_allocation) {
-        setEnvelopesNotice(`${result.message} Quedó un reparto de ${money(updated.pending_allocation.total)} pendiente de confirmar -- tu colchón de liquidez quedaría muy bajo. Usa "Confirmar reparto pendiente" abajo.`);
-      } else if (updated?.envelopes?.some(env => env.balance > 0)) {
-        setEnvelopesNotice(`${result.message} Reparto ejecutado automáticamente -- revisa los saldos abajo.`);
-      } else {
-        setEnvelopesNotice(`${result.message} (Puede tardar unos segundos más -- si los saldos no cambian, vuelve a abrir esta pestaña.)`);
-      }
+      if (updated) setBudgetData(updated);
+      setBudgetNotice(updated?.payday_plan?.deposit_date === result.date
+        ? `${result.message} Revisa tu plan de nómina abajo.`
+        : `${result.message} (Puede tardar unos segundos más -- si el plan no cambia, vuelve a abrir esta pestaña.)`);
       await refresh();
-    } catch (err) { setEnvelopesError(err.message); }
+    } catch (err) { setBudgetError(err.message); }
     finally { setPayrollBusy(false); }
   }
   function submitBudget(event) {
@@ -479,6 +471,7 @@ function App() {
     setMonthlyBudget(value);
     setBudgetSource('local');
     setEditingBudget(false);
+    api.setMonthlyBudget(value).catch(() => { /* se reintenta solo en el siguiente refresh() */ });
   }
   async function refresh() {
     const id = ++requestId.current;
@@ -488,7 +481,7 @@ function App() {
         api.getSignals(),
         api.getTransactions(),
         api.getNotifications().catch(() => ({ notifications: [] })), // los avisos son un extra -- si fallan, no tumban el dashboard
-        api.getEnvelopes().catch(() => null), // igual: si la meta de gasto no carga, no tumba el resto del dashboard
+        api.getBudget().catch(() => null), // igual: si la meta de gasto no carga, no tumba el resto del dashboard
       ]);
       const next = normalizeData(s, t);
       if (id !== requestId.current) return;
@@ -524,7 +517,7 @@ function App() {
   useEffect(() => { if (!newNotification) return; const t = setTimeout(() => setNewNotification(null), 8000); return () => clearTimeout(t); }, [newNotification]);
   useEffect(() => { if (page === 'trust') loadTrustReport(); }, [page]);
   useEffect(() => { if (page === 'calendar') { setSelectedCalendarDay(null); setCalendarMonthOffset(0); loadCalendar(); } }, [page]);
-  useEffect(() => { if (page === 'envelopes') { setEnvelopesNotice(''); loadEnvelopes(); } }, [page]);
+  useEffect(() => { if (page === 'envelopes') { setBudgetNotice(''); loadBudget(); } }, [page]);
   useEffect(() => { try { sessionStorage.setItem(sessionKey, JSON.stringify(session)); } catch { /* Storage is optional. */ } }, [session]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth', block: 'end' }); }, [session.chatLog, chatBusy]);
   useEffect(() => { try { sessionStorage.setItem(AUTH_KEY, authed ? 'true' : 'false'); } catch { /* Storage is optional. */ } }, [authed]);
@@ -594,7 +587,7 @@ function App() {
 
   return <>
   <motion.main className={`dashboard connected-dashboard ${isFullPage ? 'full-page-layout page-focused' : ''}`} variants={dashboardContainer} initial="hidden" animate="visible">
-    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Kivo', 'chat'], [Wallet, 'Movimientos', 'transactions'], [CalendarDays, 'Calendario de gastos', 'calendar'], [FileText, 'Reporte de confianza', 'trust'], [PiggyBank, 'Apartados', 'envelopes']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
+    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Kivo', 'chat'], [Wallet, 'Movimientos', 'transactions'], [CalendarDays, 'Calendario de gastos', 'calendar'], [FileText, 'Reporte de confianza', 'trust'], [PiggyBank, 'Presupuesto', 'envelopes']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
     <section className="main-column">
       <motion.header className="page-header" variants={dashboardItem}><div><div className="page-brand"><img src="/kivo-logo.png" alt="" className="page-brand-logo" /><h1 className="sr-only">Kivo</h1></div><p>Hola, Ana. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></motion.header>
       {error && <div className="error-banner" role="alert">{error} <button disabled={loading || busy} onClick={refresh}>Reintentar lectura</button></div>}
@@ -708,7 +701,7 @@ function App() {
             </div>)}
             <blockquote className="trust-callout">{trustReport.summary}</blockquote>
             <h3>Acciones verificadas ({trustReport.verified_actions.length})</h3>
-            {trustReport.verified_actions.length ? trustReport.verified_actions.map((action, index) => <div className="detail-line" key={index}><span>{action.text}<small>{action.date && dateLabel(action.date)} · {actionTypeLabel(action.type)}</small></span></div>) : <p className="empty">Todavía no hay acciones verificadas -- esta lista se llena sola cuando el agente resuelve una fuga desde el chat, avanzas un día y actúa en un checkpoint, o un reparto automático de apartados mueve dinero real.</p>}
+            {trustReport.verified_actions.length ? trustReport.verified_actions.map((action, index) => <div className="detail-line" key={index}><span>{action.text}<small>{action.date && dateLabel(action.date)} · {actionTypeLabel(action.type)}</small></span></div>) : <p className="empty">Todavía no hay acciones verificadas -- esta lista se llena sola cuando el agente resuelve una fuga desde el chat, o avanzas un día y actúa en un checkpoint.</p>}
             <button className="outline-button" onClick={copyTrustSummary}>{summaryCopied ? <><Check size={16} /> Copiado</> : <><Copy size={16} /> Copiar resumen</>}</button>
           </>}
           {signals?.activation && <div className="bank-signals-section">
@@ -730,38 +723,61 @@ function App() {
         {page === 'envelopes' && <motion.section className="glass page-panel" key="envelopes-page"
           initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
           transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
-          <header className="card-heading"><h2>Apartados</h2>{backToHome}</header>
-          <p className="muted-copy">Gastos fijos mensuales con reparto proporcional automático cada vez que llega tu nómina -- gasolina, comida, lo que definas.</p>
-          {envelopesLoading && <p className="empty">Cargando apartados…</p>}
-          {envelopesError && <div className="error-banner" role="alert">{envelopesError}</div>}
-          {envelopesNotice && <p className="operation-notice" role="status">{envelopesNotice}</p>}
-          {envelopes && <>
+          <header className="card-heading"><h2>Presupuesto</h2>{backToHome}</header>
+          <p className="muted-copy">Kivo no aparta ni mueve tu dinero. Pon una meta por categoría y te muestro cuánto llevas gastado de verdad este mes en cada una -- incluye lo que registraste en efectivo o con otra tarjeta.</p>
+          {budgetLoading && <p className="empty">Cargando presupuesto…</p>}
+          {budgetError && <div className="error-banner" role="alert">{budgetError}</div>}
+          {budgetNotice && <p className="operation-notice" role="status">{budgetNotice}</p>}
+          {budgetData && <>
+            <h3>Tus metas ({budgetData.budget.categories.length})</h3>
+            {budgetData.budget.categories.length ? budgetData.budget.categories.map(cat => <div className="envelope-row" key={cat.category}>
+              <div className="envelope-row-top"><span>{cat.label}<small>Meta mensual: {money(cat.monthly_target)}</small></span><span className="envelope-row-actions"><strong>{money(cat.spent)} <span className="muted-copy">de {money(cat.monthly_target)}</span></strong><button type="button" className="text-button envelope-edit-button" onClick={() => { setNewBudgetCategory(cat.category); setNewBudgetTarget(String(cat.monthly_target)); setNewBudgetLabel(cat.label); }}>Editar</button></span></div>
+              <div className="envelope-progress"><progress max={cat.monthly_target || 1} value={Math.min(cat.spent, cat.monthly_target || 1)} aria-label={`Progreso de ${cat.label}`} /></div>
+              <small className={`budget-pace tone-${cat.pace === 'excedido' ? 'over' : cat.pace === 'apretado' ? 'warn' : 'good'}`}>
+                {cat.pace === 'excedido' ? `Ya pasaste tu meta por ${money(cat.spent - cat.monthly_target)}.`
+                  : cat.pace === 'apretado' ? 'Vas gastando más rápido que lo que lleva el mes -- ojo.'
+                  : 'Vas a buen ritmo.'}
+              </small>
+            </div>) : <p className="empty">Todavía no tienes ninguna meta -- empieza por donde más se te vaya.</p>}
+            {budgetData.budget.unbudgeted.length > 0 && <div className="detail-line"><span>Sin meta<small>{budgetData.budget.unbudgeted.map(u => u.label).join(', ')}</small></span><strong>{money(budgetData.budget.unbudgeted_spend)}</strong></div>}
+            {budgetData.monthly_budget != null && budgetData.budget.total_targets > 0 && <p className="muted-copy">
+              Tus metas suman {money(budgetData.budget.total_targets)}
+              {budgetData.budget.total_targets > budgetData.monthly_budget
+                ? ` -- más que tu meta global de ${money(budgetData.monthly_budget)}. Una de las dos tiene que ceder.`
+                : ` de tu meta global de ${money(budgetData.monthly_budget)}.`}
+            </p>}
+            <form className="envelope-form" onSubmit={submitCategoryBudget}>
+              <label className="ledger-filter"><span>Categoría</span>
+                <select required value={newBudgetCategory} onChange={event => {
+                  const category = event.target.value;
+                  setNewBudgetCategory(category);
+                  const existing = budgetData.budget.categories.find(cat => cat.category === category);
+                  setNewBudgetTarget(existing ? String(existing.monthly_target) : '');
+                  setNewBudgetLabel(existing ? existing.label : '');
+                }}>
+                  <option value="">Elige una categoría</option>
+                  {BUDGET_CATEGORY_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+              </label>
+              <label className="ledger-filter"><span>Nombre (opcional)</span><input type="text" value={newBudgetLabel} onChange={event => setNewBudgetLabel(event.target.value)} placeholder="Ej. Gasolina y camión" /></label>
+              <label className="ledger-filter"><span>Meta mensual</span><input type="number" min="0" step="0.01" required value={newBudgetTarget} onChange={event => setNewBudgetTarget(event.target.value)} /></label>
+              <button className="black-button small" type="submit" disabled={budgetBusy}>{editingBudgetCategory ? 'Actualizar meta' : 'Crear meta'}</button>
+              {editingBudgetCategory && <button type="button" className="text-button" onClick={() => { setNewBudgetCategory(''); setNewBudgetTarget(''); setNewBudgetLabel(''); }}>Cancelar edición</button>}
+            </form>
             <h3>Patrón de nómina</h3>
-            {envelopes.income_pattern ? <div className="detail-line"><span>Declarado<small>Tolerancia {Math.round(envelopes.income_pattern.tolerance_pct * 100)}%</small></span><strong>{money(envelopes.income_pattern.expected_amount)} cada {envelopes.income_pattern.frequency_days} días</strong></div> : <p className="empty">Sin declarar -- los depósitos no se repartirán a tus apartados hasta que definas esto.</p>}
+            {budgetData.income_pattern ? <div className="detail-line"><span>Declarado<small>Tolerancia {Math.round(budgetData.income_pattern.tolerance_pct * 100)}%</small></span><strong>{money(budgetData.income_pattern.expected_amount)} cada {budgetData.income_pattern.frequency_days} días</strong></div> : <p className="empty">Sin declarar -- Kivo no puede armarte un plan de nómina hasta que definas esto.</p>}
             <form className="envelope-form" onSubmit={submitIncomePattern}>
               <label className="ledger-filter"><span>Monto esperado</span><input type="number" min="0" step="0.01" required value={incomeAmount} onChange={event => setIncomeAmount(event.target.value)} /></label>
               <label className="ledger-filter"><span>Frecuencia (días)</span><input type="number" min="1" step="1" required value={incomeFrequency} onChange={event => setIncomeFrequency(event.target.value)} /></label>
-              <button className="outline-button small" type="submit" disabled={envelopesBusy}>{envelopes.income_pattern ? 'Actualizar patrón' : 'Declarar patrón'}</button>
+              <button className="outline-button small" type="submit" disabled={budgetBusy}>{budgetData.income_pattern ? 'Actualizar patrón' : 'Declarar patrón'}</button>
             </form>
-            <h3>Tus apartados ({envelopes.envelopes.length})</h3>
-            {envelopes.envelopes.length ? envelopes.envelopes.map(env => <div className="envelope-row" key={env.slug}>
-              <div className="envelope-row-top"><span>{env.category}<small>Meta mensual: {money(env.monthly_target)}</small></span><span className="envelope-row-actions"><strong>{money(env.balance)} <span className="muted-copy">de {money(env.monthly_target)}</span></strong><button type="button" className="text-button envelope-edit-button" onClick={() => { setNewEnvelopeCategory(env.category); setNewEnvelopeTarget(String(env.monthly_target)); }}>Editar</button></span></div>
-              <div className="envelope-progress"><progress max={env.monthly_target || 1} value={Math.min(env.balance, env.monthly_target || 1)} aria-label={`Progreso de ${env.category}`} /></div>
-            </div>) : <p className="empty">Todavía no hay apartados creados.</p>}
-            <form className="envelope-form" onSubmit={submitNewEnvelope}>
-              <label className="ledger-filter"><span>{editingEnvelope ? 'Categoría (editando)' : 'Categoría nueva'}</span><input type="text" required value={newEnvelopeCategory} onChange={event => setNewEnvelopeCategory(event.target.value)} placeholder="Ej. gasolina" /></label>
-              <label className="ledger-filter"><span>Meta mensual</span><input type="number" min="0" step="0.01" required value={newEnvelopeTarget} onChange={event => setNewEnvelopeTarget(event.target.value)} /></label>
-              <button className="black-button small" type="submit" disabled={envelopesBusy}>{editingEnvelope ? 'Actualizar apartado' : 'Crear apartado'}</button>
-              {editingEnvelope && <button type="button" className="text-button" onClick={() => { setNewEnvelopeCategory(''); setNewEnvelopeTarget(''); }}>Cancelar edición</button>}
-            </form>
-            {envelopes.pending_allocation
-              ? <div className="detail-line pending-allocation"><span>Reparto pendiente de confirmar<small>Colchón de liquidez quedaría muy bajo si se repartiera solo</small></span><strong>{money(envelopes.pending_allocation.total)}</strong></div>
-              : <p className="empty">No hay ningún reparto pendiente ahorita.</p>}
-            <button className="outline-button" onClick={confirmAllocation} disabled={envelopesBusy || !envelopes.pending_allocation}>Confirmar reparto pendiente</button>
-            <p className="muted-copy">Si una nómina detectada dejaba tu colchón muy bajo para repartirse sola, la propuesta queda aquí para tu confirmación explícita.</p>
-            <h3>Simular nómina de un tercero</h3>
-            <p className="muted-copy">Mueve dinero real desde una cuenta externa (papá y mamá de Ana) hasta su cuenta -- el reparto a apartados que veas después ocurre solo, de forma automática, igual que con cualquier depósito real.</p>
-            <button className="black-button" onClick={simulatePayroll} disabled={payrollBusy}>{payrollBusy ? 'Procesando en Nessie…' : 'Simular nómina de un tercero'}</button>
+            {budgetData.payday_plan && <>
+              <h3>Último plan de nómina</h3>
+              <p className="muted-copy">Te llegaron {money(budgetData.payday_plan.deposit_amount)} el {dateLabel(budgetData.payday_plan.deposit_date)}. Kivo no movió nada -- esto es solo cómo se vería tu dinero si respetas tus metas.</p>
+              {budgetData.payday_plan.overcommitted
+                ? <p className="empty">Tus metas piden {money(budgetData.payday_plan.reserved)} -- no alcanza. Revisa cuáles bajar.</p>
+                : <p className="operation-notice" role="status">Ya están comprometidos {money(budgetData.payday_plan.reserved)}; te quedan {money(budgetData.payday_plan.free)} libres (~{money(budgetData.payday_plan.free_per_day)}/día hasta tu próximo depósito).</p>}
+            </>}
           </>}
         </motion.section>}
         {page === 'home' && <motion.section className="balance-card glass" key="balance-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><div className="balance-top"><div><h2>Score de resiliencia financiera</h2><div className="total score-hero">{signals?.score.value ?? '—'}<span>/100</span></div>{signals && <TrendBadge trend={signals.score.trend} />}<p className={`score-status-message ${signals ? `is-${scoreStatusFeedback(signals).tone}` : ''}`}>{signals ? scoreStatusFeedback(signals).text : 'Cargando tu score…'}</p></div></div><div className="balance-bottom"><div className="account-orbs"><div className="orb-bridge" /><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.balance)}</strong><span>Saldo disponible</span></button><button className="orb purple" onClick={() => setModal('score')}><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong><span>Gastos cubiertos</span></button><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.summary.total_income)}</strong><span>Ingresos registrados</span></button></div></div><button className="outline-button score-details-button" onClick={() => setModal('score')}>Entender mi score</button></motion.section>}
@@ -778,7 +794,7 @@ function App() {
             {budgetSource === 'backend' && <p className="muted-copy budget-goal-chat-hint">¿Quieres cambiarla? Pídeselo a Kivo en el chat, ej. "cambia mi meta a 5000". <button type="button" className="text-button" onClick={() => setPage('chat')}>Ir al chat</button></p>}
           </>}
         </motion.section>}
-        {page === 'home' && <motion.section className="payments-card glass alerts-card" key="alerts-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Lo que necesita tu atención</h2><span className="pill">{signals?.alerts.length ?? '—'} alertas</span></header>{signals ? signals.alerts.length ? signals.alerts.map(alert => <article className="live-alert" key={alert.id}><ShieldAlert size={24} /><div><strong>{alert.title}</strong><p>{alert.detail}</p>{alert.annual_cost > 0 && <small>{money(alert.monthly_amount)}/mes · {money(alert.annual_cost)} al año · potencial, no ahorro realizado</small>}</div><button className="black-button small" onClick={() => { setChatInput(buildAlertPrompt(alert)); setPage('chat'); }}>Revisar</button></article>) : <p className="empty">Todo al día: el backend no reporta alertas activas.</p> : <p className="empty">{loading ? 'Consultando alertas…' : 'Alertas no disponibles.'}</p>}<p className="muted-copy">Detener un cargo no cancela el contrato con el comercio.</p></motion.section>}
+        {page === 'home' && <motion.section className="payments-card glass alerts-card" key="alerts-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Lo que necesita tu atención</h2><span className="pill">{signals?.alerts.length ?? '—'} alertas</span></header>{signals ? signals.alerts.length ? signals.alerts.map(alert => <article className="live-alert" key={alert.id}><ShieldAlert size={24} /><div><strong>{alert.title}</strong><p>{alert.detail}</p>{alert.annual_cost > 0 && <small>{money(alert.monthly_amount)}/mes · {money(alert.annual_cost)} al año · potencial, no ahorro realizado</small>}</div><button className="black-button small" onClick={() => { setChatInput(buildAlertPrompt(alert)); setPage('chat'); }}>Revisar</button></article>) : <p className="empty">Todo al día: el backend no reporta alertas activas.</p> : <p className="empty">{loading ? 'Consultando alertas…' : 'Alertas no disponibles.'}</p>}<p className="muted-copy">Detener un cargo aquí no lo cancela con el banco ni con el comercio -- Kivo solo deja de contarlo en tu score y tus recordatorios.</p></motion.section>}
       </AnimatePresence>
     </section>
     {page === 'home' && <section className="right-column"><motion.section className="transactions" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="transactions-heading"><div><h2>Movimientos</h2><p>Historial de Ana</p></div><button className="black-button small" onClick={() => setPage('transactions')}>Ver todos</button></header><div className="transaction-list">{transactions.slice(-3).reverse().map(tx => <div className="transaction-row live-transaction" key={tx.id}><span className={`direction ${tx.signed_amount > 0 ? 'inflow' : 'outflow'}`}>{tx.signed_amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={tx.name}>{tx.name}</strong><span className="transaction-date">{dateLabel(tx.date)}</span><span className={`transaction-amount ${tx.signed_amount > 0 ? 'inflow' : ''}`}>{money(tx.signed_amount)}</span></div>)}{!transactions.length && <p className="empty">{loading ? 'Cargando movimientos…' : data ? 'No hay movimientos registrados.' : 'Historial no disponible.'}</p>}</div></motion.section><CategorySpending summary={data?.summary} loading={loading} variants={dashboardItem} />
@@ -813,6 +829,8 @@ function App() {
           <h3>Control de demo (equipo)</h3>
           <p className="muted-copy">Avanza los checkpoints de la simulación sembrada para ensayar el guion de pitch. No forma parte de la experiencia normal de Ana.</p>
           {controls}
+          <p className="muted-copy">Esta es la única acción de la demo que sí mueve dinero real -- y no es de Kivo: simula a quien le paga a Ana (una cuenta externa en el sandbox de Nessie). Sirve para ver el plan de nómina armarse solo, sin que nadie lo dispare a mano.</p>
+          <button className="black-button small" onClick={simulatePayroll} disabled={payrollBusy}>{payrollBusy ? 'Procesando en Nessie…' : 'Simular nómina de un tercero'}</button>
         </div>
       </>}
     </section></div>}

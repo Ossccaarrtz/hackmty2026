@@ -87,24 +87,26 @@ def lambda_handler(event, context):
             )
 
         elif event_name == "INSERT" and new_image.get("type") == "deposit":
-            # Reparto automatico a apartados -- solo procede si el deposito
-            # matchea el patron de nomina que el usuario declaro. Un
-            # deposito random (ej. un amigo mandando $100) no dispara nada
-            # porque no matchea, verified_allocate_envelopes ya lo checa.
+            # Plan de presupuesto informativo -- solo se arma si el deposito
+            # matchea el patron de nomina que el usuario declaro (un deposito
+            # random, ej. un amigo mandando $100, no dispara nada porque no
+            # matchea). Kivo no mueve ni aparta nada aqui: solo calcula como
+            # se veria el dinero repartido entre las metas de presupuesto.
             try:
-                result = actions.verified_allocate_envelopes(user_id, new_image.get("amount"), new_image.get("date", ""))
+                plan = actions.project_payday_allocation(user_id, new_image.get("amount"), new_image.get("date", ""))
             except Exception:
-                result = None
-            if result and result.get("ok"):
+                plan = None
+            if plan and plan.get("overcommitted"):
                 write_notification(
                     user_id,
-                    f"Nomina detectada: se repartió ${result['amount']} entre tus apartados.",
+                    f"Te llegaron ${plan['deposit_amount']}. Ojo: tus metas de presupuesto piden ${plan['reserved']} -- no alcanza.",
                     new_image.get("date", "")
                 )
-            elif result and result.get("pending"):
+            elif plan:
                 write_notification(
                     user_id,
-                    f"Nomina detectada, pero repartirla dejaria tu colchon muy bajo -- tienes una propuesta de reparto pendiente de confirmar.",
+                    f"Te llegaron ${plan['deposit_amount']}. Si respetas tus metas de presupuesto, ${plan['reserved']} ya estan "
+                    f"comprometidos y te quedan ${plan['free']} libres (~${plan['free_per_day']}/dia). Kivo no movio nada.",
                     new_image.get("date", "")
                 )
 

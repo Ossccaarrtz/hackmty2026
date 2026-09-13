@@ -18,9 +18,10 @@ WEIGHTS = {"income": 0.35, "essential": 0.25, "bills": 0.20, "liquidity": 0.20}
 
 
 def is_neutral(category):
-    """Reasignaciones internas de dinero (ahorro, apartados) -- no son gasto
+    """Reasignaciones internas de dinero (ahorro) -- no son gasto
     discrecional ni esencial, y no deben disparar la alerta de anomalia.
-    'envelope:<categoria>' es dinamico por usuario, no cabe en un set fijo."""
+    'envelope:<categoria>' es legado del viejo sistema de apartados (ya no
+    se escribe, pero transacciones viejas pueden seguir existiendo)."""
     return category in NEUTRAL_CATEGORIES or (category or "").startswith("envelope:")
 
 
