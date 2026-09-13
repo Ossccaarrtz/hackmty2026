@@ -88,9 +88,12 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .budget-goal-form .ledger-filter input{width:100%}
 .budget-goal-form-actions{display:flex;align-items:center;gap:14px;margin-top:14px}
 .budget-goal-form-actions .text-button{margin:0}
-.calendar-nav{display:flex;align-items:center;justify-content:center;gap:18px;margin:22px 0 18px}
+.calendar-nav{display:flex;align-items:center;justify-content:center;gap:18px;margin:16px 0 14px}
 .calendar-month-label{font-size:18px;font-weight:600;text-transform:capitalize;min-width:200px;text-align:center}
-.calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+/* Los dias son aspect-ratio:1 -- sin este tope, en una pantalla ancha de
+   escritorio el grid se vuelve enorme (celdas cuadradas escalando con el
+   ancho del panel) y obliga a hacer scroll para ver el mes completo. */
+.calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;max-width:480px;margin:0 auto}
 .calendar-weekday{text-align:center;font-size:11px;font-weight:600;color:#8390a4;text-transform:uppercase;letter-spacing:.03em;padding-bottom:6px}
 .calendar-cell{aspect-ratio:1;border-radius:14px;background:#f3f6fa;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:2px;min-width:0}
 .calendar-cell-empty{background:none}
@@ -105,9 +108,9 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .calendar-cell.is-selected .calendar-day-number{color:#fff}
 .calendar-cell.is-selected .calendar-expense-dot{background:#fff}
 .calendar-cell.is-selected .calendar-day-amount{color:#fff}
-.calendar-detail{margin-top:24px;padding-top:20px;border-top:1px dashed #becddb75}
+.calendar-detail{margin-top:18px;padding-top:16px;border-top:1px dashed #becddb75;max-width:480px;margin-left:auto;margin-right:auto}
 .calendar-detail h3{font-size:14px;font-weight:600;color:#536780;margin-bottom:6px;text-transform:capitalize}
-.calendar-hint{margin-top:24px}
+.calendar-hint{margin-top:18px;text-align:center}
 @media(min-width:701px){.calendar-day-amount{display:block;font-size:10px;font-weight:600;color:var(--c1-navy);white-space:nowrap}.calendar-expense-dot{display:none}.calendar-cell.is-selected .calendar-day-amount{color:#fff}}
 @media(max-width:700px){.calendar-grid{gap:4px}.calendar-cell{border-radius:10px}.calendar-day-number{font-size:11px}.calendar-month-label{font-size:15px;min-width:0}.calendar-nav{gap:10px}}
 .trend-badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;margin-top:8px;padding:4px 10px;border-radius:20px}
