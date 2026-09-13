@@ -56,6 +56,12 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 @media(max-width:1350px){.connected-dashboard .money-actions{width:155px}.connected-dashboard .money-actions button{font-size:12px;padding:16px 12px}.connected-dashboard .orb strong{font-size:16px}.connected-dashboard .orb span{font-size:10px}.live-transaction{grid-template-columns:28px minmax(0,1fr) 45px 67px;gap:8px}.score-component{font-size:11px}}
 @media(max-width:1100px){.full-page-layout{grid-template-columns:52px minmax(0,1fr)}.connected-dashboard .right-column{align-items:start}.connected-dashboard .agent-card{margin-top:0}.connected-dashboard .orb strong{font-size:20px}}
 @media(max-width:700px){.connected-dashboard .page-header h1{font-size:24px}.connected-dashboard .page-header p{font-size:12px}.connected-dashboard .page-header>.pill{font-size:11px;padding:9px}.score-hero{font-size:54px}.connected-dashboard .balance-top>.pill{font-size:10px;max-width:85px;text-align:center}.connected-dashboard .money-actions{width:100%}.connected-dashboard .orb strong{font-size:16px}.connected-dashboard .stats-grid{grid-template-columns:1fr}.breakdown-card{min-height:270px}.score-component{font-size:13px}.connected-dashboard .health-card{height:275px}.live-alert{flex-wrap:wrap}.live-alert>div{flex-basis:65%}.live-alert .black-button{margin-left:39px}.connected-dashboard .agent-card{margin-top:20px}.chat-panel{padding:22px}.chat-panel .card-heading{align-items:flex-start}.chat-panel .card-heading h2{font-size:20px}.chat-panel .card-heading button{font-size:11px}.user-avatar{width:36px;height:36px}}
+.score-status-message{font-size:14px;line-height:1.5;margin-top:12px;font-weight:500;color:#34404b}
+.score-status-message.is-alert{color:#a3341f}
+.score-status-message.is-good{color:#1a7a4c}
+.score-progress-section,.bank-signals-section{margin-top:24px;padding-top:20px;border-top:1px dashed #becddb75}
+.score-progress-section h3,.bank-signals-section h3{font-size:14px;font-weight:600;color:#536780;margin-bottom:4px}
+@media(max-width:700px){.score-status-message{font-size:13px}}
 .trend-badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;margin-top:8px;padding:4px 10px;border-radius:20px}
 .trend-up{color:#1a7a4c;background:#dff3e6}.trend-down{color:#a3341f;background:#fbe4de}.trend-flat{color:#5c6d83;background:#eef2f7}
 .pill-warning{color:#fff;background:var(--c1-red)}
