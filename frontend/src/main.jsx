@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, ChevronLeft, Search, Bell, Send, User, Lock, Eye, EyeOff, Download, PiggyBank, CalendarDays, Gift } from 'lucide-react';
+import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, ChevronLeft, Search, Send, User, Lock, Eye, EyeOff, Download, PiggyBank, CalendarDays, Gift } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { api, sessionKey } from './api.js';
 import { appendCheckpoint, appendChatExchange, emptySession, normalizeData } from './data.js';
@@ -331,8 +331,6 @@ function App() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [notice, setNotice] = useState('');
-  const [newNotification, setNewNotification] = useState(null);
-  const lastNotificationSk = useRef(null);
   const [calendarExpenses, setCalendarExpenses] = useState(null);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarError, setCalendarError] = useState('');
@@ -368,7 +366,6 @@ function App() {
   const chatEndRef = useRef(null);
   const signals = data?.signals;
   const transactions = data?.transactions || [];
-  const notifications = data?.notifications || [];
   const categoryOptions = [...new Set(transactions.map(tx => tx.category).filter(Boolean))]
     .map(key => ({ key, label: transactions.find(tx => tx.category === key)?.category_label || key }))
     .sort((a, b) => a.label.localeCompare(b.label));
@@ -501,15 +498,14 @@ function App() {
     const id = ++requestId.current;
     setLoading(true);
     try {
-      const [s, t, n, budget] = await Promise.all([
+      const [s, t, budget] = await Promise.all([
         api.getSignals(),
         api.getTransactions(),
-        api.getNotifications().catch(() => ({ notifications: [] })), // los avisos son un extra -- si fallan, no tumban el dashboard
-        api.getBudget().catch(() => null), // igual: si la meta de gasto no carga, no tumba el resto del dashboard
+        api.getBudget().catch(() => null), // si la meta de gasto no carga, no tumba el resto del dashboard
       ]);
       const next = normalizeData(s, t);
       if (id !== requestId.current) return;
-      setData({ ...next, notifications: Array.isArray(n?.notifications) ? n.notifications : [] });
+      setData(next);
       // Fijada por chat (set_monthly_budget) o desde otro dispositivo -- el backend
       // manda sobre el valor local en cuanto hay uno guardado ahi.
       if (budget?.monthly_budget?.amount != null) { setMonthlyBudget(Number(budget.monthly_budget.amount)); setBudgetSource('backend'); }
@@ -518,27 +514,6 @@ function App() {
     finally { if (id === requestId.current) setLoading(false); }
   }
   useEffect(() => { refresh(); return () => { requestId.current++; }; }, []);
-  // Antes "Avisos en tiempo real" solo se actualizaba al recargar la pagina o tras
-  // Avanzar dia/Reiniciar -- no era real-time de verdad. Este poll (sin tocar el
-  // resto del dashboard) hace que un aviso nuevo aparezca solo mientras la pestana
-  // sigue abierta, igual que las notificaciones se generan solas en el backend.
-  useEffect(() => {
-    if (!authed) return;
-    const poll = async () => {
-      try {
-        const res = await api.getNotifications();
-        const list = Array.isArray(res?.notifications) ? res.notifications : [];
-        if (!list.length) return;
-        const latest = list[0];
-        if (lastNotificationSk.current && latest.sk !== lastNotificationSk.current) setNewNotification(latest);
-        lastNotificationSk.current = latest.sk;
-        setData(prev => prev ? { ...prev, notifications: list } : prev);
-      } catch { /* poll silencioso -- no interrumpe si una vuelta falla */ }
-    };
-    const id = setInterval(poll, 20000);
-    return () => clearInterval(id);
-  }, [authed]);
-  useEffect(() => { if (!newNotification) return; const t = setTimeout(() => setNewNotification(null), 8000); return () => clearTimeout(t); }, [newNotification]);
   useEffect(() => { if (page === 'calendar') { setSelectedCalendarDay(null); setCalendarMonthOffset(0); loadCalendar(); } }, [page]);
   useEffect(() => { if (page === 'envelopes') { setBudgetNotice(''); loadBudget(); } }, [page]);
   useEffect(() => { try { sessionStorage.setItem(sessionKey, JSON.stringify(session)); } catch { /* Storage is optional. */ } }, [session]);
@@ -610,7 +585,7 @@ function App() {
 
   return <>
   <motion.main className={`dashboard connected-dashboard ${isFullPage ? 'full-page-layout page-focused' : ''}`} variants={dashboardContainer} initial="hidden" animate="visible">
-    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Kivo', 'chat'], [Wallet, 'Movimientos', 'transactions'], [CalendarDays, 'Calendario de gastos', 'calendar'], [PiggyBank, 'Gastos', 'envelopes'], [Gift, 'Beneficios', 'benefits']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
+    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Kivo', 'chat'], [Wallet, 'Movimientos', 'transactions'], [CalendarDays, 'Calendario de gastos', 'calendar'], [PiggyBank, 'Gastos', 'envelopes'], [Gift, 'Beneficios', 'benefits']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
     <section className="main-column">
       <motion.header className="page-header" variants={dashboardItem}><div><div className="page-brand"><img src="/kivo-logo.png" alt="" className="page-brand-logo" /><h1 className="sr-only">Kivo</h1></div><p>Hola, Ana. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></motion.header>
       {error && <div className="error-banner" role="alert">{error} <button disabled={loading || busy} onClick={refresh}>Reintentar lectura</button></div>}
@@ -847,7 +822,6 @@ function App() {
           {signals.wallet_share?.value != null && <p className="muted-copy">{signals.wallet_share.detail}</p>}
         </div>}
       </>}
-      {modal === 'notifications' && <><h2 id="dialog-title">Avisos en tiempo real</h2><p className="muted-copy">Se generan automáticamente cuando pasa algo en tu cuenta -- un movimiento real de dinero, o algo que Kivo detecta y deja de contar (como cancelar un cargo o armarte un plan de nómina) -- sin que nadie los pida. Esta lista se revisa sola cada ~20 segundos mientras tienes la app abierta.</p>{notifications.length ? notifications.map(n => <div className="detail-line" key={n.sk}><span>{n.text}<small>{dateLabel(n.date)}</small></span></div>) : <p>Sin avisos todavía. Aquí aparecerán cosas como un cargo cancelado, un plan de nómina nuevo, o un movimiento a tu ahorro.</p>}</>}
       {modal === 'advance' && <><h2 id="dialog-title">Avanzar la simulación</h2><p>El siguiente checkpoint puede observar la cuenta, detectar una fuga, detener el cargo de FitZone Campus, o mover dinero a ahorro en el sandbox Nessie.</p><p>El backend no permite consultar el checkpoint actual. Si el próximo paso es detener FitZone Campus, al continuar confirmas que ya no lo usas y autorizas detener ese cargo de demostración.</p><div className="agent-alert"><ShieldAlert size={20} /><span>Un contrato anual puede generar penalizaciones o cobranza. Bloquear el cargo no cancela la suscripción con el comercio.</span></div><button className="black-button" disabled={busy || uncertain || !data || !!error || session.done} onClick={() => mutate('advance')}>Confirmo y autorizo el siguiente paso</button><button className="text-button" onClick={() => setModal(null)}>Volver sin avanzar</button></>}
       {modal === 'reset' && <><h2 id="dialog-title">Reiniciar demo</h2><p>Solicitará al backend volver al día 0 y reactivar FitZone Campus en el sandbox compartido. Borrará el feed y el chat de esta pestaña, pero no revierte los depósitos o retiros anteriores de Nessie.</p><button className="black-button" disabled={busy} onClick={() => mutate('reset')}>Reiniciar simulación</button></>}
       {modal === 'profile' && <>
@@ -869,7 +843,6 @@ function App() {
   </motion.main>
   <Footer />
   <FaqWidget />
-  {newNotification && <div className="toast" role="status"><Bell size={18} /><span>{newNotification.text}</span><button type="button" className="icon-button" aria-label="Cerrar aviso" onClick={() => setNewNotification(null)}><X size={16} /></button></div>}
   </>;
 }
 createRoot(document.getElementById('root')).render(<App />);
