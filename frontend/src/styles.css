@@ -187,10 +187,10 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 @media(max-width:700px){.app-footer{flex-direction:column;gap:6px;text-align:center;padding:0 10px}}
 
 /* FAQ widget: always-visible bottom-right launcher, small anchored popup (not full screen) */
-.faq-fab{position:fixed;right:24px;bottom:24px;z-index:60;width:58px;height:58px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 28px -6px #0f172a40;border:1px solid #e7ebf1}
+.faq-fab{position:fixed;right:24px;bottom:104px;z-index:60;width:58px;height:58px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 28px -6px #0f172a40;border:1px solid #e7ebf1}
 .faq-fab img{width:34px;height:auto}
 .faq-fab.is-open{background:#080909;color:#fff}
-.faq-panel{position:fixed;right:24px;bottom:92px;z-index:60;width:340px;max-width:calc(100vw - 48px);max-height:min(480px,65vh);display:flex;flex-direction:column;border-radius:22px;overflow:hidden;background:#fff;border:1px solid #e7ebf1;box-shadow:0 24px 60px -16px #0f172a4d}
+.faq-panel{position:fixed;right:24px;bottom:172px;z-index:60;width:340px;max-width:calc(100vw - 48px);max-height:min(420px,55vh);display:flex;flex-direction:column;border-radius:22px;overflow:hidden;background:#fff;border:1px solid #e7ebf1;box-shadow:0 24px 60px -16px #0f172a4d}
 .faq-panel-header{padding:16px 18px;border-bottom:1px solid #eef1f5;font-weight:650}
 .faq-list{overflow-y:auto;padding:6px 8px}
 .faq-item{border-bottom:1px solid #eef1f5}
@@ -199,7 +199,7 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .faq-question svg{flex-shrink:0;transition:transform .15s}
 .faq-item.is-active .faq-question svg{transform:rotate(90deg)}
 .faq-answer{padding:0 10px 14px;font-size:12px;line-height:1.55;color:#5c6d83}
-@media(max-width:700px){.faq-fab{right:16px;bottom:16px}.faq-panel{right:16px;left:16px;width:auto;bottom:84px}}
+@media(max-width:700px){.faq-fab{right:16px}.faq-panel{right:16px;left:16px;width:auto}}
 
 /* Transaction filters: category + date range, alongside the existing text search */
 .ledger-filters{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin:0 0 14px}
@@ -283,6 +283,13 @@ input:focus,select:focus,textarea:focus{outline:0;box-shadow:0 0 0 3px #0048781f
 .trust-stat{background:#f3f6fa;border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
 .trust-stat strong{font-size:26px;color:var(--c1-navy)}
 .trust-stat span{font-size:12px;color:#5c6d83}
+.score-factor-bar{padding:16px 0;border-bottom:1px solid #becddb75}
+.score-factor-bar-top{display:flex;justify-content:space-between;align-items:baseline;gap:14px}
+.score-factor-bar-top span{font-size:14px;color:#14191c;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.score-factor-bar-top strong{font-size:14px;white-space:nowrap}
+.score-factor-bar progress{margin-top:10px;height:8px}
+.score-factor-bar small.score-factor-explainer{display:block;margin-top:10px;color:#34404b;font-size:13px;line-height:1.5}
+.score-factor-bar small.score-factor-technical{color:#8a96a8;font-size:11px;font-weight:400}
 .bank-signals{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:18px 0 12px}
 .envelope-progress{margin-top:6px}
 .budget-pace{display:block;margin-top:6px;font-size:12px;font-weight:500}
@@ -420,4 +427,18 @@ body{padding-bottom:112px}
   .connected-dashboard .sidebar .user-avatar{width:39px;height:39px}
   .page-brand{gap:8px}
   .page-brand-logo{height:26px}
+}
+
+/* Los orbs del home crecieron con el rediseno del nav (ya no hay columna de
+   sidebar restando ancho al home) -- se reducen un poco en todos los
+   breakpoints, sin tocar el resto de las reglas responsive existentes. */
+.orb{width:26%}
+.connected-dashboard .orb strong{font-size:17px}
+.connected-dashboard .orb span{font-size:11px}
+@media(min-width:1450px){.orb{max-width:145px}}
+@media(max-width:1100px){.orb{max-width:132px}}
+@media(max-width:700px){
+  .orb{width:27%;max-width:116px}
+  .connected-dashboard .orb strong{font-size:14px}
+  .connected-dashboard .orb span{font-size:9px}
 }

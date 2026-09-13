@@ -735,7 +735,11 @@ function App() {
       </motion.section>}
     </section>}
     {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className="modal glass" role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={event => event.stopPropagation()}><button ref={closeRef} className="close-modal icon-button" aria-label="Cerrar" onClick={() => setModal(null)}><X /></button>
-      {modal === 'score' && <><h2 id="dialog-title">Tu score, explicado</h2><p>Indicador propio de resiliencia financiera; no es un score de Buró ni garantiza aprobación de crédito.</p>{signals?.score.breakdown.map(item => <div className="detail-line score-factor-line" key={item.key}><span>{item.label}<small className="score-factor-explainer">{SCORE_FACTOR_EXPLAINERS[item.key]}</small></span><strong>{item.value}/100</strong></div>)}
+      {modal === 'score' && <><h2 id="dialog-title">Tu score, explicado</h2><p>Indicador propio de resiliencia financiera; no es un score de Buró ni garantiza aprobación de crédito.</p>{signals?.score.breakdown.map(item => <div className="score-factor-bar" key={item.key}>
+        <div className="score-factor-bar-top"><span>{item.label}<small className="score-factor-technical">Peso: {item.weight}%</small></span><strong>{item.value}/100</strong></div>
+        <progress max="100" value={item.value} aria-label={`${item.label}: ${item.value}/100`} />
+        <small className="score-factor-explainer">{SCORE_FACTOR_EXPLAINERS[item.key]}</small>
+      </div>)}
         <div className="score-progress-section">
           <h3>Tu progreso</h3>
           <p className="muted-copy">Evolución de tu score en los checkpoints recibidos en esta sesión.</p>
