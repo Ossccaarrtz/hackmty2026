@@ -212,6 +212,7 @@ function App() {
   const [payrollBusy, setPayrollBusy] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const locked = useRef(false), requestId = useRef(0), closeRef = useRef(null);
+  const chatEndRef = useRef(null);
   const signals = data?.signals;
   const transactions = data?.transactions || [];
   const notifications = data?.notifications || [];
@@ -359,6 +360,7 @@ function App() {
   useEffect(() => { if (page === 'trust') loadTrustReport(); }, [page]);
   useEffect(() => { if (page === 'envelopes') { setEnvelopesNotice(''); loadEnvelopes(); } }, [page]);
   useEffect(() => { try { sessionStorage.setItem(sessionKey, JSON.stringify(session)); } catch { /* Storage is optional. */ } }, [session]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth', block: 'end' }); }, [session.chatLog, chatBusy]);
   useEffect(() => { try { sessionStorage.setItem(AUTH_KEY, authed ? 'true' : 'false'); } catch { /* Storage is optional. */ } }, [authed]);
   useEffect(() => {
     if (!modal) return;
@@ -403,10 +405,11 @@ function App() {
     if (!text || locked.current) return;
     locked.current = true; setBusy(true); setChatBusy(true); setOperationError('');
     setChatInput('');
+    const baseSession = session; // snapshot de antes del mensaje optimista, para reconstruir el estado final sin duplicarlo
+    setSession(s => ({ ...s, chatLog: [...s.chatLog, { id: `chat-pending-${Date.now()}`, role: 'user', text }] }));
     try {
       const result = await api.sendChatMessage(text);
-      const next = appendChatExchange(session, text, result);
-      setSession(next);
+      setSession(appendChatExchange(baseSession, text, result));
       await refresh(); // cualquier accion real que el chat haya ejecutado ya debe reflejarse en signals/transactions
     } catch (err) {
       setSession(s => ({ ...s, chatLog: [...s.chatLog, { id: `chat-err-${Date.now()}`, role: 'assistant', text: `No pude enviar tu mensaje: ${err.message}` }] }));
@@ -415,7 +418,7 @@ function App() {
 
   const controls = <div className="agent-controls"><button className="black-button small" disabled={busy || loading || !!error || !data || session.done || uncertain} onClick={() => setModal('advance')}><Play size={15} />{busy ? 'Procesando…' : session.done ? 'Demo completada' : 'Avanzar día'}</button><button className="outline-button small" disabled={busy || loading} onClick={() => setModal('reset')}><RotateCcw size={15} /> Reiniciar</button></div>;
   const feed = <div className="agent-feed">{session.feed.length ? session.feed.map(action => <article className={`agent-feed-item ${['error', 'verification_blocked', 'chat_rejected'].includes(action.type) ? 'action-error' : PENDING_TYPES.includes(action.type) || action.requires_confirmation ? 'action-pending' : ''}`} key={action.id}><span>{action.date && dateLabel(action.date)} · {action.type}</span><p>{action.text}</p></article>) : <p className="empty">Todavía no hay acciones recibidas en esta sesión. Avanza la simulación o escríbele a Spark para ver sus respuestas.</p>}</div>;
-  const chatTranscript = <div className="chat-transcript">{session.chatLog.length ? session.chatLog.map(m => <div className={`chat-bubble ${m.role}`} key={m.id}>{renderChatText(m.text)}</div>) : <p className="empty">Escríbele a Spark: puede revisar tu score, detener una suscripción marcada como fuga, mover dinero a tu ahorro, o liberar parte de tu ahorro si esta semana te entró poco.</p>}{chatBusy && <TypingIndicator />}</div>;
+  const chatTranscript = <div className="chat-transcript">{session.chatLog.length ? session.chatLog.map(m => <div className={`chat-bubble ${m.role}`} key={m.id}>{renderChatText(m.text)}</div>) : <p className="empty">Escríbele a Spark: puede revisar tu score, detener una suscripción marcada como fuga, mover dinero a tu ahorro, o liberar parte de tu ahorro si esta semana te entró poco.</p>}{chatBusy && <TypingIndicator />}<div ref={chatEndRef} /></div>;
 
   if (!authed) return <Login onLogin={remember => { if (remember) { try { localStorage.setItem(AUTH_KEY, 'true'); } catch { /* Storage is optional. */ } } setAuthed(true); }} />;
 
@@ -440,7 +443,6 @@ function App() {
             <input aria-label="Mensaje para Spark" placeholder="Ej. ¿cómo va mi score? / cancela FitZone Campus / mueve 20 a mi ahorro" value={chatInput} onChange={event => setChatInput(event.target.value)} disabled={busy} />
             <button className="black-button" type="submit" disabled={busy || !chatInput.trim()} aria-label="Enviar mensaje"><Send size={16} /></button>
           </form>
-          {controls}
           {feed}
         </motion.section>}
         {page === 'transactions' && <motion.section className="glass page-panel transactions-page" key="transactions-page"
@@ -577,10 +579,15 @@ function App() {
       {modal === 'profile' && <>
         <h2 id="dialog-title">Perfil</h2>
         <div className="profile-header"><span className="user-avatar profile-avatar-lg">A</span><div><strong>Ana</strong><p className="muted-copy">Estudiante universitaria · Tarjeta bancaria sin activar · Sin historial en Buró</p></div></div>
-        <div className="detail-line"><span>Usuario<small>ID de demo</small></span><strong>mia</strong></div>
+        <div className="detail-line"><span>Usuario<small>ID de demo</small></span><strong>ana</strong></div>
         <div className="detail-line"><span>Cuentas Nessie<small>Checking + Savings, sandbox</small></span><strong>2</strong></div>
         <div className="detail-line"><span>Colchón de liquidez<small>Días de gasto esencial cubiertos</small></span><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong></div>
         <button className="outline-button profile-logout" onClick={() => { try { localStorage.removeItem(AUTH_KEY); } catch { /* Storage is optional. */ } setModal(null); setAuthed(false); }}>Cerrar sesión</button>
+        <div className="demo-controls-section">
+          <h3>Control de demo (equipo)</h3>
+          <p className="muted-copy">Avanza los checkpoints de la simulación sembrada para ensayar el guion de pitch. No forma parte de la experiencia normal de Ana.</p>
+          {controls}
+        </div>
       </>}
     </section></div>}
   </motion.main>
