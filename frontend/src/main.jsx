@@ -677,14 +677,18 @@ function App() {
               <div className="trust-stat"><strong>{trustStats.resolvedLeaks}</strong><span>Fugas resueltas</span></div>
               <div className="trust-stat"><strong>{trustStats.moneyActions}</strong><span>Acciones reales sobre el dinero</span></div>
               <div className="trust-stat"><strong>{trustStats.confirmations}</strong><span>Confirmaciones pedidas antes de actuar</span></div>
+              <div className="trust-stat"><strong>{trustReport.liquidity.days_covered} días</strong><span>Colchón de liquidez</span></div>
+              {trustReport.projection?.weeks_to_ready != null && <div className="trust-stat"><strong>~{trustReport.projection.weeks_to_ready}</strong><span>{trustReport.projection.weeks_to_ready === 1 ? 'checkpoint' : 'checkpoints'} para {trustReport.projection.product}</span></div>}
             </div>
             <div className="detail-line"><span>Score actual<small>Tendencia</small></span><strong><TrendBadge trend={trustReport.score.trend} /> {trustReport.score.value}/100</strong></div>
             <LineChart values={trustReport.score_history.map(point => point.value)} label="Historial completo de score" />
             <h3>Cómo se compone tu score</h3>
-            {trustReport.score.breakdown.map(item => <div className="detail-line score-factor-line" key={item.key}><span>{item.label}<small className="score-factor-explainer">{SCORE_FACTOR_EXPLAINERS[item.key]}</small><small className="score-factor-technical">{item.detail} · Peso: {item.weight}%</small></span><strong>{item.value}/100</strong></div>)}
-            <div className="detail-line"><span>Colchón de liquidez</span><strong>{trustReport.liquidity.days_covered} días</strong></div>
-            {trustReport.projection?.weeks_to_ready != null && <div className="detail-line"><span>Proyección</span><strong>~{trustReport.projection.weeks_to_ready} {trustReport.projection.weeks_to_ready === 1 ? 'checkpoint' : 'checkpoints'} para {trustReport.projection.product}</strong></div>}
-            <p className="tip-detail">{trustReport.summary}</p>
+            {trustReport.score.breakdown.map(item => <div className="score-factor-bar" key={item.key}>
+              <div className="score-factor-bar-top"><span>{item.label}<small className="score-factor-technical">Peso: {item.weight}%</small></span><strong>{item.value}/100</strong></div>
+              <progress max="100" value={item.value} aria-label={`${item.label}: ${item.value}/100`} />
+              <small className="score-factor-explainer">{SCORE_FACTOR_EXPLAINERS[item.key]}</small>
+            </div>)}
+            <blockquote className="trust-callout">{trustReport.summary}</blockquote>
             <h3>Acciones verificadas ({trustReport.verified_actions.length})</h3>
             {trustReport.verified_actions.length ? trustReport.verified_actions.map((action, index) => <div className="detail-line" key={index}><span>{action.text}<small>{action.date && dateLabel(action.date)} · {actionTypeLabel(action.type)}</small></span></div>) : <p className="empty">Todavía no hay acciones verificadas -- esta lista se llena sola cuando el agente resuelve una fuga desde el chat, avanzas un día y actúa en un checkpoint, o un reparto automático de apartados mueve dinero real.</p>}
             <button className="outline-button" onClick={copyTrustSummary}>{summaryCopied ? <><Check size={16} /> Copiado</> : <><Copy size={16} /> Copiar resumen</>}</button>
