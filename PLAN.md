@@ -259,3 +259,9 @@ Estado actual de Ana: income pattern declarado (~$1,581 cada 12 días, toleranci
 - Pendiente (frontend, no bloqueante): agregar `simulate_decision`/`get_financial_lesson` a la lista de exclusión del feed de acciones en `data.js` (mismo patrón que `get_envelopes_status`/`get_upcoming_expenses`), para que no se pinten como "acción rechazada".
 
 **Nombre de producto elegido para el pivote: "Spark"** (discutido y elegido sobre otras opciones — Lanix, Activa, Kick, Boost, Pulse — por ser corto, fácil de decir en el pitch, y conectar directo con la tesis de "encender una tarjeta dormida").
+
+**8.7 — Registro de gasto externo + índice de wallet share — ✅ hecho, backend + chat**
+
+Idea del propio equipo, no estaba en el backlog original: el score/señal de activación asumían que toda la vida financiera del estudiante pasa por la tarjeta del banco, lo cual es falso para cualquiera que también use efectivo/otra tarjeta. `log_external_expense` (tool de chat, inspirado en `save_expense` de [Jarbis](https://github.com/Ossccaarrtz/jarbis)) registra ese gasto marcado con `source`, y se agregó `compute_wallet_share` como una tercera señal de negocio (qué % del gasto total captura el banco, distinta de "está activa la tarjeta"). Detalle completo en el [README](./README.md#backend-desplegado-ya-en-la-cuenta-oficial-de-aws-del-equipo). 19 tests nuevos, 134 en total.
+
+Pendiente (frontend, no bloqueante): mostrar `wallet_share` en el dashboard, y agregar `log_external_expense` a la lista de exclusión del feed de acciones en `data.js` (aunque esta SÍ ejecuta una escritura real, a diferencia de `simulate_decision`/`get_financial_lesson` que son solo simulación — sí debe aparecer como acción real en el feed, revisar el criterio de exclusión existente para no ocultarla por error).

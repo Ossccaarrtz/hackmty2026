@@ -33,10 +33,11 @@ Porque la crítica que recibimos era correcta y mejor corregirla nosotros que de
 
 ### "¿Cuál es el modelo de negocio, a quién le venden esto?"
 
-**Dos líneas de ingreso distintas, cada una con un comprador distinto — no las mezclen en una sola frase en el pitch:**
+**Tres líneas de ingreso distintas, cada una con un comprador o KPI distinto — no las mezclen en una sola frase en el pitch:**
 
 1. **El banco paga por estudiante activado/enganchado.** El banco ya gasta dinero en el convenio universitario (emisión de tarjeta, marketing del acuerdo) y hoy tiene near-cero activación que mostrar por eso — es un KPI que ya existe y no se está cumpliendo. Cobramos una comisión (por ejemplo, fee mensual por estudiante activo o fee fijo por activación) atada directamente a resolver ESE problema, no a construir algo nuevo desde cero.
 2. **La marca/comercio paga por oferta redimida** (modelo *card-linked offers*, verificado: [Cardlytics](https://www.cardlytics.com/marketing-solutions/native-bank-channel) es una empresa real que cotiza en NASDAQ y opera así con Bank of America, Wells Fargo, PNC — el anunciante le paga a Cardlytics por redención real, no por impresión, y Cardlytics comparte una parte de eso con el banco). Nosotros mostramos la oferta relevante (ej. descuento estudiantil de streaming, promoción Mastercard-Cinépolis) basada en la categoría de gasto real del estudiante, y cobramos cuando se redime.
+3. **El banco paga por wallet share recuperado, no solo por activación.** Un estudiante puede estar "activo" (usa la tarjeta de vez en cuando) y aun así mandar la mayoría de su gasto real a efectivo u otra tarjeta — invisible hasta que el estudiante mismo lo declara (`log_external_expense`, ver README). Eso convierte "actívalo" en algo más fino: "recupera el % de su gasto que hoy se va a otro lado", con una oferta específica (ej. cashback si paga gasolina con la tarjeta del banco en vez de efectivo). Es un KPI más avanzado que activación pura, y solo es posible porque el estudiante declara voluntariamente su gasto externo para su propio presupuesto — el banco lo recibe como subproducto agregado, no como vigilancia.
 
 **TAM/SAM/SOM (estimación de orden de magnitud, no cifra oficial de ninguna fuente):**
 - **TAM:** ~5.5M estudiantes de educación superior en México (fuente de referencia: ANUIES, cifra de matrícula nacional — verificar cifra exacta antes de citarla en el pitch final).

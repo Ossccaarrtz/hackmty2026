@@ -344,6 +344,25 @@ Solo cuenta compras reales de comercio — un depósito de mesada o un reparto a
 
 Probado en vivo contra las dos cuentas reales: Ana y Mia salen `activa` (100/100, última compra hace 0 días, 20 y 26 compras respectivamente en los últimos 30 días) — el número tiene sentido porque ambas tienen historial de compras reciente sembrado hasta el día de hoy. 7 tests nuevos, 114 en total en el backend.
 
+**Registro de gasto externo (efectivo/otra tarjeta) + índice de wallet share — nuevo tool de chat:**
+```
+POST /chat/message  { "message": "pagué 150 en efectivo en tacos con amigos" }
+POST /chat/message  { "message": "gasté 300 con mi tarjeta de Banorte en gasolina" }
+```
+
+Hueco real: hasta este punto, el score/ratio esencial-discrecional/señal de activación asumían que TODA la vida financiera del estudiante pasa por la tarjeta del banco aliado — falso para cualquiera que también pague en efectivo o con otra tarjeta. `log_external_expense` (tool nuevo, inspirado en el patrón `save_expense` del proyecto hermano [Jarbis](https://github.com/Ossccaarrtz/jarbis), incluida su misma protección anti-duplicado por ventana de tiempo de 2 minutos) registra ese gasto como una transacción más en DynamoDB, marcada con `source: "cash"` o `"other_card"` (+ `card_name` si aplica). Si el usuario no menciona con qué tarjeta pagó, el system prompt le indica al modelo **preguntárselo antes de llamar la tool** — nunca inventarlo ni dejarlo vacío.
+
+**Manejo cuidadoso de qué número responde qué pregunta (el detalle que había que resolver bien):**
+- `compute_totals`/`score_liquidity` y el cálculo de balance en `agent_actions.py` **excluyen** el gasto externo — ese dinero nunca salió de la cuenta que el balance/colchón de liquidez representa. Si se sumara ahí, el sistema pensaría que la cuenta del banco tiene menos dinero del que realmente tiene, solo porque el usuario gastó efectivo.
+- `score_essential_ratio` **sí incluye** todo (banco + externo) a propósito — para educar bien al estudiante se necesita la foto completa de su comportamiento de gasto, no solo lo que el banco ve.
+- `compute_activation_signal` **excluye** el gasto externo — mide específicamente uso de la tarjeta del banco, no gasto en general.
+
+**Nueva señal de negocio — `wallet_share`:** qué porción del gasto TOTAL real (banco + declarado) pasa por la tarjeta del banco. Un estudiante puede salir `activa` en la señal de activación (la usa de vez en cuando) y aun así mandar la mayoría de su gasto real a otro lado — ese es el caso más accionable para el banco (una oferta específica para recuperar ese gasto, no solo "actívate"), y sin este registro manual esa pregunta sería invisible por completo. Aparece en `GET /signals` junto a `score`/`activation`.
+
+**Nota de transparencia para feasibility regulatoria:** este es dato que el propio estudiante declara voluntariamente para su presupuesto — el banco lo recibe como subproducto agregado de darle una mejor herramienta al estudiante, no es vigilancia de terceros.
+
+19 tests nuevos, 134 en total en el backend.
+
 ## Auditoría propia (agente independiente, solo lectura) — 4 hallazgos reales corregidos
 
 Se lanzó una revisión de código independiente buscando específicamente el mismo patrón que ya se había encontrado una vez (un guardrail que aparenta estar activo pero nunca se ejecuta). Encontró 4 hallazgos reales, ya corregidos y desplegados:
