@@ -13,6 +13,25 @@ RESEND_API_URL = "https://api.resend.com/emails"
 FROM_ADDRESS = "Kivo <onboarding@resend.dev>"
 
 
+def wrap(body_html):
+    """Envuelve el contenido de un correo en la plantilla visual de Kivo --
+    tono directo, con personalidad, pensado para conectar con estudiantes
+    (estilo Duolingo: cercano, un poco travieso, nunca acartonado)."""
+    return f"""
+<div style="font-family:'DM Sans',Arial,sans-serif;max-width:480px;margin:0 auto;background:#eef1f5;padding:24px 16px;">
+  <div style="background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 4px 16px rgba(15,35,60,.08);">
+    <div style="background:#00304f;padding:18px 28px;">
+      <span style="color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-.5px;">kivo</span>
+    </div>
+    <div style="padding:28px;color:#14191c;font-size:15px;line-height:1.6;">
+      {body_html}
+    </div>
+  </div>
+  <p style="text-align:center;color:#93a1b8;font-size:12px;margin-top:16px;">Kivo · tu copiloto financiero 💙</p>
+</div>
+""".strip()
+
+
 def send_email(subject, html):
     """Envia un correo. Si falta configuracion o Resend rechaza el envio,
     no truena el flujo que llamo esto -- un recordatorio que no salio no

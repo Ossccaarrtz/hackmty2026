@@ -107,14 +107,27 @@ def _send_subscription_reminders(signals):
         if days not in (5, 3, 1):
             continue
         plural = "día" if days == 1 else "días"
+        if days == 1:
+            headline, vibe = "🚨 ¡Mañana te cobran!", "Es tu última oportunidad de decidir antes de que se vaya solo."
+        elif days == 3:
+            headline, vibe = "⏰ Ya casi es hora...", "Todavía estás a tiempo de pensarlo con calma, sin presión."
+        else:
+            headline, vibe = "👀 Ojo con esto", "Te avisamos con tiempo para que no te agarre en curva."
         email_notifications.send_email(
-            subject=f"Faltan {days} {plural} para {item['category_label']} -- ¿lo sigues queriendo pagar?",
-            html=(
-                f"<p>En {days} {plural} Kivo espera un cargo de <strong>${item['expected_amount']:.2f}</strong> "
-                f"de {item['category_label']}.</p>"
-                f"<p>Si ya no lo usas, dile a Kivo en el chat: \"cancela {item['category_label']}\" "
-                "antes de que se cobre.</p>"
-            ),
+            subject=f"{headline} Faltan {days} {plural} para {item['category_label']}",
+            html=email_notifications.wrap(f"""
+                <p style="font-size:19px;font-weight:700;margin:0 0 14px;">{headline}</p>
+                <p>En <strong>{days} {plural}</strong> te va a caer un cargo de
+                   <strong style="color:#d22630;">${item['expected_amount']:.2f}</strong> por
+                   <strong>{item['category_label']}</strong>. 💸</p>
+                <p>{vibe}</p>
+                <p>¿Todavía lo usas o ya nomás está ahí cobrando polvo? 🤔</p>
+                <p style="background:#eef4fb;border-radius:12px;padding:14px 18px;margin:18px 0;">
+                  Si ya no, dile a Kivo en el chat:<br>
+                  <strong>"cancela {item['category_label']}"</strong> y listo, cero drama. 🙌
+                </p>
+                <p style="margin-bottom:0;">— El equipo de Kivo 💙</p>
+            """),
         )
 
 
@@ -131,12 +144,20 @@ def _send_external_expense_reminder(purchases):
     )
     if not logged_today:
         email_notifications.send_email(
-            subject="¿Gastaste en efectivo u otra tarjeta hoy?",
-            html=(
-                "<p>Hoy no le registraste a Kivo ningun gasto en efectivo o con otra tarjeta.</p>"
-                "<p>Si gastaste algo que no paso por tu tarjeta del banco, diselo en el chat "
-                "para que tu score y tu presupuesto queden completos.</p>"
-            ),
+            subject="🕵️ ¿Gastaste algo hoy que Kivo no vio?",
+            html=email_notifications.wrap("""
+                <p style="font-size:19px;font-weight:700;margin:0 0 14px;">🕵️ Modo detective activado</p>
+                <p>Hoy no nos platicaste de ningún gasto en efectivo o con otra tarjeta. 👀</p>
+                <p>Si te echaste un taco, un Uber, o pagaste algo que no fue con tu tarjeta del
+                   banco, cuéntaselo a Kivo para que tu score no se quede con información a medias. 📊</p>
+                <p style="background:#eef4fb;border-radius:12px;padding:14px 18px;margin:18px 0;">
+                  Solo dile algo como:<br>
+                  <strong>"gasté 80 en efectivo en comida"</strong> y Kivo lo apunta por ti. ✍️
+                </p>
+                <p>Entre más completo esté tu historial, mejor te conocemos (y mejor te ayudamos
+                   a no gastar de más). 💪</p>
+                <p style="margin-bottom:0;">— Kivo</p>
+            """),
         )
 
 
