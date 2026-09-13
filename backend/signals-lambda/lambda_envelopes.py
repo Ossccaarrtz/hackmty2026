@@ -1,7 +1,7 @@
 """
 Lambda: CRUD de apartados (envelope budgeting).
 
-GET  /envelopes?user_id=mia                  -> lista de apartados con saldo derivado + patron de nomina declarado
+GET  /envelopes?user_id=mia                  -> lista de apartados con saldo derivado + patron de nomina + meta de gasto mensual
 POST /envelopes                              -> crea un apartado {category, monthly_target}
 POST /envelopes/income-pattern               -> declara el patron de nomina {expected_amount, frequency_days}
 POST /envelopes/confirm-allocation           -> ejecuta un reparto pendiente de confirmar
@@ -31,6 +31,7 @@ def lambda_handler(event, context):
             "envelopes": actions.get_envelope_balances(user_id),
             "income_pattern": actions.get_income_pattern(user_id),
             "pending_allocation": actions.get_pending_allocation(user_id),
+            "monthly_budget": actions.get_monthly_budget(user_id),
         })
 
     if method == "POST" and path.rstrip("/") == "/envelopes":

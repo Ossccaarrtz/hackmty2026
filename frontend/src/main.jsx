@@ -34,6 +34,7 @@ const ACTION_TYPE_LABELS = {
   move_to_savings: 'Dinero movido a ahorro', release_savings_buffer: 'Ahorro liberado',
   create_envelope: 'Apartado creado', set_income_pattern: 'Patrón de nómina guardado',
   confirm_pending_allocation: 'Reparto confirmado', log_external_expense: 'Gasto externo registrado',
+  set_monthly_budget: 'Meta de gasto actualizada',
 };
 const actionTypeLabel = type => ACTION_TYPE_LABELS[type] || type.replaceAll('_', ' ');
 // "Revisar" en una alerta llevaba al chat en blanco -- la estudiante tenia que
@@ -268,10 +269,14 @@ function App() {
   const [incomeFrequency, setIncomeFrequency] = useState('');
   const [payrollBusy, setPayrollBusy] = useState(false);
   const [chatInput, setChatInput] = useState('');
-  // La meta de gasto vive solo en este navegador (localStorage) -- no hay ruta de
-  // backend para persistirla todavia, ver commit que agrega este feature. El % usado
-  // en cambio siempre se calcula con transacciones reales del backend.
+  // localStorage es solo el valor optimista mientras carga -- en cuanto refresh()
+  // trae `monthly_budget` del backend (fijado aqui mismo o por chat via
+  // set_monthly_budget), ese valor manda. El % usado siempre es de transacciones reales.
   const [monthlyBudget, setMonthlyBudget] = useState(readMonthlyBudget);
+  // Una vez que el backend confirma un valor (fijado por chat o desde otro
+  // dispositivo), la edicion local se deshabilita -- de lo contrario un cambio
+  // hecho aqui se revertiria solo en el siguiente refresh() sin explicacion.
+  const [budgetSource, setBudgetSource] = useState('local');
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetInput, setBudgetInput] = useState('');
   const locked = useRef(false), requestId = useRef(0), closeRef = useRef(null);
@@ -333,8 +338,11 @@ function App() {
   async function loadEnvelopes() {
     setEnvelopesLoading(true);
     setEnvelopesError('');
-    try { setEnvelopes(await api.getEnvelopes()); }
-    catch (err) { setEnvelopesError(err.message); }
+    try {
+      const result = await api.getEnvelopes();
+      setEnvelopes(result);
+      if (result?.monthly_budget?.amount != null) { setMonthlyBudget(Number(result.monthly_budget.amount)); setBudgetSource('backend'); }
+    } catch (err) { setEnvelopesError(err.message); }
     finally { setEnvelopesLoading(false); }
   }
   async function submitNewEnvelope(event) {
@@ -417,20 +425,25 @@ function App() {
     const value = Number(budgetInput);
     if (!Number.isFinite(value) || value <= 0) return;
     setMonthlyBudget(value);
+    setBudgetSource('local');
     setEditingBudget(false);
   }
   async function refresh() {
     const id = ++requestId.current;
     setLoading(true);
     try {
-      const [s, t, n] = await Promise.all([
+      const [s, t, n, budget] = await Promise.all([
         api.getSignals(),
         api.getTransactions(),
         api.getNotifications().catch(() => ({ notifications: [] })), // los avisos son un extra -- si fallan, no tumban el dashboard
+        api.getEnvelopes().catch(() => null), // igual: si la meta de gasto no carga, no tumba el resto del dashboard
       ]);
       const next = normalizeData(s, t);
       if (id !== requestId.current) return;
       setData({ ...next, notifications: Array.isArray(n?.notifications) ? n.notifications : [] });
+      // Fijada por chat (set_monthly_budget) o desde otro dispositivo -- el backend
+      // manda sobre el valor local en cuanto hay uno guardado ahi.
+      if (budget?.monthly_budget?.amount != null) { setMonthlyBudget(Number(budget.monthly_budget.amount)); setBudgetSource('backend'); }
       setError('');
     } catch (err) { if (id === requestId.current) setError(err.message); }
     finally { if (id === requestId.current) setLoading(false); }
@@ -649,7 +662,7 @@ function App() {
         </motion.section>}
         {page === 'home' && <motion.section className="balance-card glass" key="balance-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><div className="balance-top"><div><h2>Score de resiliencia financiera</h2><div className="total score-hero">{signals?.score.value ?? '—'}<span>/100</span></div>{signals && <TrendBadge trend={signals.score.trend} />}<p className={`score-status-message ${signals ? `is-${scoreStatusFeedback(signals).tone}` : ''}`}>{signals ? scoreStatusFeedback(signals).text : 'Cargando tu score…'}</p></div></div><div className="balance-bottom"><div className="account-orbs"><div className="orb-bridge" /><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.balance)}</strong><span>Saldo disponible</span></button><button className="orb purple" onClick={() => setModal('score')}><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong><span>Gastos cubiertos</span></button><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.summary.total_income)}</strong><span>Ingresos registrados</span></button></div></div><button className="outline-button score-details-button" onClick={() => setModal('score')}>Entender mi score</button></motion.section>}
         {page === 'home' && <motion.section className="glass budget-goal-card" key="budget-goal-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}>
-          <header className="card-heading"><h2>Meta de gasto del mes</h2>{monthlyBudget != null && !editingBudget && <button className="text-button budget-edit-link" onClick={() => { setBudgetInput(String(monthlyBudget)); setEditingBudget(true); }}>Editar</button>}</header>
+          <header className="card-heading"><h2>Meta de gasto del mes</h2>{monthlyBudget != null && budgetSource === 'local' && !editingBudget && <button className="text-button budget-edit-link" onClick={() => { setBudgetInput(String(monthlyBudget)); setEditingBudget(true); }}>Editar</button>}</header>
           {monthlyBudget == null || editingBudget ? <form className="budget-goal-form" onSubmit={submitBudget}>
             <label className="ledger-filter"><span>¿Cuánto quieres gastar como máximo este mes?</span><input type="number" min="1" step="1" required autoFocus value={budgetInput} onChange={event => setBudgetInput(event.target.value)} placeholder="Ej. 7000" /></label>
             <div className="budget-goal-form-actions"><button className="black-button small" type="submit">Guardar meta</button>{monthlyBudget != null && <button type="button" className="text-button" onClick={() => setEditingBudget(false)}>Cancelar</button>}</div>
@@ -658,6 +671,7 @@ function App() {
             <div className="budget-goal-numbers"><strong>{money(currentMonthExpense)}</strong><span> de {money(monthlyBudget)}</span></div>
             <div className="budget-track"><div className={`budget-fill tone-${budgetTone(budgetPercent)}`} style={{ width: `${Math.min(budgetPercent, 100)}%` }} /></div>
             <p className={`budget-goal-message tone-${budgetTone(budgetPercent)}`}>{budgetMessage(budgetTone(budgetPercent), budgetPercent, currentMonthExpense - monthlyBudget)}</p>
+            {budgetSource === 'backend' && <p className="muted-copy budget-goal-chat-hint">¿Quieres cambiarla? Pídeselo a Spark en el chat, ej. "cambia mi meta a 5000". <button type="button" className="text-button" onClick={() => setPage('chat')}>Ir al chat</button></p>}
           </>}
         </motion.section>}
         {page === 'home' && <motion.section className="payments-card glass alerts-card" key="alerts-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Lo que necesita tu atención</h2><span className="pill">{signals?.alerts.length ?? '—'} alertas</span></header>{signals ? signals.alerts.length ? signals.alerts.map(alert => <article className="live-alert" key={alert.id}><ShieldAlert size={24} /><div><strong>{alert.title}</strong><p>{alert.detail}</p>{alert.annual_cost > 0 && <small>{money(alert.monthly_amount)}/mes · {money(alert.annual_cost)} al año · potencial, no ahorro realizado</small>}</div><button className="black-button small" onClick={() => { setChatInput(buildAlertPrompt(alert)); setPage('chat'); }}>Revisar</button></article>) : <p className="empty">Todo al día: el backend no reporta alertas activas.</p> : <p className="empty">{loading ? 'Consultando alertas…' : 'Alertas no disponibles.'}</p>}{signals?.upcoming_expenses?.length > 0 && <div className="upcoming-expenses"><h3>Próximos gastos esperados</h3>{signals.upcoming_expenses.map(item => <div className="upcoming-expense-row" key={item.category}><span>{item.category_label}</span><span className="muted-copy">{item.days_until === 0 ? 'Hoy' : item.days_until === 1 ? 'Mañana' : `En ${item.days_until} días`} · {dateLabel(item.expected_date)} · {item.confidence}% confianza</span><strong>{money(item.expected_amount)}</strong></div>)}</div>}<p className="muted-copy">Detener un cargo no cancela el contrato con el comercio.</p></motion.section>}

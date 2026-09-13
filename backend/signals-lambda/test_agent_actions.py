@@ -386,6 +386,23 @@ class TestSetIncomePattern(BaseAgentActionsTest):
         self.assertEqual(float(saved_item["tolerance_pct"]), 0.10)
 
 
+class TestSetMonthlyBudget(BaseAgentActionsTest):
+    def test_rejects_invalid_amount(self):
+        result = aa.set_monthly_budget("ana", "no-es-numero")
+        self.assertFalse(result["ok"])
+
+    def test_rejects_non_positive_amount(self):
+        result = aa.set_monthly_budget("ana", 0)
+        self.assertFalse(result["ok"])
+
+    def test_saves_valid_amount(self):
+        result = aa.set_monthly_budget("ana", 8000)
+        self.assertTrue(result["ok"])
+        saved_item = aa.table.put_item.call_args.kwargs["Item"]
+        self.assertEqual(saved_item["sk"], aa.MONTHLY_BUDGET_SK)
+        self.assertEqual(float(saved_item["amount"]), 8000)
+
+
 class TestCreateEnvelope(BaseAgentActionsTest):
     """create_envelope hace upsert por slug -- es la misma funcion que usa
     la UI tanto para crear un apartado nuevo como para editar uno

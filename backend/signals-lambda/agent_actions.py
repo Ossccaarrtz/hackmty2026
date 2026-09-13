@@ -41,6 +41,7 @@ MAX_AUTONOMOUS_SAVINGS = 100  # tope por transaccion Y por dia -- el chat no pue
 ENVELOPE_PREFIX = "ENVELOPE#"
 INCOME_PATTERN_SK = "INCOME_PATTERN"
 PENDING_ALLOCATION_SK = "PENDING_ALLOCATION"
+MONTHLY_BUDGET_SK = "MONTHLY_BUDGET"
 
 dynamodb = boto3.resource("dynamodb", region_name=REGION)
 table = dynamodb.Table(TABLE_NAME)
@@ -576,6 +577,22 @@ def set_income_pattern(user_id, expected_amount, frequency_days, tolerance_pct=N
         "tolerance_pct": tolerance_pct,
     }))
     return {"ok": True, "message": f"Guarde tu patron de ingreso: ~${expected_amount} cada {frequency_days} dias, con una tolerancia de {round(tolerance_pct * 100)}% derivada de tu historial real de depositos. Los depositos que no coincidan con esto no van a repartirse a tus apartados."}
+
+
+def get_monthly_budget(user_id):
+    resp = table.get_item(Key={"user_id": user_id, "sk": MONTHLY_BUDGET_SK})
+    return resp.get("Item")
+
+
+def set_monthly_budget(user_id, amount):
+    try:
+        amount = float(amount)
+    except (TypeError, ValueError):
+        return {"ok": False, "reason": "El monto no es un numero valido."}
+    if amount <= 0:
+        return {"ok": False, "reason": "El monto tiene que ser mayor a cero."}
+    table.put_item(Item=to_decimal({"user_id": user_id, "sk": MONTHLY_BUDGET_SK, "amount": amount}))
+    return {"ok": True, "amount": amount, "message": f"Guarde tu meta de gasto mensual: ${amount}."}
 
 
 def deposit_matches_income_pattern(pattern, deposit_amount):

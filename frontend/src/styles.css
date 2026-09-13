@@ -81,6 +81,8 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .budget-goal-message.tone-good{color:#1a7a4c}
 .budget-goal-message.tone-warn{color:#a35f26}
 .budget-goal-message.tone-over{color:var(--c1-red)}
+.budget-goal-chat-hint{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px}
+.budget-goal-chat-hint .text-button{display:inline;margin:0;padding:0;white-space:nowrap}
 .budget-goal-form{margin-top:16px}
 .budget-goal-form .ledger-filter{font-size:13px;color:#34404b}
 .budget-goal-form .ledger-filter input{width:100%}

@@ -116,6 +116,17 @@ TOOLS = [{
             },
         },
         {
+            "name": "set_monthly_budget",
+            "description": "Fija o actualiza la meta de cuanto quiere gastar Ana como maximo este mes. El dashboard compara su gasto real del mes contra este monto. Usala cuando Ana diga algo como 'quiero gastar maximo 8000 este mes' o 'cambia mi meta a 5000'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "amount": {"type": "number", "description": "Monto maximo de gasto para el mes, ej. 8000"},
+                },
+                "required": ["amount"],
+            },
+        },
+        {
             "name": "confirm_pending_allocation",
             "description": "Ejecuta un reparto de nomina a apartados que quedo pendiente de confirmar porque hubiera dejado el colchon de liquidez muy bajo.",
             "parameters": {"type": "object", "properties": {}},
@@ -292,6 +303,8 @@ def execute_tool(name, args, user_id):
             return sanitize(actions.create_envelope(user_id, args.get("category", ""), args.get("monthly_target")))
         if name == "set_income_pattern":
             return sanitize(actions.set_income_pattern(user_id, args.get("expected_amount"), args.get("frequency_days")))
+        if name == "set_monthly_budget":
+            return sanitize(actions.set_monthly_budget(user_id, args.get("amount")))
         if name == "confirm_pending_allocation":
             return sanitize(actions.confirm_pending_allocation(user_id))
         if name == "get_upcoming_expenses":
