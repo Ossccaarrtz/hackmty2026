@@ -11,44 +11,17 @@ const money = value => Number.isFinite(value) ? new Intl.NumberFormat('en-US', {
 // Debe calzar con EXTERNAL_EXPENSE_CATEGORIES/EXTERNAL_CATEGORY_LABELS en
 // agent_actions.py -- son las mismas 5 categorias que usa el resto del
 // motor de senales, a proposito no se inventa una taxonomia nueva.
-// Ilustraciones planas propias (sin depender de imagenes externas -- nada que
-// romperse en la demo) para el apartado de Beneficios. Sencillas a proposito:
-// formas basicas con la paleta de marca, no iconos de linea.
-function BenefitIllustrationNoFee() {
-  return <svg viewBox="0 0 80 80" className="benefit-illustration" aria-hidden="true">
-    <rect x="8" y="20" width="64" height="42" rx="10" fill="var(--c1-navy)" />
-    <rect x="8" y="20" width="64" height="14" rx="10" fill="var(--c1-navy-dark)" />
-    <rect x="16" y="42" width="18" height="13" rx="3" fill="#ffd166" />
-    <circle cx="58" cy="16" r="15" fill="var(--c1-red)" />
-    <text x="58" y="21" textAnchor="middle" fontSize="13" fontWeight="700" fill="#fff">$0</text>
-  </svg>;
-}
-function BenefitIllustrationCreditHistory() {
-  return <svg viewBox="0 0 80 80" className="benefit-illustration" aria-hidden="true">
-    <rect x="10" y="50" width="12" height="20" rx="3" fill="#a9c4e0" />
-    <rect x="28" y="38" width="12" height="32" rx="3" fill="#6fa2cf" />
-    <rect x="46" y="24" width="12" height="46" rx="3" fill="var(--c1-navy)" />
-    <path d="M46 20 L66 8 L60 26 Z" fill="var(--c1-red)" />
-    <path d="M18 44 L38 30 L58 14" stroke="var(--c1-red)" strokeWidth="4" fill="none" strokeLinecap="round" />
-  </svg>;
-}
-function BenefitIllustrationAlerts() {
-  return <svg viewBox="0 0 80 80" className="benefit-illustration" aria-hidden="true">
-    <path d="M40 14a16 16 0 00-16 16v10l-6 10h44l-6-10V30a16 16 0 00-16-16z" fill="var(--c1-navy)" />
-    <path d="M33 60a7 7 0 0014 0z" fill="var(--c1-navy)" />
-    <circle cx="58" cy="20" r="16" fill="none" stroke="var(--c1-red)" strokeWidth="3" opacity="0.35" />
-    <circle cx="58" cy="20" r="10" fill="none" stroke="var(--c1-red)" strokeWidth="3" opacity="0.6" />
-    <circle cx="58" cy="20" r="5" fill="var(--c1-red)" />
-  </svg>;
-}
 // Hardcodeado a proposito -- estos son ejemplos de beneficios reales que
 // tendria la tarjeta-credencial universitaria de Kivo, no datos que vengan
 // del backend. Elegidos para reforzar el propio pitch del proyecto (historial
 // sin Buro, alertas en tiempo real) en vez de una lista generica.
+// Fotos genericas de Unsplash (licencia libre, sin atribucion requerida) --
+// revisadas una por una antes de elegirlas, ninguna es contenido editorial
+// con derechos de un tercero.
 const BENEFITS = [
-  { Illustration: BenefitIllustrationNoFee, title: 'Sin anualidad', detail: 'Nunca pagas por tener la tarjeta, la uses mucho o poco.' },
-  { Illustration: BenefitIllustrationCreditHistory, title: 'Historial sin Buró', detail: 'Cada mes de uso responsable construye tu historial crediticio, aunque sea tu primera tarjeta.' },
-  { Illustration: BenefitIllustrationAlerts, title: 'Alertas en tiempo real', detail: 'Te avisamos de cada movimiento al instante -- un cargo nunca te toma por sorpresa.' },
+  { photo: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&q=70&auto=format&fit=crop', title: 'Sin anualidad', detail: 'Nunca pagas por tener la tarjeta, la uses mucho o poco.' },
+  { photo: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=500&q=70&auto=format&fit=crop', title: 'Historial sin Buró', detail: 'Cada mes de uso responsable construye tu historial crediticio, aunque sea tu primera tarjeta.' },
+  { photo: 'https://images.unsplash.com/photo-1512428559087-560fa5ceab42?w=500&q=70&auto=format&fit=crop', title: 'Alertas en tiempo real', detail: 'Te avisamos de cada movimiento al instante -- un cargo nunca te toma por sorpresa.' },
 ];
 const BUDGET_CATEGORY_OPTIONS = [
   { value: 'rent', label: 'Renta' }, { value: 'groceries', label: 'Comida/Despensa' },
@@ -755,7 +728,7 @@ function App() {
           <p className="muted-copy">Lo que ya trae tu tarjeta-credencial, sin que tengas que buscarlo en letras chiquitas.</p>
           <div className="benefits-grid">
             {BENEFITS.map(benefit => <div className="benefit-card" key={benefit.title}>
-              <benefit.Illustration />
+              <img className="benefit-photo" src={benefit.photo} alt="" loading="lazy" onError={event => { event.target.style.display = 'none'; }} />
               <strong>{benefit.title}</strong>
               <p>{benefit.detail}</p>
             </div>)}
