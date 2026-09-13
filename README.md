@@ -170,6 +170,12 @@ Validación real: Capital One ya tiene en su app la función "Block Future Charg
 
 Las credenciales de AWS viven como GitHub Secrets de un usuario IAM dedicado (`centinel-frontend-ci`), con permiso mínimo: solo escribir/borrar en ese bucket específico y solo invalidar esa distribución específica de CloudFront — no tiene acceso a nada más de la cuenta. Probado en vivo end-to-end: el primer push que agregó este workflow disparó su propia corrida real, completó los 3 pasos de verificación (install/test/build) y el deploy en 19 segundos, sin intervención manual.
 
+## CI/CD del backend — ✅ en vivo
+
+[`.github/workflows/deploy-backend.yml`](./.github/workflows/deploy-backend.yml): mismo patrón que el de frontend. Cada push a `main` que toque `backend/signals-lambda/` corre la suite completa (107 tests) **antes** de tocar AWS — si algo falla, no se despliega nada. Si pasa, empaqueta cada uno de los 6 Lambdas (handler + los 3 módulos compartidos: `agent_actions.py`, `nessie_actions.py`, `signal_engine.py`) y los despliega con `aws lambda update-function-code`, esperando a que cada uno termine de actualizarse antes de seguir con el siguiente. Elimina un riesgo operativo real de esta sesión: redesplegar a mano los 6 Lambdas cada vez que cambia un módulo compartido, con margen real de olvidar alguno (pasó más de una vez).
+
+Credenciales de AWS en GitHub Secrets separados de los del frontend (usuario IAM dedicado `centinel-backend-ci`, permiso mínimo: solo `UpdateFunctionCode`/`GetFunction` sobre esos 6 Lambdas específicos). Probado en vivo end-to-end: corrida real de 54 segundos, los 6 Lambdas quedaron con `LastUpdateStatus: Successful` y timestamp fresco, y `/signals?user_id=ana` siguió respondiendo correctamente después.
+
 ## Backend desplegado (ya en la cuenta oficial de AWS del equipo)
 
 Se descubrió que la infraestructura de Jarbis ya vive en esta cuenta (`jarbis-*` tablas/Lambdas + API Gateway `jarbis`) — se reutilizó directamente en vez de crear infraestructura paralela.
