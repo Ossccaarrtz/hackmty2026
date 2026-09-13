@@ -1,0 +1,57 @@
+name: Deploy frontend
+
+# Se dispara solo cuando algo dentro de frontend/ cambia en main -- evita
+# desplegar (e invalidar cache de CloudFront innecesariamente) por commits
+# que solo tocan backend o documentacion.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-frontend.yml"
+  workflow_dispatch: {} # permite disparar un deploy manual desde la pestaña Actions sin necesitar un commit
+
+env:
+  AWS_REGION: us-east-1
+  S3_BUCKET: centinel-one-frontend
+  CLOUDFRONT_DISTRIBUTION_ID: E2Z36Z7KIO90YT
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Sync build to S3
+        run: aws s3 sync dist/ "s3://${{ env.S3_BUCKET }}/" --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ env.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/*"
