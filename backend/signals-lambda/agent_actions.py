@@ -17,7 +17,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 
-from signal_engine import compute_signals, score_liquidity, compute_elapsed_days, LIQUIDITY_WARNING_DAYS, resolve_reference_date, is_neutral
+from signal_engine import compute_signals, score_liquidity, compute_elapsed_days, LIQUIDITY_WARNING_DAYS, resolve_reference_date, is_neutral, NON_RECURRING_DEPOSIT_CATEGORIES
 from nessie_actions import sweep_to_savings, release_from_savings, receive_from_third_party
 
 REGION = "us-east-1"
@@ -661,11 +661,23 @@ def estimate_monthly_disposable(user_id, exclude_goal_slug=None):
     advance-day) iba inflando este total_expense para siempre sin un
     income correspondiente, hasta casi empatar con total_income y dejar
     el disponible en centavos. Se recalcula aparte, con la misma
-    exclusion is_neutral() que ya usan score_essential_ratio/detect_anomaly."""
+    exclusion is_neutral() que ya usan score_essential_ratio/detect_anomaly.
+
+    Por la misma razon, total_income TAMPOCO reutiliza
+    signals["_debug"]["total_income"] tal cual -- ese total suma TODO
+    deposito sin filtrar, incluyendo ajustes de una sola vez (ej.
+    "opening_balance", el saldo inicial antes del historial sembrado) o
+    depositos de demo de un tercero (income_third_party_demo). Proyectar
+    un ingreso de una sola vez como si fuera mensual recurrente (total/
+    elapsed_days*30) infla el disponible de forma irreal -- mismo criterio
+    de NON_RECURRING_DEPOSIT_CATEGORIES que ya usa score_income_regularity."""
     deposits, purchases, bills_plain = load_data(user_id)
     signals = get_full_signals(deposits, purchases, bills_plain, user_id=user_id, persist=False)
     elapsed_days = max(signals["_debug"]["elapsed_days"], 1)
-    total_income = signals["_debug"]["total_income"]
+    total_income = sum(
+        float(d["amount"]) for d in deposits
+        if d.get("category") not in NON_RECURRING_DEPOSIT_CATEGORIES
+    )
     real_expense = sum(
         float(p["amount"]) for p in purchases
         if p.get("source", "bank") == "bank"

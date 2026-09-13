@@ -61,7 +61,7 @@ def compute_elapsed_days(deposits, purchases, as_of_date):
     return max(days_between(earliest, latest), 1)
 
 
-NON_RECURRING_DEPOSIT_CATEGORIES = {"savings_release", "opening_balance"}
+NON_RECURRING_DEPOSIT_CATEGORIES = {"savings_release", "opening_balance", "income_third_party_demo"}
 
 
 def score_income_regularity(deposits):
