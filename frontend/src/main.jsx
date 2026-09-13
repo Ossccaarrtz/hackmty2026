@@ -536,7 +536,7 @@ function App() {
             <input aria-label="Mensaje para Spark" placeholder="Ej. ¿cómo va mi score? / cancela FitZone Campus / mueve 20 a mi ahorro" value={chatInput} onChange={event => setChatInput(event.target.value)} disabled={busy} />
             <button className="black-button" type="submit" disabled={busy || !chatInput.trim()} aria-label="Enviar mensaje"><Send size={16} /></button>
           </form>
-          {feed}
+          <div className="chat-feed-section"><h3>Acciones recientes</h3>{feed}</div>
         </motion.section>}
         {page === 'transactions' && <motion.section className="glass page-panel transactions-page" key="transactions-page"
           initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}

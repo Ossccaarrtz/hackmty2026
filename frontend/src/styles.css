@@ -50,7 +50,8 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .agent-feed-item p{color:#314257;line-height:1.65}.agent-feed-item.action-error{border-color:#b84d32;background:#fff0e7}
 .text-button{display:block;font-size:13px;text-decoration:underline;text-underline-offset:4px;margin-top:18px;padding:5px 0}
 .user-avatar{display:grid;place-items:center;border-radius:50%;background:#e0eaf8;width:46px;height:46px;font-weight:600;color:#6473a3}
-.full-page-layout{grid-template-columns:66px minmax(0,1fr)}.chat-panel,.page-panel{padding:30px;min-height:65vh}.chat-panel .agent-feed{max-height:none;min-height:240px;padding:20px 0}.chat-panel .agent-feed-item{max-width:850px}.chat-panel .card-heading h2{font-size:24px}
+.full-page-layout{grid-template-columns:66px minmax(0,1fr)}.chat-panel,.page-panel{padding:30px;min-height:65vh}.chat-panel .chat-transcript{max-height:54vh}.chat-panel .agent-feed{max-height:260px;padding:0}.chat-panel .agent-feed-item{max-width:850px}.chat-panel .card-heading h2{font-size:24px}
+.chat-feed-section{margin-top:28px;padding-top:18px;border-top:1px dashed #becddb75}.chat-feed-section h3{font-size:14px;font-weight:600;color:#536780;margin-bottom:12px}
 .ledger-search{display:flex;align-items:center;gap:10px;margin:20px 0}.ledger-search input{min-width:0}.transactions-page .detail-line strong{white-space:nowrap}
 .modal .black-button{white-space:normal;line-height:1.5}.modal .agent-alert{align-items:flex-start;line-height:1.6}
 @media(max-width:1350px){.connected-dashboard .money-actions{width:155px}.connected-dashboard .money-actions button{font-size:12px;padding:16px 12px}.connected-dashboard .orb strong{font-size:16px}.connected-dashboard .orb span{font-size:10px}.live-transaction{grid-template-columns:28px minmax(0,1fr) 45px 67px;gap:8px}.score-component{font-size:11px}}
