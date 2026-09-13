@@ -53,7 +53,7 @@ TOOLS = [{
             "description": "Propone detener el cargo automatico de una suscripcion/cargo recurrente -- NUNCA ejecuta en esta llamada, solo evalua si es una fuga real y deja la propuesta pendiente. Solo procede si ese cargo esta marcado como fuga detectada ahora mismo -- si no lo esta, se rechaza automaticamente sin importar lo que el usuario diga. Para ejecutar de verdad, el usuario tiene que confirmar explicitamente despues y tienes que llamar confirm_stop_bill.",
             "parameters": {
                 "type": "object",
-                "properties": {"bill_title": {"type": "string", "description": "Nombre exacto del comercio, ej. 'Gym Co'"}},
+                "properties": {"bill_title": {"type": "string", "description": "Nombre exacto del comercio, ej. 'FitZone Campus'"}},
                 "required": ["bill_title"],
             },
         },
@@ -132,7 +132,7 @@ TOOLS = [{
                 "type": "object",
                 "properties": {
                     "action": {"type": "string", "description": "'stop_bill' para simular dejar de pagar un cargo recurrente, o 'reduce_discretionary' para simular reducir gasto discrecional mensual."},
-                    "bill_payee": {"type": "string", "description": "Nombre exacto del cargo a simular deteniendo, solo si action es 'stop_bill', ej. 'Gym Co'."},
+                    "bill_payee": {"type": "string", "description": "Nombre exacto del cargo a simular deteniendo, solo si action es 'stop_bill', ej. 'FitZone Campus'."},
                     "monthly_amount": {"type": "number", "description": "Monto mensual a simular reduciendo, solo si action es 'reduce_discretionary'."},
                 },
                 "required": ["action"],
