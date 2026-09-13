@@ -601,7 +601,10 @@ def simulate_third_party_payroll(user_id, amount, employer_label="Papa y mama", 
     registra como cualquier deposito real -- util para la demo y para
     alimentar el saldo que despues usa compute_smart_allocation. Esta SI es
     una escritura real en Nessie: no es Kivo moviendo el dinero de Ana, es
-    Kivo observando que un tercero se lo mando."""
+    Kivo observando que un tercero se lo mando. `employer_label` es
+    generico a proposito -- sirve tanto para nomina de los papas como para
+    cualquier otro ingreso real de un tercero (beca, regalo, trabajo
+    freelance) que Ana reporte por chat, ver log_income_deposit."""
     try:
         amount = float(amount)
     except (TypeError, ValueError):
@@ -614,19 +617,19 @@ def simulate_third_party_payroll(user_id, amount, employer_label="Papa y mama", 
 
     try:
         checking_id = get_account_ids(user_id)["checking"]
-        movement = receive_from_third_party(EMPLOYER_ACCOUNT_ID, checking_id, amount, f"Pago de nomina - {employer_label}", on_date=on_date)
+        movement = receive_from_third_party(EMPLOYER_ACCOUNT_ID, checking_id, amount, employer_label, on_date=on_date)
     except Exception as e:
         return {"ok": False, "reason": f"No se pudo mover el dinero en Nessie: {e}"}
 
     table.put_item(Item=to_decimal({
         "user_id": user_id, "sk": f"TXN#{on_date}#thirdparty{int(time.time() * 1000)}",
         "type": "deposit", "date": on_date, "amount": amount,
-        "category": THIRD_PARTY_INCOME_CATEGORY, "category_label": f"Nomina - {employer_label}",
-        "merchant_name": None, "description": f"Pago recibido de {employer_label} (cuenta de un tercero, verificable en Nessie)",
+        "category": THIRD_PARTY_INCOME_CATEGORY, "category_label": employer_label,
+        "merchant_name": None, "description": f"{employer_label} (cuenta de un tercero, verificable en Nessie)",
     }))
     return {
         "ok": True, "amount": amount, "date": on_date, "nessie": movement,
-        "message": f"Se recibieron ${amount} de {employer_label} en tu cuenta el {on_date}.",
+        "message": f"Se recibieron ${amount} ({employer_label}) en tu cuenta el {on_date}.",
     }
 
 

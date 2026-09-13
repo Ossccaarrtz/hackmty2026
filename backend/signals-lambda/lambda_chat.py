@@ -195,6 +195,18 @@ TOOLS = [{
                 "required": ["amount", "category", "source"],
             },
         },
+        {
+            "name": "log_income_deposit",
+            "description": "Registra un ingreso REAL que le llego a Ana de un tercero y NO es su mesada/medio tiempo habitual -- una beca, un regalo, un pago por un trabajo suelto, etc. Mueve dinero de verdad en el sandbox de Nessie (no es una simulacion visual ni un registro que Kivo se invente): sube su saldo real. Usa esto cuando Ana diga algo como 'me depositaron 2000 de una beca' o 'mi tio me mando 500 de regalo'. NO uses esto para su mesada o pago de medio tiempo normal -- esos ya llegan solos por Nessie y se ven en get_status.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "amount": {"type": "number", "description": "Monto del deposito"},
+                    "concept": {"type": "string", "description": "De donde vino el dinero, en pocas palabras, ej. 'Beca', 'Regalo de cumpleanos', 'Trabajo freelance'"},
+                },
+                "required": ["amount", "concept"],
+            },
+        },
     ]
 }]
 
@@ -212,7 +224,8 @@ SYSTEM_INSTRUCTION = (
     "6) set_category_budget fija una META de referencia por categoria (rent, groceries, transport, utilities, discretionary) -- Kivo NUNCA aparta, mueve ni transfiere dinero por esto, solo compara el gasto real contra la meta. create_goal es para metas de ahorro de largo plazo (ej. 'viaje a Japon') que SI acumulan un total a lo largo de varios meses -- calcula sola cuantos meses es realista segun el disponible real de Ana si ella no da una fecha, y tampoco mueve dinero, solo arma el plan. Si Ana dice algo como 'aparta X para...' o 'quiero apartar dinero para...', aclarale que Kivo no mueve dinero de verdad: puedes ponerle una meta (de categoria o de ahorro) para vigilarla juntos, pero separar el dinero lo tiene que hacer ella desde su banco -- cuando lo haga, usa log_goal_contribution para anotar el avance. get_smart_allocation es solo informativo: sugiere como repartir su saldo ACTUAL entre sus metas pendientes respetando un colchon de seguridad, nunca ejecuta nada. Si create_goal regresa realistic=false, la meta SI se guardo, pero dejale clarisimo a Ana en tu respuesta que el plazo calculado no es realista (dilo con el numero de meses/anios que trae el mensaje) y sugierele bajar el monto o buscar mas margen en su presupuesto -- no lo pases por alto ni lo suavices como si fuera un plan normal. "
     "7) simulate_decision y get_financial_lesson NUNCA ejecutan nada real -- son simulaciones educativas, no acciones. Puedes llamarlas libremente sin pedir confirmacion, y explica siempre que el resultado es una proyeccion, no un cambio ya hecho. Si Ana pregunta '¿que pasaria si...?' sobre un cargo o su gasto, usa simulate_decision en vez de estimar tu mismo el impacto. "
     "8) log_external_expense es solo para gasto que el usuario declara en efectivo o con OTRA tarjeta -- si menciona 'other_card' como fuente y no dijo con que tarjeta pago, PREGUNTASELO primero y espera su respuesta antes de llamar la tool; nunca inventes ni dejes vacio el nombre de la tarjeta. La categoria debe ser exactamente una de: rent, groceries, transport, utilities, discretionary -- si no es obvio cual, pregunta o usa discretionary. "
-    "9) Se breve y claro, en español."
+    "9) log_income_deposit SI mueve dinero real (a diferencia de log_external_expense, que solo registra) -- usala cuando Ana diga que le llego dinero de un tercero que NO es su mesada/medio tiempo habitual (beca, regalo, trabajo suelto). No hace falta pedirle confirmacion extra: es dinero entrando, no saliendo, y el limite autonomo de gasto no aplica aqui. No la uses para su ingreso regular (ese ya llega solo por Nessie). "
+    "10) Se breve y claro, en español."
 )
 
 
@@ -363,6 +376,8 @@ def execute_tool(name, args, user_id):
                 user_id, args.get("amount"), args.get("category", ""),
                 args.get("description", ""), args.get("source", ""), args.get("card_name"),
             ))
+        if name == "log_income_deposit":
+            return sanitize(actions.simulate_third_party_payroll(user_id, args.get("amount"), args.get("concept", "Ingreso externo")))
         return {"ok": False, "reason": f"Herramienta desconocida: {name}"}
     except Exception as e:
         return {"ok": False, "reason": f"Algo fallo revisando tu cuenta ({e}) -- no se ejecuto ninguna accion."}
