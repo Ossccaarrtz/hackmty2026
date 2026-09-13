@@ -147,10 +147,6 @@ function Login({ onLogin }) {
     onLogin(remember);
   }
   return <div className="login-page">
-    <header className="login-topbar">
-      <img src="/capital-one-logo.svg" alt="Capital One" className="login-topbar-logo" />
-      <span className="login-topbar-brand">Centinel One</span>
-    </header>
     <div className="login-center">
       <form className="login-card glass" onSubmit={submit}>
         <img src="/capital-one-logo.svg" alt="Capital One" className="login-logo" />
@@ -176,7 +172,6 @@ function Login({ onLogin }) {
         <p className="login-footnote">Acceso de demostración — cuenta de Mia precargada.</p>
       </form>
     </div>
-    <Footer />
   </div>;
 }
 
