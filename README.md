@@ -164,6 +164,12 @@ Validación real: Capital One ya tiene en su app la función "Block Future Charg
 
 **Motor de señales corriendo contra estos datos ahora mismo:** score = 64/100, 1/2 bills sanos, fuga detectada en Gym Co (~$480/año), colchón cubre 12 días. Prototipo en Node en [`/backend/signal-engine.js`](./backend/signal-engine.js); versión real desplegada en Python en [`/backend/signals-lambda`](./backend/signals-lambda).
 
+## CI/CD del frontend — ✅ en vivo
+
+[`.github/workflows/deploy-frontend.yml`](./.github/workflows/deploy-frontend.yml): cada push a `main` que toque `frontend/` corre `npm ci` + `npm test` + `npm run build`, y si todo pasa, sincroniza `dist/` a S3 (`centinel-one-frontend`) e invalida la caché de CloudFront automáticamente — nadie del equipo tiene que acordarse de desplegar a mano. También se puede disparar manualmente desde la pestaña Actions de GitHub (`workflow_dispatch`) sin necesitar un commit.
+
+Las credenciales de AWS viven como GitHub Secrets de un usuario IAM dedicado (`centinel-frontend-ci`), con permiso mínimo: solo escribir/borrar en ese bucket específico y solo invalidar esa distribución específica de CloudFront — no tiene acceso a nada más de la cuenta. Probado en vivo end-to-end: el primer push que agregó este workflow disparó su propia corrida real, completó los 3 pasos de verificación (install/test/build) y el deploy en 19 segundos, sin intervención manual.
+
 ## Backend desplegado (ya en la cuenta oficial de AWS del equipo)
 
 Se descubrió que la infraestructura de Jarbis ya vive en esta cuenta (`jarbis-*` tablas/Lambdas + API Gateway `jarbis`) — se reutilizó directamente en vez de crear infraestructura paralela.
