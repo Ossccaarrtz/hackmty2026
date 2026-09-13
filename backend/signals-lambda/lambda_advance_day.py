@@ -334,9 +334,17 @@ def _handle_reset(user_id):
             # tercero (backend/signals-lambda/agent_actions.py::simulate_third_party_payroll)
             # -- sin esto, cada ensayo en vivo deja un deposito extra permanente
             # en el historial de la persona.
+            # GOAL#/BUDGET#: metas de ahorro y presupuestos por categoria.
+            # A diferencia del resto de esta funcion, esto SI es config real
+            # de la usuaria, no solo residuo de checkpoints -- se decidio a
+            # proposito que el reset tambien las limpie, para que cada
+            # ensayo de la demo empiece de cero sin arrastrar metas de la
+            # corrida anterior (ej. una meta de prueba con un plazo
+            # irrealista que nadie quiere ver en el siguiente ensayo).
             if (category in ("savings_transfer", "savings_release", "income_third_party_demo")
                     or category.startswith("envelope:")
-                    or item["sk"].startswith("ACTION#") or item["sk"].startswith("NOTIFICATION#")):
+                    or item["sk"].startswith("ACTION#") or item["sk"].startswith("NOTIFICATION#")
+                    or item["sk"].startswith(actions.GOAL_PREFIX) or item["sk"].startswith(actions.BUDGET_PREFIX)):
                 table.delete_item(Key={"user_id": user_id, "sk": item["sk"]})
     except Exception:
         pass
