@@ -151,98 +151,155 @@ class TestVerifiedReleaseBuffer(BaseAgentActionsTest):
         mock_release.assert_called_once()
 
 
-class TestVerifiedAllocateEnvelopes(BaseAgentActionsTest):
-    """Regresion directa del hallazgo de la auditoria: esta funcion calculaba
-    signals["anomaly"] pero nunca lo leia, y no tenia tope de monto -- es la
-    UNICA accion que se dispara 100% sola (webhook de deposito)."""
+class TestProjectPaydayAllocation(BaseAgentActionsTest):
+    """Sustituye al viejo verified_allocate_envelopes -- MISMA idea
+    pedagogica (aparta en cuanto llega tu nomina), CERO escrituras en
+    Nessie: no hay nada que pausar porque nada se mueve. El guardrail de
+    monto/liquidez desaparece; el unico que sobrevive es 'overcommitted'
+    (tus metas piden mas de lo que te llego), que no protege una
+    transferencia sino que evita proponer un presupuesto imposible."""
 
     PATTERN = {"expected_amount": 500, "tolerance_pct": 0.25, "frequency_days": 15}
-    ENVELOPES = [{"category": "Gasolina", "slug": "gasolina", "monthly_target": 2000}]
+    BUDGETS = [{"category": "transport", "label": "Transporte", "monthly_target": 800}]
 
-    def test_rejects_deposit_that_does_not_match_pattern(self):
+    def test_returns_none_when_deposit_does_not_match_pattern(self):
         with patch.object(aa, "get_income_pattern", return_value=self.PATTERN):
-            result = aa.verified_allocate_envelopes("ana", 100, "2026-09-12")
-        self.assertFalse(result["ok"])
+            plan = aa.project_payday_allocation("ana", 100, "2026-09-12")
+        self.assertIsNone(plan)
 
-    def test_rejects_when_no_envelopes_configured(self):
+    def test_returns_none_when_no_budget_categories(self):
         with patch.object(aa, "get_income_pattern", return_value=self.PATTERN), \
-             patch.object(aa, "get_envelopes", return_value=[]):
-            result = aa.verified_allocate_envelopes("ana", 500, "2026-09-12")
-        self.assertFalse(result["ok"])
-
-    def test_rejects_when_anomaly_detected(self):
-        """Regresion del hallazgo 1.1 de la auditoria: antes esto se ignoraba por completo."""
-        with patch.object(aa, "get_income_pattern", return_value=self.PATTERN), \
-             patch.object(aa, "get_envelopes", return_value=self.ENVELOPES), \
-             patch.object(aa, "load_data", return_value=([{"date": "2026-08-28"}], [], [])), \
-             patch.object(aa, "get_full_signals", return_value=signals_with(anomaly_detected=True, anomaly_reason="gasto sospechoso")):
-            result = aa.verified_allocate_envelopes("ana", 500, "2026-09-12")
-        self.assertFalse(result["ok"])
-        self.assertIn("gasto sospechoso", result["reason"])
-
-    def test_pending_when_allocation_exceeds_autonomous_cap(self):
-        """Regresion del hallazgo 1.1: antes no habia tope de monto en absoluto."""
-        big_envelopes = [{"category": "Renta", "slug": "renta", "monthly_target": 3000}]  # 3000*15/30 = 1500 > tope
-        with patch.object(aa, "get_income_pattern", return_value=self.PATTERN), \
-             patch.object(aa, "get_envelopes", return_value=big_envelopes), \
              patch.object(aa, "load_data", return_value=([], [], [])), \
-             patch.object(aa, "get_full_signals", return_value=signals_with(current_balance=5000, elapsed_days=90)):
-            result = aa.verified_allocate_envelopes("ana", 500, "2026-09-12")
-        self.assertFalse(result["ok"])
-        self.assertTrue(result.get("pending"))
-        aa.table.put_item.assert_called_once()  # deja PENDING_ALLOCATION_SK
-
-    def test_pending_when_liquidity_floor_breached(self):
-        with patch.object(aa, "get_income_pattern", return_value=self.PATTERN), \
-             patch.object(aa, "get_envelopes", return_value=self.ENVELOPES), \
-             patch.object(aa, "load_data", return_value=([], [], [])), \
-             patch.object(aa, "get_full_signals", return_value=signals_with(current_balance=20, elapsed_days=90)):
-            result = aa.verified_allocate_envelopes("ana", 500, "2026-09-12")
-        self.assertFalse(result["ok"])
-        self.assertTrue(result.get("pending"))
+             patch.object(aa, "get_category_budgets", return_value=[]), \
+             patch.object(aa, "get_monthly_budget", return_value=None):
+            plan = aa.project_payday_allocation("ana", 500, "2026-09-12")
+        self.assertIsNone(plan)
 
     @patch.object(aa, "sweep_to_savings")
-    def test_executes_with_correct_proportional_amount(self, mock_sweep):
-        # Nomina anterior hace 15 dias exactos -- proporcional = 2000 * 15/30 = 1000... excede el tope,
-        # asi que usamos un envelope mas chico para probar el camino feliz completo.
-        small_envelopes = [{"category": "Telefono", "slug": "telefono", "monthly_target": 100}]  # 100*15/30 = 50
+    def test_never_touches_nessie(self, mock_sweep):
+        """El punto central del rediseno: apartar (ahora 'presupuestar') ya
+        no mueve dinero real, a diferencia del viejo _execute_allocation."""
         with patch.object(aa, "get_income_pattern", return_value=self.PATTERN), \
-             patch.object(aa, "get_envelopes", return_value=small_envelopes), \
-             patch.object(aa, "load_data", return_value=([{"date": "2026-08-28"}], [], [])), \
-             patch.object(aa, "get_full_signals", return_value=signals_with(current_balance=5000, elapsed_days=90)):
-            result = aa.verified_allocate_envelopes("ana", 500, "2026-09-12")
-        self.assertTrue(result["ok"])
-        self.assertEqual(result["amount"], 50.0)
-        mock_sweep.assert_called_once()
+             patch.object(aa, "load_data", return_value=([], [], [])), \
+             patch.object(aa, "get_category_budgets", return_value=self.BUDGETS), \
+             patch.object(aa, "get_monthly_budget", return_value=None):
+            plan = aa.project_payday_allocation("ana", 500, "2026-09-12")
+        self.assertIsNotNone(plan)
+        mock_sweep.assert_not_called()
 
-    def test_get_pending_allocation_returns_none_when_nothing_pending(self):
+    def test_suggested_amount_discounts_what_was_already_spent(self):
+        """Diferencia clave contra el reparto viejo (monthly_target *
+        elapsed/30): esto SI descuenta lo que ya gastaste este mes."""
+        purchases = [{"date": "2026-09-01", "category": "transport", "amount": 300}]
+        with patch.object(aa, "get_income_pattern", return_value=self.PATTERN), \
+             patch.object(aa, "load_data", return_value=([], purchases, [])), \
+             patch.object(aa, "get_category_budgets", return_value=self.BUDGETS), \
+             patch.object(aa, "get_monthly_budget", return_value=None):
+            plan = aa.project_payday_allocation("ana", 500, "2026-09-05")
+        # pendiente = 800 - 300 = 500; dias restantes del mes desde el 5 = 26; gap declarado = 15 -> covered = 15
+        self.assertAlmostEqual(plan["lines"][0]["suggested"], round(500 * 15 / 26, 2), places=2)
+
+    def test_overcommitted_when_reserved_exceeds_deposit(self):
+        # 400 si matchea el patron (dentro de 500+-25%), pero la meta de
+        # transporte ($800, sin gasto previo) sola ya pide mas que eso.
+        with patch.object(aa, "get_income_pattern", return_value=self.PATTERN), \
+             patch.object(aa, "load_data", return_value=([], [], [])), \
+             patch.object(aa, "get_category_budgets", return_value=self.BUDGETS), \
+             patch.object(aa, "get_monthly_budget", return_value=None):
+            plan = aa.project_payday_allocation("ana", 400, "2026-09-12")
+        self.assertTrue(plan["overcommitted"])
+
+    def test_writes_payday_plan_for_later_retrieval(self):
+        with patch.object(aa, "get_income_pattern", return_value=self.PATTERN), \
+             patch.object(aa, "load_data", return_value=([], [], [])), \
+             patch.object(aa, "get_category_budgets", return_value=self.BUDGETS), \
+             patch.object(aa, "get_monthly_budget", return_value=None):
+            aa.project_payday_allocation("ana", 500, "2026-09-12")
+        saved_item = aa.table.put_item.call_args.kwargs["Item"]
+        self.assertEqual(saved_item["sk"], aa.PAYDAY_PLAN_SK)
+
+
+class TestGetLastPaydayPlan(BaseAgentActionsTest):
+    def test_returns_none_when_nothing_stored(self):
         aa.table.get_item.return_value = {}
-        self.assertIsNone(aa.get_pending_allocation("ana"))
+        self.assertIsNone(aa.get_last_payday_plan("ana"))
 
-    def test_get_pending_allocation_returns_stored_proposal(self):
+    def test_returns_stored_plan_without_dynamo_keys(self):
         aa.table.get_item.return_value = {"Item": {
-            "proposals": [{"category": "Gasolina", "slug": "gasolina", "amount": 50}],
-            "deposit_date": "2026-09-12", "total": 50,
+            "user_id": "ana", "sk": aa.PAYDAY_PLAN_SK, "deposit_amount": 500, "reserved": 300,
         }}
-        pending = aa.get_pending_allocation("ana")
-        self.assertEqual(pending["total"], 50.0)
-        self.assertEqual(pending["proposals"][0]["slug"], "gasolina")
+        plan = aa.get_last_payday_plan("ana")
+        self.assertNotIn("user_id", plan)
+        self.assertNotIn("sk", plan)
+        self.assertEqual(plan["deposit_amount"], 500)
 
-    def test_confirm_pending_allocation_without_pending_rejects(self):
-        aa.table.get_item.return_value = {}
-        result = aa.confirm_pending_allocation("ana")
-        self.assertFalse(result["ok"])
 
-    @patch.object(aa, "sweep_to_savings")
-    def test_confirm_pending_allocation_executes_stored_proposal(self, mock_sweep):
-        aa.table.get_item.return_value = {"Item": {
-            "proposals": [{"category": "Gasolina", "slug": "gasolina", "amount": 50}],
-            "deposit_date": "2026-09-12", "total": 50,
-        }}
-        result = aa.confirm_pending_allocation("ana")
-        self.assertTrue(result["ok"])
-        self.assertEqual(result["amount"], 50.0)
-        mock_sweep.assert_called_once()
+class TestGetBudgetStatus(BaseAgentActionsTest):
+    """Sin saldo acumulado ni transferencias: 'gastado' se deriva de
+    transacciones reales ya categorizadas, filtradas por mes -- a
+    diferencia del viejo get_envelope_balances, que sumaba toda la
+    historia y nunca bajaba."""
+
+    BUDGETS = [{"category": "transport", "label": "Transporte", "monthly_target": 800}]
+
+    def test_no_purchases_returns_empty_status(self):
+        with patch.object(aa, "load_data", return_value=([], [], [])):
+            status = aa.get_budget_status("ana", as_of_date=None)
+        self.assertIsNone(status["month"])
+        self.assertEqual(status["categories"], [])
+
+    def test_filters_spend_by_current_month_only(self):
+        purchases = [
+            {"date": "2026-09-05", "category": "transport", "amount": 300},
+            {"date": "2026-08-20", "category": "transport", "amount": 999},  # mes anterior, no debe contar
+        ]
+        with patch.object(aa, "load_data", return_value=([], purchases, [])), \
+             patch.object(aa, "get_category_budgets", return_value=self.BUDGETS), \
+             patch.object(aa, "get_monthly_budget", return_value=None):
+            status = aa.get_budget_status("ana", as_of_date="2026-09-18")
+        self.assertEqual(status["categories"][0]["spent"], 300)
+
+    def test_excludes_neutral_and_savings_categories(self):
+        purchases = [
+            {"date": "2026-09-05", "category": "savings_transfer", "amount": 500},
+            {"date": "2026-09-05", "category": "savings_release", "amount": 200},
+            {"date": "2026-09-05", "category": "envelope:legacy", "amount": 100},
+        ]
+        with patch.object(aa, "load_data", return_value=([], purchases, [])), \
+             patch.object(aa, "get_category_budgets", return_value=[]), \
+             patch.object(aa, "get_monthly_budget", return_value=None):
+            status = aa.get_budget_status("ana", as_of_date="2026-09-18")
+        self.assertEqual(status["unbudgeted"], [])
+        self.assertEqual(status["total_spent"], 0)
+
+    def test_includes_external_source_spend(self):
+        """El gasto declarado en efectivo/otra tarjeta SI cuenta -- un
+        presupuesto describe comportamiento completo, al contrario de
+        compute_totals (que solo mide el saldo del banco)."""
+        purchases = [{"date": "2026-09-05", "category": "transport", "amount": 150, "source": "cash"}]
+        with patch.object(aa, "load_data", return_value=([], purchases, [])), \
+             patch.object(aa, "get_category_budgets", return_value=self.BUDGETS), \
+             patch.object(aa, "get_monthly_budget", return_value=None):
+            status = aa.get_budget_status("ana", as_of_date="2026-09-18")
+        self.assertEqual(status["categories"][0]["spent"], 150)
+
+    def test_spend_without_a_budget_goes_to_unbudgeted(self):
+        purchases = [{"date": "2026-09-05", "category": "utilities", "amount": 400}]
+        with patch.object(aa, "load_data", return_value=([], purchases, [])), \
+             patch.object(aa, "get_category_budgets", return_value=self.BUDGETS), \
+             patch.object(aa, "get_monthly_budget", return_value=None):
+            status = aa.get_budget_status("ana", as_of_date="2026-09-18")
+        self.assertEqual(status["categories"][0]["spent"], 0)
+        self.assertEqual(status["unbudgeted"][0]["category"], "utilities")
+        self.assertEqual(status["unbudgeted_spend"], 400)
+
+    def test_pace_excedido_when_over_target(self):
+        purchases = [{"date": "2026-09-05", "category": "transport", "amount": 900}]
+        with patch.object(aa, "load_data", return_value=([], purchases, [])), \
+             patch.object(aa, "get_category_budgets", return_value=self.BUDGETS), \
+             patch.object(aa, "get_monthly_budget", return_value=None):
+            status = aa.get_budget_status("ana", as_of_date="2026-09-18")
+        self.assertEqual(status["categories"][0]["pace"], "excedido")
 
 
 class TestStopBillTwoStepFlow(BaseAgentActionsTest):
@@ -399,43 +456,57 @@ class TestSetMonthlyBudget(BaseAgentActionsTest):
         self.assertEqual(float(saved_item["amount"]), 8000)
 
 
-class TestCreateEnvelope(BaseAgentActionsTest):
-    """create_envelope hace upsert por slug -- es la misma funcion que usa
-    la UI tanto para crear un apartado nuevo como para editar uno
-    existente (regresion del hallazgo: no habia forma de editar la meta
-    mensual de un apartado ya creado)."""
+class TestSetCategoryBudget(BaseAgentActionsTest):
+    """set_category_budget reemplaza al viejo create_envelope: la categoria
+    tiene que ser una de las 5 reales (rent/groceries/transport/utilities/
+    discretionary), no texto libre -- para poder compararse despues contra
+    gasto real sin necesitar transacciones sinteticas. monthly_target=0
+    borra la meta, asi no hace falta una ruta DELETE nueva."""
 
-    def test_creating_new_envelope_says_creado(self):
-        aa.table.get_item.return_value = {}
-        result = aa.create_envelope("ana", "Gasolina", 2000)
-        self.assertTrue(result["ok"])
-        self.assertIn("creado", result["message"])
-
-    def test_updating_existing_envelope_says_actualizado_not_duplicado(self):
-        aa.table.get_item.return_value = {"Item": {"category": "Gasolina", "slug": "gasolina", "monthly_target": 2000, "created_at": "2026-01-01"}}
-        result = aa.create_envelope("ana", "Gasolina", 2500)
-        self.assertTrue(result["ok"])
-        self.assertIn("actualizado", result["message"])
-        saved_item = aa.table.put_item.call_args.kwargs["Item"]
-        self.assertEqual(float(saved_item["monthly_target"]), 2500)
-        self.assertEqual(saved_item["created_at"], "2026-01-01")  # no se pisa la fecha de creacion original
-
-    def test_rejects_missing_category(self):
-        result = aa.create_envelope("ana", "", 500)
+    def test_rejects_invalid_category(self):
+        result = aa.set_category_budget("ana", "gasolina", 800)
         self.assertFalse(result["ok"])
 
-    def test_rejects_non_positive_target(self):
+    def test_creating_new_budget_says_creada(self):
         aa.table.get_item.return_value = {}
-        result = aa.create_envelope("ana", "Gasolina", 0)
+        result = aa.set_category_budget("ana", "transport", 800, "Gasolina y camion")
+        self.assertTrue(result["ok"])
+        self.assertIn("creada", result["message"])
+        saved_item = aa.table.put_item.call_args.kwargs["Item"]
+        self.assertEqual(saved_item["category"], "transport")
+        self.assertEqual(saved_item["label"], "Gasolina y camion")
+
+    def test_updating_existing_budget_keeps_created_at_and_label(self):
+        aa.table.get_item.return_value = {"Item": {"category": "transport", "label": "Transporte", "monthly_target": 800, "created_at": "2026-01-01"}}
+        result = aa.set_category_budget("ana", "transport", 900)
+        self.assertTrue(result["ok"])
+        self.assertIn("actualizada", result["message"])
+        saved_item = aa.table.put_item.call_args.kwargs["Item"]
+        self.assertEqual(float(saved_item["monthly_target"]), 900)
+        self.assertEqual(saved_item["created_at"], "2026-01-01")  # no se pisa la fecha de creacion original
+        self.assertEqual(saved_item["label"], "Transporte")  # conserva la etiqueta si no se manda una nueva
+
+    def test_zero_target_deletes_budget_instead_of_saving(self):
+        result = aa.set_category_budget("ana", "transport", 0)
+        self.assertTrue(result["ok"])
+        aa.table.delete_item.assert_called_once()
+        aa.table.put_item.assert_not_called()
+
+    def test_rejects_negative_target(self):
+        result = aa.set_category_budget("ana", "transport", -100)
+        self.assertFalse(result["ok"])
+
+    def test_rejects_non_numeric_target(self):
+        result = aa.set_category_budget("ana", "transport", "no-es-numero")
         self.assertFalse(result["ok"])
 
 
 class TestSimulateThirdPartyPayroll(BaseAgentActionsTest):
     """Nomina real de un tercero (otra cuenta Nessie, no la nuestra) -- ver
     backend/signals-lambda/agent_actions.py::simulate_third_party_payroll.
-    A proposito NO se prueba que reparta a apartados aqui: eso lo decide el
-    mismo camino reactivo de cualquier deposito (lambda_notifier ->
-    verified_allocate_envelopes), ya cubierto por TestVerifiedAllocateEnvelopes.
+    A proposito NO se prueba aqui que arme un plan de presupuesto: eso lo
+    decide el mismo camino reactivo de cualquier deposito (lambda_notifier
+    -> project_payday_allocation), ya cubierto por TestProjectPaydayAllocation.
     Esta funcion solo es responsable de mover el dinero y escribir el deposito."""
 
     def setUp(self):

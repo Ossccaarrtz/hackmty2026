@@ -322,13 +322,15 @@ def _handle_reset(user_id):
     table.delete_item(Key={"user_id": user_id, "sk": "STATE#simulation"})
     table.delete_item(Key={"user_id": user_id, "sk": "CHAT_HISTORY"})
     table.delete_item(Key={"user_id": user_id, "sk": "PENDING_STOP_BILL"})
-    table.delete_item(Key={"user_id": user_id, "sk": "PENDING_ALLOCATION"})
+    table.delete_item(Key={"user_id": user_id, "sk": "PAYDAY_PLAN"})
     try:
         resp = table.query(KeyConditionExpression=Key("user_id").eq(user_id))
         for item in resp["Items"]:
             category = item.get("category") or ""
             # savings_transfer/savings_release: sweeps de suavizado de ingreso.
-            # envelope:*: repartos a apartados ya ejecutados.
+            # envelope:*: legado del viejo sistema de apartados (transferian
+            # dinero real) -- ya no se escriben, esto solo limpia lo que haya
+            # quedado de antes de la migracion a presupuesto por categoria.
             # income_third_party_demo: depositos de la demo de nomina de un
             # tercero (backend/signals-lambda/agent_actions.py::simulate_third_party_payroll)
             # -- sin esto, cada ensayo en vivo deja un deposito extra permanente

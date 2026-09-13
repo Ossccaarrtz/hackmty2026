@@ -11,7 +11,7 @@ formas -- la seguridad no depende de que el LLM se porte bien, depende del
 codigo determinista debajo.
 
 Memoria: se persiste en DynamoDB solo el intercambio visible (lo que Ana
-escribio + la respuesta final de Spark) -- no los pasos internos de que
+escribio + la respuesta final de Kivo) -- no los pasos internos de que
 herramienta se llamo. Cada mensaje nuevo reconstruye la conversacion con
 ese historial antes de mandarla a Gemini.
 """
@@ -87,18 +87,19 @@ TOOLS = [{
             },
         },
         {
-            "name": "get_envelopes_status",
-            "description": "Consulta los apartados de gastos fijos de Ana (ej. gasolina, comida) con su meta mensual y saldo acumulado actual.",
+            "name": "get_budget_status",
+            "description": "Consulta las metas de presupuesto de Ana por categoria, comparadas contra lo que YA gasto este mes de verdad. Kivo no aparta ni mueve dinero -- esto es solo una vista.",
             "parameters": {"type": "object", "properties": {}},
         },
         {
-            "name": "create_envelope",
-            "description": "Crea un apartado nuevo para un gasto fijo mensual (ej. 'gasolina' con meta de $2000/mes). El monto se reparte proporcional cada vez que llega la nomina.",
+            "name": "set_category_budget",
+            "description": "Fija o actualiza la meta mensual de una categoria de gasto para compararla despues contra el gasto real. NO aparta ni mueve dinero -- es solo una meta de referencia. Usa monthly_target=0 para quitar la meta de esa categoria.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "category": {"type": "string", "description": "Nombre del gasto, ej. 'gasolina'"},
-                    "monthly_target": {"type": "number", "description": "Meta mensual en pesos"},
+                    "category": {"type": "string", "enum": ["rent", "groceries", "transport", "utilities", "discretionary"], "description": "Categoria exacta -- si Ana dice 'gasolina' usa 'transport', si dice 'comida' o 'despensa' usa 'groceries', etc."},
+                    "monthly_target": {"type": "number", "description": "Meta mensual en pesos. 0 para quitar la meta."},
+                    "label": {"type": "string", "description": "Nombre amigable opcional que Ana prefiera para esta categoria, ej. 'Gasolina y camion'."},
                 },
                 "required": ["category", "monthly_target"],
             },
@@ -127,8 +128,8 @@ TOOLS = [{
             },
         },
         {
-            "name": "confirm_pending_allocation",
-            "description": "Ejecuta un reparto de nomina a apartados que quedo pendiente de confirmar porque hubiera dejado el colchon de liquidez muy bajo.",
+            "name": "get_payday_plan",
+            "description": "Consulta el ultimo calculo de como se veria repartida la nomina de Ana entre sus metas de presupuesto. Es solo informativo -- Kivo nunca ejecuta este reparto, solo lo muestra.",
             "parameters": {"type": "object", "properties": {}},
         },
         {
@@ -173,7 +174,7 @@ TOOLS = [{
 }]
 
 SYSTEM_INSTRUCTION = (
-    "Eres el asistente de Spark, una plataforma que activa tarjetas bancarias universitarias dormidas y educa "
+    "Eres el asistente de Kivo, una plataforma que activa tarjetas bancarias universitarias dormidas y educa "
     "financieramente a estudiantes. Hablas con Ana (estudiante universitaria, tarjeta-credencial emitida por su "
     "banco al inscribirse, ingreso irregular por mesada/trabajo de medio tiempo, sin historial de credito). "
     "Tienes memoria real de esta conversacion -- los mensajes anteriores estan "
@@ -183,7 +184,7 @@ SYSTEM_INSTRUCTION = (
     "3) stop_subscription SIEMPRE es un proceso de dos pasos: la primera llamada solo propone (nunca detiene nada de verdad) y te va a devolver una advertencia de riesgo contractual para que se la muestres a Ana tal cual. Si Ana confirma explicitamente despues de leer esa advertencia, llama confirm_stop_bill -- no vuelvas a llamar stop_subscription. "
     "4) Si una herramienta rechaza la accion, explicale a Ana por que en lenguaje simple, no insistas ni la reintentes con otros valores. "
     "5) release_savings_buffer es para semanas de ingreso bajo -- no lo ofrezcas a menos que Ana mencione que le entro poco dinero o necesita liquidez extra. "
-    "6) Los apartados (create_envelope) se reparten solos cuando llega un deposito que coincide con el patron de nomina declarado (set_income_pattern) -- si Ana no ha declarado su patron todavia y quiere crear un apartado, pidele primero el monto y frecuencia aproximada de su mesada/ingreso. "
+    "6) set_category_budget fija una META de referencia por categoria (rent, groceries, transport, utilities, discretionary) -- Kivo NUNCA aparta, mueve ni transfiere dinero por esto, solo compara el gasto real contra la meta. Si Ana dice algo como 'aparta X para...' o 'quiero apartar dinero para...', aclarale que Kivo no mueve dinero: puedes ponerle una meta de presupuesto para que la vigiles juntos, pero separar el dinero de verdad lo tiene que hacer ella desde su banco. Si aun no ha declarado su patron de nomina y quiere ver un plan de como se repartiria (get_payday_plan), pidele primero el monto y frecuencia aproximada de su mesada/ingreso (set_income_pattern). "
     "7) simulate_decision y get_financial_lesson NUNCA ejecutan nada real -- son simulaciones educativas, no acciones. Puedes llamarlas libremente sin pedir confirmacion, y explica siempre que el resultado es una proyeccion, no un cambio ya hecho. Si Ana pregunta '¿que pasaria si...?' sobre un cargo o su gasto, usa simulate_decision en vez de estimar tu mismo el impacto. "
     "8) log_external_expense es solo para gasto que el usuario declara en efectivo o con OTRA tarjeta -- si menciona 'other_card' como fuente y no dijo con que tarjeta pago, PREGUNTASELO primero y espera su respuesta antes de llamar la tool; nunca inventes ni dejes vacio el nombre de la tarjeta. La categoria debe ser exactamente una de: rent, groceries, transport, utilities, discretionary -- si no es obvio cual, pregunta o usa discretionary. "
     "9) Se breve y claro, en español."
@@ -297,16 +298,16 @@ def execute_tool(name, args, user_id):
             return sanitize(actions.verified_move_to_savings(user_id, args.get("amount"), args.get("reason", "")))
         if name == "release_savings_buffer":
             return sanitize(actions.verified_release_buffer(user_id, args.get("amount"), args.get("reason", "")))
-        if name == "get_envelopes_status":
-            return sanitize({"ok": True, "envelopes": actions.get_envelope_balances(user_id)})
-        if name == "create_envelope":
-            return sanitize(actions.create_envelope(user_id, args.get("category", ""), args.get("monthly_target")))
+        if name == "get_budget_status":
+            return sanitize({"ok": True, **actions.get_budget_status(user_id)})
+        if name == "set_category_budget":
+            return sanitize(actions.set_category_budget(user_id, args.get("category", ""), args.get("monthly_target"), args.get("label")))
         if name == "set_income_pattern":
             return sanitize(actions.set_income_pattern(user_id, args.get("expected_amount"), args.get("frequency_days")))
         if name == "set_monthly_budget":
             return sanitize(actions.set_monthly_budget(user_id, args.get("amount")))
-        if name == "confirm_pending_allocation":
-            return sanitize(actions.confirm_pending_allocation(user_id))
+        if name == "get_payday_plan":
+            return sanitize({"ok": True, "plan": actions.get_last_payday_plan(user_id)})
         if name == "get_upcoming_expenses":
             return sanitize({"ok": True, "upcoming_expenses": actions.get_current_signals(user_id)["upcoming_expenses"]})
         if name == "simulate_decision":
@@ -342,7 +343,7 @@ def lambda_handler(event, context):
             result = call_gemini(contents)
         except Exception as e:
             status = 429 if "429" in str(e) else 200
-            reply = "Spark esta saturado ahorita mismo (limite de solicitudes), intenta de nuevo en un minuto." if status == 429 else f"No pude conectar con el modelo: {e}"
+            reply = "Kivo esta saturado ahorita mismo (limite de solicitudes), intenta de nuevo en un minuto." if status == 429 else f"No pude conectar con el modelo: {e}"
             # No se persiste: un mensaje que nunca se proceso no debe contaminar la memoria de la conversacion.
             return _response(status, {"reply": reply, "actions_taken": actions_taken})
 

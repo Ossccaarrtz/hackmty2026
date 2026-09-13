@@ -6,6 +6,7 @@ ejecuta nada sin volver a verificar contra el estado real en DynamoDB/Nessie.
 El LLM del chat nunca decide montos ni ejecuta directo: solo puede invocar
 estas funciones, y estas funciones son las que deciden si procede o no.
 """
+import calendar
 import time
 import statistics
 import boto3
@@ -13,7 +14,7 @@ from datetime import date
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 
-from signal_engine import compute_signals, score_liquidity, compute_elapsed_days, LIQUIDITY_WARNING_DAYS, resolve_reference_date
+from signal_engine import compute_signals, score_liquidity, compute_elapsed_days, LIQUIDITY_WARNING_DAYS, resolve_reference_date, is_neutral
 from nessie_actions import sweep_to_savings, release_from_savings, receive_from_third_party
 
 REGION = "us-east-1"
@@ -38,9 +39,9 @@ EMPLOYER_ACCOUNT_ID = "98698915-42ab-45a8-a89d-31330909e9e5"
 THIRD_PARTY_INCOME_CATEGORY = "income_third_party_demo"
 MAX_AUTONOMOUS_SAVINGS = 100  # tope por transaccion Y por dia -- el chat no puede mover mas que esto solo
 
-ENVELOPE_PREFIX = "ENVELOPE#"
+BUDGET_PREFIX = "BUDGET#"
 INCOME_PATTERN_SK = "INCOME_PATTERN"
-PENDING_ALLOCATION_SK = "PENDING_ALLOCATION"
+PAYDAY_PLAN_SK = "PAYDAY_PLAN"
 MONTHLY_BUDGET_SK = "MONTHLY_BUDGET"
 
 dynamodb = boto3.resource("dynamodb", region_name=REGION)
@@ -532,10 +533,6 @@ def verified_release_buffer(user_id, amount, reason):
     return {"ok": True, "amount": amount, "message": f"Libere ${amount} de tu ahorro a tu cuenta corriente. {reason or ''}".strip()}
 
 
-def _slug(category):
-    return category.strip().lower().replace(" ", "_")
-
-
 def get_income_pattern(user_id):
     resp = table.get_item(Key={"user_id": user_id, "sk": INCOME_PATTERN_SK})
     return resp.get("Item")
@@ -615,11 +612,13 @@ def simulate_third_party_payroll(user_id, employer_label="Papa y mama", amount=N
     """Mueve dinero DE VERDAD desde la cuenta de un tercero (otra app/otro
     dueno en el sandbox de Nessie, no la nuestra) a la cuenta de Ana, y lo
     registra como cualquier deposito real. A proposito NO llama
-    verified_allocate_envelopes directamente: escribe el deposito y deja que
+    project_payday_allocation directamente: escribe el deposito y deja que
     el mismo camino reactivo de cualquier deposito real (DynamoDB Streams ->
-    lambda_notifier -> verified_allocate_envelopes) decida si reparte a
-    apartados -- exactamente lo que pasaria si la nomina llegara sin que
-    nadie de nuestro lado la dispare a mano."""
+    lambda_notifier -> project_payday_allocation) decida si arma el plan de
+    presupuesto -- exactamente lo que pasaria si la nomina llegara sin que
+    nadie de nuestro lado la dispare a mano. Esta SI es una escritura real en
+    Nessie: no es Kivo moviendo el dinero de Ana, es Kivo observando que un
+    tercero se lo mando."""
     pattern = get_income_pattern(user_id)
     if amount is None:
         if not pattern:
@@ -654,176 +653,164 @@ def simulate_third_party_payroll(user_id, employer_label="Papa y mama", amount=N
         "nessie": movement,
         "message": (
             f"Se recibieron ${amount} de {employer_label} en tu cuenta el {on_date}. "
-            + ("El reparto a tus apartados se procesa automaticamente." if matches
-               else "Este monto no coincide con tu patron de nomina declarado, asi que no se reparte solo a tus apartados.")
+            + ("Te arme un plan de como se veria repartido entre tu presupuesto -- no mueve nada, solo te lo muestra." if matches
+               else "Este monto no coincide con tu patron de nomina declarado, asi que no te arme un plan de presupuesto.")
         ),
     }
 
 
-def get_envelopes(user_id):
-    resp = table.query(KeyConditionExpression=Key("user_id").eq(user_id) & Key("sk").begins_with(ENVELOPE_PREFIX))
-    return resp["Items"]
+def _days_in_month(iso_date):
+    year, month = int(iso_date[:4]), int(iso_date[5:7])
+    return calendar.monthrange(year, month)[1]
 
 
-def create_envelope(user_id, category, monthly_target):
-    if not category or not category.strip():
-        return {"ok": False, "reason": "Falta el nombre de la categoria."}
+def set_category_budget(user_id, category, monthly_target, label=None):
+    """Meta mensual sobre una categoria REAL de gasto -- reusa la misma
+    taxonomia cerrada de log_external_expense (no texto libre como el
+    apartado viejo), para que la meta se pueda comparar contra gasto real
+    sin necesitar transacciones sinteticas. Kivo no aparta ni mueve nada:
+    solo guarda la meta para comparar despues. monthly_target=0 borra la
+    meta -- asi no hace falta una ruta DELETE nueva en API Gateway."""
+    category = (category or "").strip().lower()
+    if category not in EXTERNAL_EXPENSE_CATEGORIES:
+        return {"ok": False, "reason": f"Categoria no valida. Usa una de: {', '.join(sorted(EXTERNAL_EXPENSE_CATEGORIES))}."}
     try:
         monthly_target = float(monthly_target)
     except (TypeError, ValueError):
         return {"ok": False, "reason": "El monto mensual no es un numero valido."}
-    if monthly_target <= 0:
-        return {"ok": False, "reason": "El monto mensual tiene que ser mayor a cero."}
-    slug = _slug(category)
-    # Escritura idempotente por slug -- si ya existe un apartado con el
-    # mismo nombre, esto actualiza su meta mensual en vez de duplicarlo.
-    # Es la misma funcion que usa la UI para "crear" y para "editar" un
-    # apartado existente, sin necesitar un endpoint separado.
-    existing = table.get_item(Key={"user_id": user_id, "sk": f"{ENVELOPE_PREFIX}{slug}"}).get("Item")
+    if monthly_target < 0:
+        return {"ok": False, "reason": "El monto mensual no puede ser negativo."}
+    default_label = EXTERNAL_CATEGORY_LABELS[category]
+    if monthly_target == 0:
+        table.delete_item(Key={"user_id": user_id, "sk": f"{BUDGET_PREFIX}{category}"})
+        return {"ok": True, "message": f"Quite la meta de {default_label}."}
+    existing = table.get_item(Key={"user_id": user_id, "sk": f"{BUDGET_PREFIX}{category}"}).get("Item")
+    final_label = (label or "").strip() or (existing["label"] if existing else default_label)
     table.put_item(Item=to_decimal({
-        "user_id": user_id, "sk": f"{ENVELOPE_PREFIX}{slug}",
-        "category": category.strip(), "slug": slug, "monthly_target": monthly_target,
+        "user_id": user_id, "sk": f"{BUDGET_PREFIX}{category}", "type": "category_budget",
+        "category": category, "label": final_label, "monthly_target": monthly_target,
         "created_at": existing["created_at"] if existing else date.today().isoformat(),
     }))
-    verb = "actualizado" if existing else "creado"
-    return {"ok": True, "message": f"Apartado '{category.strip()}' {verb} con meta de ${monthly_target}/mes."}
+    verb = "actualizada" if existing else "creada"
+    return {"ok": True, "message": f"Meta {verb}: ${monthly_target}/mes en {final_label}. No aparto ni muevo nada -- comparo tus compras reales contra esto."}
 
 
-def get_envelope_balances(user_id, purchases=None):
-    """El saldo de cada apartado no es un campo mutable -- se deriva de las
-    transferencias reales ya escritas en Nessie, igual que hacemos con
-    compute_totals. category='envelope:<slug>' es DISTINTO de
-    'savings_transfer' a proposito: si compartieran categoria,
-    _savings_pool_available inflaria el pool general de suavizado de
-    ingreso con dinero que ya esta apartado para gastos fijos."""
-    envelopes = get_envelopes(user_id)
+def get_category_budgets(user_id):
+    resp = table.query(KeyConditionExpression=Key("user_id").eq(user_id) & Key("sk").begins_with(BUDGET_PREFIX))
+    return resp["Items"]
+
+
+def get_budget_status(user_id, as_of_date=None, purchases=None):
+    """Nucleo del modelo de presupuesto: NO hay saldo acumulado ni
+    transferencias, 'gastado' son transacciones que YA existian. Incluye a
+    proposito el gasto declarado en efectivo/otra tarjeta (source!=bank):
+    un presupuesto describe comportamiento completo, el criterio OPUESTO al
+    de compute_totals (que solo mide el saldo del banco) -- son dos
+    preguntas distintas sobre los mismos datos."""
     if purchases is None:
         _, purchases, _ = load_data(user_id)
-    balances = []
-    for env in envelopes:
-        slug = env["slug"]
-        moved = sum(float(p["amount"]) for p in purchases if p.get("category") == f"envelope:{slug}")
-        balances.append({
-            "category": env["category"], "slug": slug,
-            "monthly_target": float(env["monthly_target"]), "balance": round(moved, 2),
+    reference = resolve_reference_date(as_of_date, purchases)
+    if not reference:
+        return {
+            "month": None, "reference_date": None, "day_of_month": None, "days_in_month": None,
+            "categories": [], "unbudgeted": [], "unbudgeted_spend": 0,
+            "total_targets": 0, "total_spent": 0, "monthly_budget": None,
+        }
+    month = reference[:7]
+    spent = {}
+    for p in purchases:
+        category = p.get("category")
+        if not category or is_neutral(category) or category == "savings_release" or p["date"][:7] != month:
+            continue
+        spent[category] = spent.get(category, 0.0) + float(p["amount"])
+
+    day = int(reference[8:10])
+    days_in_month = _days_in_month(reference)
+    month_progress = day / days_in_month
+
+    categories = []
+    for b in get_category_budgets(user_id):
+        category = b["category"]
+        target = float(b["monthly_target"])
+        used = round(spent.pop(category, 0.0), 2)
+        if used > target:
+            pace = "excedido"
+        elif target and (used / target) > month_progress + 0.15:
+            pace = "apretado"
+        else:
+            pace = "bien"
+        categories.append({
+            "category": category, "label": b["label"], "monthly_target": target,
+            "spent": used, "remaining": round(target - used, 2),
+            "percent": round(used / target * 100) if target else 0,
+            "projected_month_end": round(used / max(day, 1) * days_in_month, 2),
+            "pace": pace,
         })
-    return balances
+    categories.sort(key=lambda c: -c["spent"])
 
+    unbudgeted = sorted((
+        {"category": key, "label": EXTERNAL_CATEGORY_LABELS.get(key, key), "spent": round(amount, 2)}
+        for key, amount in spent.items()
+    ), key=lambda c: -c["spent"])
 
-def _execute_allocation(user_id, proposals, on_date):
-    accounts = get_account_ids(user_id)
-    executed = []
-    for p in proposals:
-        if p["amount"] <= 0:
-            continue
-        try:
-            sweep_to_savings(accounts["checking"], accounts["savings"], p["amount"], f"Apartado automatico: {p['category']}", on_date=on_date)
-        except Exception:
-            continue
-        table.put_item(Item=to_decimal({
-            "user_id": user_id, "sk": f"TXN#{on_date}#env{p['slug']}{int(time.time() * 1000)}",
-            "type": "purchase", "date": on_date, "amount": p["amount"],
-            "category": f"envelope:{p['slug']}", "category_label": f"Apartado: {p['category']}",
-            "merchant_name": None, "description": "Reparto automatico de nomina",
-        }))
-        executed.append(p)
-    table.delete_item(Key={"user_id": user_id, "sk": PENDING_ALLOCATION_SK})
-    return executed
-
-
-def verified_allocate_envelopes(user_id, deposit_amount, deposit_date):
-    """Se dispara solo cuando llega un deposito que matchea el patron de
-    nomina declarado (ver deposit_matches_income_pattern). Reparte
-    proporcional a cada apartado segun los dias reales transcurridos desde
-    el deposito de nomina anterior -- no asume una cadencia fija, el
-    ingreso de Ana es irregular. Reusa el MISMO umbral de liquidez de 7
-    dias que verified_move_to_savings: si el reparto completo dejaria el
-    colchon por debajo de eso, no ejecuta nada solo, deja la propuesta
-    pendiente de confirmar (partial_allocation_pause)."""
-    pattern = get_income_pattern(user_id)
-    if not deposit_matches_income_pattern(pattern, deposit_amount):
-        return {"ok": False, "reason": "Este deposito no coincide con el patron de nomina declarado -- no se reparte a apartados."}
-
-    envelopes = get_envelopes(user_id)
-    if not envelopes:
-        return {"ok": False, "reason": "No hay apartados configurados todavia."}
-
-    deposits, purchases, bills_plain = load_data(user_id)
-    prior_income_dates = sorted(d["date"] for d in deposits if d["date"] < deposit_date)
-    if prior_income_dates:
-        elapsed = (date.fromisoformat(deposit_date) - date.fromisoformat(prior_income_dates[-1])).days
-    else:
-        elapsed = int(pattern.get("frequency_days", 15))
-    elapsed = max(elapsed, 1)
-
-    proposals = [
-        {"category": env["category"], "slug": env["slug"], "amount": round(float(env["monthly_target"]) * elapsed / 30, 2)}
-        for env in envelopes
-    ]
-    total_allocation = sum(p["amount"] for p in proposals)
-
-    signals = get_full_signals(deposits, purchases, bills_plain, user_id=user_id, persist=False)
-    # Esta es la UNICA accion que se dispara 100% sola (webhook de deposito,
-    # sin que nadie del lado humano la inicie) -- por eso necesita las MISMAS
-    # verificaciones que verified_move_to_savings, no un subconjunto. Antes
-    # se calculaba signals["anomaly"] pero nunca se leia, y no habia tope de
-    # monto -- encontrado en una auditoria propia.
-    if signals["anomaly"]["detected"]:
-        return {"ok": False, "reason": f"Pause el reparto de nomina por seguridad: {signals['anomaly']['reason']}"}
-    if total_allocation > MAX_AUTONOMOUS_SAVINGS:
-        table.put_item(Item=to_decimal({
-            "user_id": user_id, "sk": PENDING_ALLOCATION_SK,
-            "proposals": proposals, "deposit_date": deposit_date, "total": total_allocation,
-        }))
-        return {
-            "ok": False, "pending": True, "proposals": proposals,
-            "reason": f"El reparto de ${total_allocation} entre tus apartados supera el limite autonomo de ${MAX_AUTONOMOUS_SAVINGS} -- dejo la propuesta pendiente de confirmar.",
-        }
-    current_balance = signals["_debug"]["current_balance"]
-    elapsed_days = signals["_debug"]["elapsed_days"]
-    projected_liquidity = score_liquidity(current_balance - total_allocation, purchases, elapsed_days)
-
-    if projected_liquidity["days_covered"] < LIQUIDITY_WARNING_DAYS:
-        table.put_item(Item=to_decimal({
-            "user_id": user_id, "sk": PENDING_ALLOCATION_SK,
-            "proposals": proposals, "deposit_date": deposit_date, "total": total_allocation,
-        }))
-        return {
-            "ok": False, "pending": True, "proposals": proposals,
-            "reason": f"Repartir ${total_allocation} entre tus apartados dejaria tu colchon en {projected_liquidity['days_covered']} dias -- menos de una semana. Dejo la propuesta pendiente de confirmar.",
-        }
-
-    executed = _execute_allocation(user_id, proposals, deposit_date)
-    if not executed:
-        return {"ok": False, "reason": "No se pudo ejecutar el reparto en Nessie ahorita. No se hizo ningun cambio."}
-    total_executed = sum(p["amount"] for p in executed)
-    return {"ok": True, "amount": total_executed, "proposals": executed, "message": f"Reparti ${total_executed} entre tus apartados."}
-
-
-def get_pending_allocation(user_id):
-    """Expone si hay un reparto de nomina pausado por el guardrail de
-    liquidez -- sin esto, el frontend no tiene forma de distinguir 'la
-    nomina se repartio sola' de 'quedo pendiente de confirmar', y el boton
-    de confirmar aparece igual de disponible este pasivo o no."""
-    resp = table.get_item(Key={"user_id": user_id, "sk": PENDING_ALLOCATION_SK})
-    pending = resp.get("Item")
-    if not pending:
-        return None
+    mb = get_monthly_budget(user_id)
     return {
-        "total": float(pending["total"]), "deposit_date": pending["deposit_date"],
-        "proposals": [{"category": p["category"], "slug": p["slug"], "amount": float(p["amount"])} for p in pending["proposals"]],
+        "month": month, "reference_date": reference, "day_of_month": day, "days_in_month": days_in_month,
+        "categories": categories, "unbudgeted": unbudgeted,
+        "unbudgeted_spend": round(sum(u["spent"] for u in unbudgeted), 2),
+        "total_targets": round(sum(c["monthly_target"] for c in categories), 2),
+        "total_spent": round(sum(c["spent"] for c in categories) + sum(u["spent"] for u in unbudgeted), 2),
+        "monthly_budget": float(mb["amount"]) if mb else None,
     }
 
 
-def confirm_pending_allocation(user_id):
-    resp = table.get_item(Key={"user_id": user_id, "sk": PENDING_ALLOCATION_SK})
-    pending = resp.get("Item")
-    if not pending:
-        return {"ok": False, "reason": "No hay ningun reparto pendiente de confirmar."}
-    proposals = [{"category": p["category"], "slug": p["slug"], "amount": float(p["amount"])} for p in pending["proposals"]]
-    executed = _execute_allocation(user_id, proposals, pending["deposit_date"])
-    total = sum(p["amount"] for p in executed)
-    return {"ok": True, "amount": total, "message": f"Confirmado -- reparti ${total} entre tus apartados."}
+def project_payday_allocation(user_id, deposit_amount, deposit_date):
+    """Sustituye al reparto automatico de apartados. MISMA idea pedagogica
+    ("aparta en cuanto te llega la nomina"), CERO escrituras en el banco:
+    sin sweep_to_savings, sin transaccion sintetica, sin pending_allocation
+    ni guardrail de liquidez -- no hay nada que pausar porque nada se
+    mueve. Lo unico que se guarda es un plan informativo para mostrar."""
+    pattern = get_income_pattern(user_id)
+    if not deposit_matches_income_pattern(pattern, deposit_amount):
+        return None
+    _, purchases, _ = load_data(user_id)
+    status = get_budget_status(user_id, as_of_date=deposit_date, purchases=purchases)
+    if not status["categories"]:
+        return None
+
+    gap = int(pattern.get("frequency_days", 15))
+    days_left = max(status["days_in_month"] - status["day_of_month"] + 1, 1)
+    covered = max(min(gap, days_left), 1)
+
+    lines = []
+    for c in status["categories"]:
+        # Lo que TE FALTA de la meta, no la meta completa -- a diferencia
+        # del reparto viejo (monthly_target * elapsed/30), esto SI descuenta
+        # lo que ya gastaste este mes en esa categoria.
+        pending = max(c["monthly_target"] - c["spent"], 0)
+        lines.append({**c, "suggested": round(pending * covered / days_left, 2)})
+
+    reserved = round(sum(l["suggested"] for l in lines), 2)
+    deposit_amount = float(deposit_amount)
+    free = round(deposit_amount - reserved, 2)
+    plan = {
+        "deposit_amount": deposit_amount, "deposit_date": deposit_date,
+        "lines": lines, "reserved": reserved, "free": free,
+        "days_covered": covered, "free_per_day": round(free / covered, 2),
+        # Unico guardrail que sobrevive -- y sigue siendo real: no protege
+        # una transferencia, protege de proponer un presupuesto imposible.
+        "overcommitted": reserved > deposit_amount,
+    }
+    table.put_item(Item=to_decimal({"user_id": user_id, "sk": PAYDAY_PLAN_SK, **plan}))
+    return plan
+
+
+def get_last_payday_plan(user_id):
+    resp = table.get_item(Key={"user_id": user_id, "sk": PAYDAY_PLAN_SK})
+    item = resp.get("Item")
+    if not item:
+        return None
+    return {k: v for k, v in item.items() if k not in ("user_id", "sk")}
 
 
 def _sk_timestamp(sk):
