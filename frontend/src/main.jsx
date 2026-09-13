@@ -135,11 +135,51 @@ function budgetMessage(tone, percent, overBy) {
   if (tone === 'warn') return `Cuidado, ya usaste ${Math.round(percent)}% de tu meta.`;
   return `Vas bien -- llevas ${Math.round(percent)}% de tu meta.`;
 }
-function LineChart({ values, label }) {
+// Cada punto es un registro real (una transaccion, un checkpoint) -- nunca un
+// dia de calendario interpolado, por eso el eje X no lleva fechas parejas.
+// El hover (crosshair + tooltip) existe para que esa fecha real de cada punto
+// sea legible sin tener que adivinar la posicion en el eje.
+function LineChart({ values, dates, label, formatValue = value => value.toFixed(0) }) {
+  const [hoverIndex, setHoverIndex] = useState(null);
+  const svgRef = useRef(null);
   if (values.length < 2) return <p className="chart-empty">Se necesitan al menos dos registros para mostrar la evolución.</p>;
-  const min = Math.min(...values), range = Math.max(...values) - min || 1;
-  const points = values.map((value, i) => `${10 + i * 380 / (values.length - 1)},${150 - (value - min) * 130 / range}`).join(' ');
-  return <svg className="real-chart" viewBox="0 0 400 170" role="img" aria-label={label}><polyline points={points} fill="none" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" /><text x="10" y="168">{min.toFixed(0)}</text><text x="355" y="16">{Math.max(...values).toFixed(0)}</text></svg>;
+  const min = Math.min(...values), max = Math.max(...values), range = max - min || 1;
+  const x = i => 10 + i * 380 / (values.length - 1);
+  const y = value => 150 - (value - min) * 130 / range;
+  const points = values.map((value, i) => `${x(i)},${y(value)}`).join(' ');
+  const areaPoints = `${x(0)},150 ${points} ${x(values.length - 1)},150`;
+  const zeroY = min < 0 && max > 0 ? y(0) : null;
+
+  function updateHoverFromClientX(clientX) {
+    const rect = svgRef.current.getBoundingClientRect();
+    if (!rect.width) return;
+    const relX = (clientX - rect.left) / rect.width * 400;
+    let nearest = 0, bestDist = Infinity;
+    values.forEach((_, i) => { const dist = Math.abs(x(i) - relX); if (dist < bestDist) { bestDist = dist; nearest = i; } });
+    setHoverIndex(nearest);
+  }
+
+  return <div className="real-chart-wrap" onMouseLeave={() => setHoverIndex(null)}>
+    <svg ref={svgRef} className="real-chart" viewBox="0 0 400 170" role="img" aria-label={label}
+      onMouseMove={event => updateHoverFromClientX(event.clientX)}
+      onTouchStart={event => updateHoverFromClientX(event.touches[0].clientX)}
+      onTouchMove={event => updateHoverFromClientX(event.touches[0].clientX)}
+      onTouchEnd={() => setHoverIndex(null)}>
+      {zeroY != null && <><line x1="10" x2="390" y1={zeroY} y2={zeroY} className="chart-zero-line" /><text x="10" y={zeroY - 4} className="chart-zero-label">0</text></>}
+      <polygon points={areaPoints} className="chart-area" />
+      <polyline points={points} fill="none" className="chart-line" strokeLinejoin="round" strokeLinecap="round" />
+      {hoverIndex != null && <>
+        <line x1={x(hoverIndex)} x2={x(hoverIndex)} y1="6" y2="150" className="chart-crosshair" />
+        <circle cx={x(hoverIndex)} cy={y(values[hoverIndex])} r="5" className="chart-hover-dot" />
+      </>}
+      <text x="10" y="168" className="chart-axis-label">{formatValue(min)}</text>
+      <text x="390" y="16" textAnchor="end" className="chart-axis-label">{formatValue(max)}</text>
+    </svg>
+    {hoverIndex != null && <div className="chart-tooltip" style={{ left: `${x(hoverIndex) / 400 * 100}%` }}>
+      <strong>{formatValue(values[hoverIndex])}</strong>
+      {dates && <span>{dateLabel(dates[hoverIndex])}</span>}
+    </div>}
+  </div>;
 }
 function TrendBadge({ trend }) {
   if (trend === 'up') return <span className="trend-badge trend-up"><ArrowUp size={14} /> Subiendo</span>;
@@ -608,7 +648,7 @@ function App() {
             <div className="statement-summary-item"><span>Saldo final del mes</span><strong>{money(statementClosing)}</strong></div>
           </div>}
           <div className="transactions-charts">
-            <div><h3 className="chart-block-title">Balance histórico</h3><LineChart values={transactions.map(tx => tx.running_balance)} label="Balance histórico calculado por el backend" /></div>
+            <div><h3 className="chart-block-title">Balance histórico</h3><p className="muted-copy">Tu saldo bancario después de cada movimiento real, en orden -- no es un promedio ni una proyección. Pasa el cursor sobre la línea para ver el saldo exacto en cada fecha.</p><LineChart values={transactions.map(tx => tx.running_balance)} dates={transactions.map(tx => tx.date)} formatValue={money} label="Balance histórico calculado por el backend" /></div>
             <CategorySpending summary={data?.summary} loading={loading} />
           </div>
           {statementBreakdown.length > 0 && <>
@@ -785,7 +825,7 @@ function App() {
           <h3>Tu progreso</h3>
           <p className="muted-copy">Evolución de tu score en los checkpoints recibidos en esta sesión.</p>
           <div className="health-value">{session.history.at(-1)?.value ?? '—'}<small>/100</small></div>
-          <LineChart values={session.history.map(point => point.value)} label="Evolución del score en los checkpoints recibidos" />
+          <LineChart values={session.history.map(point => point.value)} dates={session.history.map(point => point.date)} label="Evolución del score en los checkpoints recibidos" />
         </div>
         {signals?.activation && <div className="bank-signals-section">
           <h3>Actividad con tu tarjeta del banco</h3>

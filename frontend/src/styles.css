@@ -455,3 +455,26 @@ body{padding-bottom:112px}
 .benefit-photo{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:14px;display:block;background:var(--c1-bg)}
 .benefit-card strong{font-size:16px;font-weight:600;color:#14191c}
 .benefit-card p{font-size:13px;line-height:1.6;margin:0;color:#536780}
+
+/* LineChart: crosshair + tooltip en hover/touch, linea de referencia en cero
+   cuando el rango la cruza (relevante para balance -- puede ir negativo). */
+.real-chart-wrap{position:relative;margin-top:14px}
+.real-chart-wrap .real-chart{margin-top:0}
+.chart-axis-label{opacity:.55}
+.chart-line{stroke:currentColor;stroke-width:2}
+.chart-area{fill:currentColor;opacity:.08}
+.chart-zero-line{stroke:#8a96a8;stroke-width:1;stroke-dasharray:3 3}
+.chart-zero-label{font-size:10px;fill:#8a96a8}
+.chart-crosshair{stroke:currentColor;stroke-width:1;opacity:.35}
+.chart-hover-dot{fill:currentColor;stroke:#fff;stroke-width:2}
+.chart-tooltip{position:absolute;top:-8px;transform:translate(-50%,-100%);background:#111317;color:#fff;padding:6px 10px;border-radius:10px;font-size:12px;line-height:1.4;white-space:nowrap;pointer-events:none;box-shadow:0 8px 20px -8px rgba(15,35,60,.4);z-index:2;max-width:220px}
+.chart-tooltip strong{display:block;font-size:13px;color:#fff}
+.chart-tooltip span{display:block;opacity:.75;font-size:11px}
+
+/* Donut de gasto por categoria: gap entre segmentos (regla de "surface gap"),
+   hover que resalta el segmento y sincroniza con su fila de leyenda. */
+.category-arc{transition:opacity .15s,stroke-width .15s;cursor:pointer}
+.category-arc.is-dimmed{opacity:.35}
+.category-arc.is-hovered{stroke-width:31}
+.category-legend li{cursor:pointer;border-radius:10px;padding:5px 6px;transition:background .15s}
+.category-legend li.is-hovered{background:#f3f6fa}
