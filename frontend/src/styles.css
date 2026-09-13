@@ -93,7 +93,11 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 /* Los dias son aspect-ratio:1 -- sin este tope, en una pantalla ancha de
    escritorio el grid se vuelve enorme (celdas cuadradas escalando con el
    ancho del panel) y obliga a hacer scroll para ver el mes completo. */
-.calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;max-width:480px;margin:0 auto}
+/* max-width atado a la altura de pantalla (no un numero fijo): en un monitor
+   alto se estira mas grande, en una pantalla mas corta se encoge solo antes
+   de forzar scroll. En movil el ancho real lo sigue poniendo el panel angosto,
+   este tope casi nunca aplica ahi. */
+.calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;max-width:min(700px,64vh);margin:0 auto}
 .calendar-weekday{text-align:center;font-size:11px;font-weight:600;color:#8390a4;text-transform:uppercase;letter-spacing:.03em;padding-bottom:6px}
 .calendar-cell{aspect-ratio:1;border-radius:14px;background:#f3f6fa;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:2px;min-width:0}
 .calendar-cell-empty{background:none}
@@ -108,7 +112,7 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .calendar-cell.is-selected .calendar-day-number{color:#fff}
 .calendar-cell.is-selected .calendar-expense-dot{background:#fff}
 .calendar-cell.is-selected .calendar-day-amount{color:#fff}
-.calendar-detail{margin-top:18px;padding-top:16px;border-top:1px dashed #becddb75;max-width:480px;margin-left:auto;margin-right:auto}
+.calendar-detail{margin-top:18px;padding-top:16px;border-top:1px dashed #becddb75;max-width:min(700px,64vh);margin-left:auto;margin-right:auto}
 .calendar-detail h3{font-size:14px;font-weight:600;color:#536780;margin-bottom:6px;text-transform:capitalize}
 .calendar-hint{margin-top:18px;text-align:center}
 @media(min-width:701px){.calendar-day-amount{display:block;font-size:10px;font-weight:600;color:var(--c1-navy);white-space:nowrap}.calendar-expense-dot{display:none}.calendar-cell.is-selected .calendar-day-amount{color:#fff}}
