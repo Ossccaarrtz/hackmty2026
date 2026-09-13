@@ -965,7 +965,19 @@ def compute_smart_allocation(user_id):
     minimo de LIQUIDITY_WARNING_DAYS, se detiene si hay una anomalia
     activa), mas el mismo prorrateo por pendiente que el plan viejo. Si lo
     que piden tus metas no cabe en lo disponible, escala todo
-    proporcionalmente en vez de solo reportar que no alcanza."""
+    proporcionalmente en vez de solo reportar que no alcanza.
+
+    Las metas de CATEGORIA (rent, groceries, etc.) se prorratean por dias
+    restantes del mes: pedir el monto pendiente completo desde el dia 1
+    trataba "faltan 30 dias" igual que "falta manana", como si hubiera que
+    apartarlo todo hoy mismo. needed = pendiente * (dias_restantes /
+    dias_del_mes) -- ej. si van 13 de 30 dias (quedan 17), una meta de
+    categoria con $2000 pendientes pide ~$1133, no los $2000 completos.
+    Las metas de AHORRO de largo plazo (goals) NO se prorratean aqui --
+    su aporte mensual ya viene de un prorrateo propio y distinto
+    (estimate_monthly_disposable / create_goal, medido en meses enteros,
+    no en dias del mes calendario actual); prorratear ambas cosas juntas
+    mezclaria dos escalas de tiempo distintas."""
     deposits, purchases, bills_plain = load_data(user_id)
     signals = get_full_signals(deposits, purchases, bills_plain, user_id=user_id, persist=False)
     if signals["anomaly"]["detected"]:
@@ -982,8 +994,13 @@ def compute_smart_allocation(user_id):
     cushion_floor = round(avg_daily_essential * LIQUIDITY_WARNING_DAYS, 2)
     available = max(round(current_balance - cushion_floor, 2), 0)
 
+    days_in_month = status.get("days_in_month")
+    day_of_month = status.get("day_of_month")
+    days_remaining = max(days_in_month - day_of_month, 0) if days_in_month and day_of_month else None
+    proration = (days_remaining / days_in_month) if days_in_month else 1.0
+
     lines = [
-        {"kind": "category", "key": c["category"], "label": c["label"], "needed": max(round(c["monthly_target"] - c["spent"], 2), 0)}
+        {"kind": "category", "key": c["category"], "label": c["label"], "needed": max(round((c["monthly_target"] - c["spent"]) * proration, 2), 0)}
         for c in status["categories"]
     ] + [
         {"kind": "goal", "key": g["slug"], "label": g["label"], "needed": max(round(min(g["monthly_contribution"], g["remaining"]), 2), 0)}
@@ -1001,6 +1018,7 @@ def compute_smart_allocation(user_id):
         "ok": True, "current_balance": current_balance, "cushion_floor": cushion_floor,
         "available": available, "lines": lines, "reserved": reserved,
         "free": round(available - reserved, 2), "scaled": scale < 1.0,
+        "days_remaining_this_month": days_remaining,
     }
 
 
