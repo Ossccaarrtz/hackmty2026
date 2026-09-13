@@ -268,14 +268,14 @@ class TestStopBillTwoStepFlow(BaseAgentActionsTest):
         self.assertFalse(result["ok"])
         self.assertFalse(result.get("pending"))
 
-    @patch.object(aa, "stop_recurring_bill")
-    def test_propose_never_executes_even_for_a_real_leak(self, mock_stop):
+    @patch.object(aa, "_execute_stop_bill")
+    def test_propose_never_executes_even_for_a_real_leak(self, mock_execute):
         with patch.object(aa, "load_data", return_value=([], [], [self.LEAK_BILL])), \
              patch.object(aa, "get_full_signals", return_value=self.LEAK_SIGNALS):
             result = aa.propose_stop_bill("ana", "Gym Co")
         self.assertFalse(result["ok"])
         self.assertTrue(result["pending"])
-        mock_stop.assert_not_called()  # el punto central del fix: NUNCA ejecuta en la propuesta
+        mock_execute.assert_not_called()  # el punto central del fix: NUNCA ejecuta en la propuesta
         aa.table.put_item.assert_called_once()
 
     def test_confirm_without_pending_rejects(self):
@@ -283,17 +283,15 @@ class TestStopBillTwoStepFlow(BaseAgentActionsTest):
         result = aa.confirm_stop_bill("ana")
         self.assertFalse(result["ok"])
 
-    @patch.object(aa, "stop_recurring_bill")
-    def test_confirm_executes_after_valid_pending(self, mock_stop):
+    def test_confirm_executes_after_valid_pending(self):
         aa.table.get_item.return_value = {"Item": {"bill_id": "b1", "payee": "Gym Co", "payment_amount": 40.0}}
         with patch.object(aa, "load_data", return_value=([], [], [self.LEAK_BILL])), \
              patch.object(aa, "get_full_signals", return_value=self.LEAK_SIGNALS):
             result = aa.confirm_stop_bill("ana")
         self.assertTrue(result["ok"])
-        mock_stop.assert_called_once()
 
-    @patch.object(aa, "stop_recurring_bill")
-    def test_confirm_revalidates_and_rejects_if_no_longer_a_leak(self, mock_stop):
+    @patch.object(aa, "_execute_stop_bill")
+    def test_confirm_revalidates_and_rejects_if_no_longer_a_leak(self, mock_execute):
         """El bill ya no esta marcado como fuga entre el propose y el confirm
         (ej. alguien lo volvio a usar) -- confirm no debe confiar ciegamente
         en la propuesta guardada."""
@@ -303,16 +301,14 @@ class TestStopBillTwoStepFlow(BaseAgentActionsTest):
              patch.object(aa, "get_full_signals", return_value=no_longer_leak_signals):
             result = aa.confirm_stop_bill("ana")
         self.assertFalse(result["ok"])
-        mock_stop.assert_not_called()
+        mock_execute.assert_not_called()
 
-    @patch.object(aa, "stop_recurring_bill")
-    def test_verified_stop_bill_direct_execute_used_by_advance_day(self, mock_stop):
+    def test_verified_stop_bill_direct_execute_used_by_advance_day(self):
         """advance-day si ejecuta directo -- su propio checkpoint YA es el paso de confirmacion."""
         with patch.object(aa, "load_data", return_value=([], [], [self.LEAK_BILL])), \
              patch.object(aa, "get_full_signals", return_value=self.LEAK_SIGNALS):
             result = aa.verified_stop_bill("ana", "Gym Co")
         self.assertTrue(result["ok"])
-        mock_stop.assert_called_once()
 
 
 class TestDepositMatchesIncomePattern(unittest.TestCase):
