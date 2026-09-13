@@ -1,0 +1,64 @@
+name: Deploy backend
+
+# Se dispara solo cuando algo dentro de backend/signals-lambda/ cambia en
+# main. Corre la suite completa ANTES de tocar AWS -- si un test falla, no
+# se despliega nada. Los 6 Lambdas comparten los mismos 3 modulos (
+# agent_actions.py, nessie_actions.py, signal_engine.py), asi que un
+# cambio en cualquiera de ellos se empaqueta y despliega a los 6 -- evita
+# el problema real de esta sesion de olvidar redesplegar alguno tras tocar
+# un modulo compartido.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/signals-lambda/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch: {} # permite disparar un deploy manual desde la pestaña Actions sin necesitar un commit
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend/signals-lambda
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run tests
+        run: python -m unittest test_agent_actions test_signal_engine test_lambda_chat -v
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_BACKEND }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_BACKEND }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Package and deploy each Lambda
+        run: |
+          set -euo pipefail
+          declare -A HANDLERS=(
+            [jarbis-financiero-envelopes]=lambda_envelopes.py
+            [jarbis-financiero-chat]=lambda_chat.py
+            [jarbis-financiero-advance-day]=lambda_advance_day.py
+            [jarbis-financiero-notifier]=lambda_notifier.py
+            [jarbis-financiero-trust-report]=lambda_trust_report.py
+            [jarbis-financiero-signals]=lambda_function.py
+          )
+          for fn in "${!HANDLERS[@]}"; do
+            handler="${HANDLERS[$fn]}"
+            workdir=$(mktemp -d)
+            cp "$handler" agent_actions.py nessie_actions.py signal_engine.py "$workdir/"
+            (cd "$workdir" && zip -q deploy.zip "$handler" agent_actions.py nessie_actions.py signal_engine.py)
+            echo "== Desplegando $fn (handler=$handler) =="
+            aws lambda update-function-code --function-name "$fn" --zip-file "fileb://$workdir/deploy.zip" --no-cli-pager
+            aws lambda wait function-updated --function-name "$fn"
+            rm -rf "$workdir"
+          done
