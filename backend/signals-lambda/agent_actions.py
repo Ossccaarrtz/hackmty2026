@@ -18,21 +18,19 @@ from nessie_actions import stop_recurring_bill, sweep_to_savings, release_from_s
 
 REGION = "us-east-1"
 TABLE_NAME = "jarbis-financiero-data"
-CHECKING_ID = "3cbe83c6-e844-48b3-b86a-627b8a6e3028"  # Mia -- fallback para user_id no reconocidos
-SAVINGS_ID = "f9428a58-dbc4-49b3-9105-e69460a56a9a"
+CHECKING_ID = "3303b959-15c4-4a5d-aeea-1e0503712d37"  # Ana -- fallback para user_id no reconocidos
+SAVINGS_ID = "5616be1c-84c4-4e37-9736-9028d5d444a0"
 ACCOUNTS_BY_USER = {
-    "mia": {"checking": CHECKING_ID, "savings": SAVINGS_ID},
-    "ana": {"checking": "3303b959-15c4-4a5d-aeea-1e0503712d37", "savings": "5616be1c-84c4-4e37-9736-9028d5d444a0"},
+    "ana": {"checking": CHECKING_ID, "savings": SAVINGS_ID},
 }
 
 
 def get_account_ids(user_id):
     """Cada persona tiene su propia cuenta real en Nessie -- sin esto, una
-    accion de dinero (mover a ahorro, apartados) disparada con user_id="ana"
-    escribiria de verdad en la cuenta de Mia, aunque el registro en DynamoDB
-    dijera "ana". Encontrado al sembrar la primera persona nueva del
-    proyecto (Ana, pivote a Spark)."""
-    return ACCOUNTS_BY_USER.get(user_id, ACCOUNTS_BY_USER["mia"])
+    accion de dinero (mover a ahorro, apartados) disparada con un user_id
+    sin cuenta propia registrada escribiria de verdad en la cuenta de otra
+    persona, aunque el registro en DynamoDB dijera el user_id correcto."""
+    return ACCOUNTS_BY_USER.get(user_id, ACCOUNTS_BY_USER["ana"])
 # Cuenta real de un tercero (otra app/otro dueno en el sandbox de Nessie, NO
 # nuestra) usada para la demo de "nomina de un tercero" -- ver
 # simulate_third_party_payroll.
@@ -117,7 +115,7 @@ def get_full_signals(deposits, purchases, bills_plain, user_id=None, as_of_date=
     return signals
 
 
-def get_current_signals(user_id="mia"):
+def get_current_signals(user_id="ana"):
     deposits, purchases, bills_plain = load_data(user_id)
     return get_full_signals(deposits, purchases, bills_plain, user_id=user_id)
 
@@ -442,7 +440,7 @@ def confirm_stop_bill(user_id):
 def verified_move_to_savings(user_id, amount, reason):
     """Mueve dinero a ahorro solo si: el monto es razonable, no hay una
     anomalia activa, no se excede el tope acumulado del dia, y no deja a
-    Mia con menos del colchon minimo de seguridad."""
+    Ana con menos del colchon minimo de seguridad."""
     try:
         amount = float(amount)
     except (TypeError, ValueError):
@@ -487,7 +485,7 @@ def verified_release_buffer(user_id, amount, reason):
     """Suavizado de ingreso irregular: libera parte de lo acumulado en
     ahorro de vuelta a checking, para una semana con ingreso bajo. Misma
     categoria de riesgo que mover a ahorro (reversible, sin terceros,
-    dinero de la propia Mia) -- autonomo bajo el mismo tope diario, pero
+    dinero de la propia Ana) -- autonomo bajo el mismo tope diario, pero
     verifica que de verdad haya ese dinero disponible en el 'pool' de
     ahorro antes de soltarlo."""
     try:
@@ -542,13 +540,13 @@ DEFAULT_INCOME_TOLERANCE = 0.30  # piso minimo cuando no hay suficiente historia
 
 def suggested_income_tolerance(user_id):
     """Deriva la tolerancia del patron de nomina del propio historial real
-    de depositos en vez de un porcentaje fijo arbitrario. Con Mia: un
-    +-25% fijo dejaba fuera 4 de sus 8 depositos reales (ingreso freelance
-    real: $300-$720, CV ~27% sobre la media de $565) -- exactamente el
-    perfil de ingreso irregular que el proyecto dice servir, rechazado por
-    su propia verificacion. +-2 desviaciones estandar sobre el historial
-    real cubre las 8 ocurrencias de Mia y sigue rechazando un deposito
-    random fuera de rango (ej. un amigo mandando $100)."""
+    de depositos en vez de un porcentaje fijo arbitrario. Con Ana: un
+    +-25% fijo deja fuera 2 de sus 8 depositos reales (mesada/medio tiempo
+    real: $1,150-$2,100 MXN, media $1,581) -- exactamente el perfil de
+    ingreso irregular que el proyecto dice servir, rechazado por su propia
+    verificacion. +-2 desviaciones estandar sobre el historial real (41%
+    en su caso, verificado en vivo) cubre las 8 ocurrencias de Ana y sigue
+    rechazando un deposito random fuera de rango (ej. un amigo mandando $100)."""
     deposits, _, _ = load_data(user_id)
     amounts = [float(d["amount"]) for d in deposits if d.get("category") != "savings_release"]
     if len(amounts) < 3:
@@ -591,9 +589,9 @@ def deposit_matches_income_pattern(pattern, deposit_amount):
     return abs(float(deposit_amount) - expected) <= expected * tolerance
 
 
-def simulate_third_party_payroll(user_id, employer_label="Estudio Creativo", amount=None, on_date=None):
+def simulate_third_party_payroll(user_id, employer_label="Papa y mama", amount=None, on_date=None):
     """Mueve dinero DE VERDAD desde la cuenta de un tercero (otra app/otro
-    dueno en el sandbox de Nessie, no la nuestra) a la cuenta de Mia, y lo
+    dueno en el sandbox de Nessie, no la nuestra) a la cuenta de Ana, y lo
     registra como cualquier deposito real. A proposito NO llama
     verified_allocate_envelopes directamente: escribe el deposito y deja que
     el mismo camino reactivo de cualquier deposito real (DynamoDB Streams ->
@@ -716,7 +714,7 @@ def verified_allocate_envelopes(user_id, deposit_amount, deposit_date):
     nomina declarado (ver deposit_matches_income_pattern). Reparte
     proporcional a cada apartado segun los dias reales transcurridos desde
     el deposito de nomina anterior -- no asume una cadencia fija, el
-    ingreso de Mia es irregular. Reusa el MISMO umbral de liquidez de 7
+    ingreso de Ana es irregular. Reusa el MISMO umbral de liquidez de 7
     dias que verified_move_to_savings: si el reparto completo dejaria el
     colchon por debajo de eso, no ejecuta nada solo, deja la propuesta
     pendiente de confirmar (partial_allocation_pause)."""

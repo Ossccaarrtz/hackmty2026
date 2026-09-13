@@ -26,7 +26,7 @@ def decimal_default(obj):
 
 def lambda_handler(event, context):
     params = event.get("queryStringParameters") or {}
-    user_id = params.get("user_id", "mia")
+    user_id = params.get("user_id", "ana")
 
     response = table.query(KeyConditionExpression=Key("user_id").eq(user_id))
     items = response["Items"]

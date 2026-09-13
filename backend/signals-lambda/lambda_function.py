@@ -27,7 +27,7 @@ def decimal_default(obj):
 
 def lambda_handler(event, context):
     params = event.get("queryStringParameters") or {}
-    user_id = params.get("user_id", "mia")
+    user_id = params.get("user_id", "ana")
 
     as_of = params.get("as_of")
     if as_of:

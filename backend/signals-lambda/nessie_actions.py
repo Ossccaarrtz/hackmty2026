@@ -9,7 +9,7 @@ from datetime import date
 
 NESSIE_KEY = os.environ.get("NESSIE_API_KEY", "")
 # Cuenta de un tercero real (otra app/otro dueno registrado en el sandbox de
-# Nessie, con su propia api key) que representa al cliente/empleador de Mia
+# Nessie, con su propia api key) que representa al cliente/empleador de Ana
 # para la demo de nomina de un tercero. No es nuestra cuenta.
 EMPLOYER_NESSIE_KEY = os.environ.get("EMPLOYER_NESSIE_API_KEY", "")
 BASE = "https://api.nessieisreal.com"
@@ -52,10 +52,10 @@ def sweep_to_savings(checking_id, savings_id, amount, reason, on_date=None):
 
 def receive_from_third_party(employer_account_id, checking_id, amount, reason, on_date=None):
     """Retiro real de una cuenta que NO es nuestra (autenticado con la api
-    key del tercero) + deposito real a la cuenta de Mia. A diferencia de
+    key del tercero) + deposito real a la cuenta de Ana. A diferencia de
     sweep_to_savings/release_from_savings (dinero movido entre las DOS
-    cuentas de Mia con nuestra propia key), aqui el dinero sale de una
-    cuenta ajena -- simula que un empleador de verdad le paga a Mia."""
+    cuentas de Ana con nuestra propia key), aqui el dinero sale de una
+    cuenta ajena -- simula que un empleador de verdad le paga a Ana."""
     on_date = on_date or date.today().isoformat()
     withdrawal = _request("POST", f"/accounts/{employer_account_id}/withdrawals", {
         "medium": "balance", "transaction_date": on_date, "status": "completed",

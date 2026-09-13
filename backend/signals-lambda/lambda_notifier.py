@@ -2,7 +2,7 @@
 Lambda disparado por DynamoDB Streams -- el "webhook tras cada transaccion".
 Se ejecuta automaticamente cuando algo cambia en jarbis-financiero-data,
 sin que nadie tenga que llamar nada. Reacciona a los dos eventos que
-realmente importan para Mia: un bill que se detiene, o dinero que se mueve
+realmente importan para Ana: un bill que se detiene, o dinero que se mueve
 a ahorro. Funciona igual sin importar si la accion vino del chat o de
 advance-day -- ambos escriben en la misma tabla.
 """

@@ -19,7 +19,7 @@ def lambda_handler(event, context):
     method = event.get("requestContext", {}).get("http", {}).get("method", "GET")
     path = event.get("rawPath", "/envelopes")
     params = event.get("queryStringParameters") or {}
-    user_id = params.get("user_id", "mia")
+    user_id = params.get("user_id", "ana")
 
     try:
         body = json.loads(event.get("body") or "{}")
@@ -46,7 +46,7 @@ def lambda_handler(event, context):
         return _response(200 if result.get("ok") else 400, result)
 
     if method == "POST" and path.rstrip("/") == "/envelopes/simulate-payroll":
-        result = actions.simulate_third_party_payroll(user_id, body.get("employer_label", "Estudio Creativo"), body.get("amount"))
+        result = actions.simulate_third_party_payroll(user_id, body.get("employer_label", "Papa y mama"), body.get("amount"))
         return _response(200 if result.get("ok") else 400, result)
 
     return _response(404, {"error": f"Ruta no encontrada: {method} {path}"})

@@ -90,7 +90,7 @@ class TestForecastUpcomingExpensesAnchoring(unittest.TestCase):
         # -- el proximo pago esperado cae el 2026-09-17, a 5 dias del ancla.
         # Se agrega una compra en otra categoria el 2026-09-12 (mas reciente
         # que la propia renta) para que el ancla sea esa fecha, igual que en
-        # los datos reales de Mia -- si el ancla se resolviera solo con la
+        # los datos reales de Ana -- si el ancla se resolviera solo con la
         # fecha de la propia renta (2026-08-18), este forecast no caeria en
         # la ventana de aviso y el test lo detectaria como regresion.
         purchases = [
@@ -145,7 +145,7 @@ class TestEvaluateBillsRecencyWindow(unittest.TestCase):
     def test_bill_with_no_matching_merchant_never_healthy(self):
         """Regresion directa de un hallazgo real: evaluate_bills usaba un mapeo
         categoria->comercio fijo con los nombres de UNA sola persona sembrada
-        (Mia) en vez del merchant_name real de cada compra -- con cualquier
+        (la persona original del prototipo) en vez del merchant_name real de cada compra -- con cualquier
         otra persona (otros nombres de comercio), un bill sano con actividad
         real de todos modos salia como fuga. Aqui la categoria SI matchea pero
         el nombre de comercio NO -- debe seguir sin salud, sin importar
@@ -155,7 +155,7 @@ class TestEvaluateBillsRecencyWindow(unittest.TestCase):
         self.assertFalse(result["bills"][0]["healthy"])
 
     def test_bill_matches_by_real_merchant_name_not_hardcoded_persona(self):
-        """Con una persona distinta a Mia (otros nombres de comercio reales),
+        """Con una persona distinta a la que existia cuando se escribio evaluate_bills (otros nombres de comercio reales),
         el bill debe salir sano si el merchant_name real de la compra
         coincide con el payee del bill -- sin depender de ningun mapeo fijo."""
         bills = [{"payee": "Telcel Plan", "status": "recurring", "payment_amount": 200, "bill_id": "b3"}]

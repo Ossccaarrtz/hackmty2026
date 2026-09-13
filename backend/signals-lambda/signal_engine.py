@@ -102,10 +102,11 @@ def evaluate_bills(bills, purchases, as_of_date=None):
     """Compara cada bill contra actividad real relacionada, usando el
     merchant_name real de cada compra -- NO un mapeo categoria->comercio
     fijo. Un mapeo fijo solo puede tener los nombres de comercio de UNA
-    persona sembrada (ej. "Telco Co" de Mia); con cualquier otra persona
-    (otros nombres de comercio, ej. "Telcel Plan" de Ana) el bill sano
-    siempre saldria como fuga aunque exista actividad real -- encontrado
-    al sembrar la primera persona nueva del proyecto."""
+    persona sembrada; con cualquier otra persona (otros nombres de
+    comercio, ej. "Telcel Plan" de Ana) el bill sano siempre saldria como
+    fuga aunque exista actividad real -- encontrado al sembrar la primera
+    persona nueva del proyecto, cuando todavia convivia con la persona
+    original del prototipo."""
     reference = resolve_reference_date(as_of_date, purchases)
     results = []
     for bill in bills:

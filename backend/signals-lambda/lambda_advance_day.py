@@ -1,7 +1,7 @@
 """
 Lambda: POST /simulation/advance-day
 El "avanzar dia" de la demo: mueve un checkpoint a la vez por la historia de
-Mia, aplicando la politica de riesgo (bills = siempre pregunta; ahorro =
+Ana, aplicando la politica de riesgo (bills = siempre pregunta; ahorro =
 autonomo) y la verificacion antes de ejecutar cualquier escritura real en
 Nessie. Guarda el estado y el log de acciones en DynamoDB.
 
@@ -54,7 +54,7 @@ def decimal_default(obj):
 
 def get_state(user_id):
     resp = table.get_item(Key={"user_id": user_id, "sk": "STATE#simulation"})
-    return resp.get("Item", {"checkpoint_idx": -1, "gym_bill_stopped": False})
+    return resp.get("Item", {"checkpoint_idx": -1})
 
 
 def claim_checkpoint(user_id, expected_old_idx, new_idx):
@@ -98,7 +98,7 @@ def load_data(user_id):
 
 def lambda_handler(event, context):
     params = event.get("queryStringParameters") or {}
-    user_id = params.get("user_id", "mia")
+    user_id = params.get("user_id", "ana")
 
     if params.get("reset") == "true":
         return _handle_reset(user_id)
@@ -120,7 +120,13 @@ def lambda_handler(event, context):
 
     signals = actions.get_full_signals(deposits, purchases, bills_plain, user_id=user_id, as_of_date=as_of)
     new_actions = []
-    gym_bill = next((b for b in bills_plain if b["payee"] == "Gym Co"), None)
+    # La fuga se busca dinamicamente en las alertas reales, NUNCA por un
+    # nombre de comercio hardcodeado -- un literal como "Gym Co" solo
+    # funciona para la persona que existia cuando se escribio esto.
+    # Encontrado como parte del mismo problema que ya causo un bug real en
+    # evaluate_bills (ver signal_engine.py): cualquier hardcodeo atado a
+    # una sola persona sembrada rompe en cuanto cambia la persona activa.
+    leak_alert = next((a for a in signals["alerts"] if a["type"] == "leak"), None)
 
     if idx == 0:
         # Dia 45: solo observacion, no hay ejecucion.
@@ -131,12 +137,11 @@ def lambda_handler(event, context):
 
     elif idx == 1:
         # Dia 62: se detecta la fuga. Politica de riesgo: NUNCA se ejecuta solo, siempre se pregunta.
-        leak_detected = any(a["title"] == "Gym Co" for a in signals["alerts"])
-        if leak_detected:
+        if leak_alert:
             new_actions.append(log_action(user_id, {
                 "date": as_of, "type": "leak_detected", "requires_confirmation": True,
-                "bill_id": gym_bill["bill_id"],
-                "text": "Detecte que Gym Co ($40/mes) no tiene actividad relacionada hace 60 dias. "
+                "bill_id": leak_alert["id"],
+                "text": f"Detecte que {leak_alert['title']} (${leak_alert['monthly_amount']}/mes) no tiene actividad relacionada hace 60 dias. "
                         "¿La sigues usando? Si tiene contrato anual, cancelar antes de tiempo podria "
                         "generarte una penalizacion o mandarte a cobranza -- confirmalo antes de que lo detengamos.",
             }))
@@ -144,33 +149,43 @@ def lambda_handler(event, context):
     elif idx == 2:
         # Dia 63: el humano ya confirmo (asumido en la demo) -> reusa la MISMA
         # verificacion que el chat -- re-checa que de verdad sea una fuga antes de tocar Nessie.
-        result = actions.verified_stop_bill(user_id, "Gym Co")
-        if result["ok"]:
+        if not leak_alert:
             new_actions.append(log_action(user_id, {
-                "date": as_of, "type": "bill_stopped", "requires_confirmation": False,
-                "amount": result["amount"],
-                "text": "Confirmaste que ya no usas el gimnasio -- detuve el cargo automatico de Gym Co ($40/mes).",
+                "date": as_of, "type": "info", "requires_confirmation": False,
+                "text": "No hay ninguna fuga activa que confirmar en este momento.",
             }))
         else:
-            new_actions.append(log_action(user_id, {
-                "date": as_of, "type": "verification_blocked", "requires_confirmation": False,
-                "text": f"No se detuvo el cargo: {result['reason']}",
-            }))
+            payee = leak_alert["title"]
+            result = actions.verified_stop_bill(user_id, payee)
+            if result["ok"]:
+                new_actions.append(log_action(user_id, {
+                    "date": as_of, "type": "bill_stopped", "requires_confirmation": False,
+                    "amount": result["amount"],
+                    "text": f"Confirmaste que ya no usas {payee} -- detuve el cargo automatico (${result['amount']}/mes).",
+                }))
+            else:
+                new_actions.append(log_action(user_id, {
+                    "date": as_of, "type": "verification_blocked", "requires_confirmation": False,
+                    "text": f"No se detuvo el cargo: {result['reason']}",
+                }))
 
     elif idx == 3:
-        # Dia 90: accion autonoma -- mover a ahorro el dinero liberado de la fuga.
+        # Dia 90: accion autonoma -- mover a ahorro el dinero liberado de la
+        # fuga resuelta en el checkpoint anterior. Se busca cualquier bill
+        # que ya no este "recurring" (lo detuvo este mismo flujo) y se lee
+        # su payment_amount real -- nunca un monto fijo atado a una persona.
         # verified_move_to_savings ya revisa: monto razonable, tope diario,
         # anomalia activa, Y que el colchon de liquidez no quede por debajo
         # del minimo de seguridad despues del movimiento.
-        gym_was_stopped = gym_bill is None or gym_bill["status"] != "recurring"
-        if gym_was_stopped:
-            amount = 40  # lo que se libera mensualmente al dejar de pagar el gimnasio
-            result = actions.verified_move_to_savings(user_id, amount, "Ahorro automatico - fuga de Gym Co resuelta")
+        stopped_bill = next((b for b in bills_plain if b["status"] != "recurring"), None)
+        if stopped_bill:
+            amount = float(stopped_bill["payment_amount"])
+            result = actions.verified_move_to_savings(user_id, amount, f"Ahorro automatico - fuga de {stopped_bill['payee']} resuelta")
             if result["ok"]:
                 new_actions.append(log_action(user_id, {
                     "date": as_of, "type": "savings_moved", "requires_confirmation": False,
                     "amount": result["amount"],
-                    "text": f"Como ya no pagas el gimnasio, mande ${result['amount']} a tu ahorro -- ese dinero ya no lo necesitas para gastos fijos.",
+                    "text": f"Como ya no pagas {stopped_bill['payee']}, mande ${result['amount']} a tu ahorro -- ese dinero ya no lo necesitas para gastos fijos.",
                 }))
             elif "anomalia" in result["reason"].lower() or "Pause" in result["reason"]:
                 new_actions.append(log_action(user_id, {
@@ -185,7 +200,7 @@ def lambda_handler(event, context):
         else:
             new_actions.append(log_action(user_id, {
                 "date": as_of, "type": "info", "requires_confirmation": False,
-                "text": "No hay excedente para mover a ahorro todavia (la fuga del gimnasio sigue sin resolverse).",
+                "text": "No hay excedente para mover a ahorro todavia (la fuga detectada sigue sin resolverse).",
             }))
 
     if idx in (2, 3):
@@ -224,7 +239,7 @@ def _handle_reset(user_id):
             # income_third_party_demo: depositos de la demo de nomina de un
             # tercero (backend/signals-lambda/agent_actions.py::simulate_third_party_payroll)
             # -- sin esto, cada ensayo en vivo deja un deposito extra permanente
-            # en el historial de Mia.
+            # en el historial de la persona.
             if (category in ("savings_transfer", "savings_release", "income_third_party_demo")
                     or category.startswith("envelope:")
                     or item["sk"].startswith("ACTION#") or item["sk"].startswith("NOTIFICATION#")):
@@ -233,22 +248,26 @@ def _handle_reset(user_id):
         pass
     try:
         _, _, bills = load_data(user_id)
-        gym = next((b for b in bills if b["payee"] == "Gym Co"), None)
-        if gym:
+        # Reactiva cualquier bill que este flujo haya detenido -- nunca un
+        # nombre hardcodeado como "Gym Co", que solo aplicaba a una persona
+        # especifica y rompe el reset para cualquier otra.
+        cancelled_bill = next((b for b in bills if b.get("status") == "cancelled"), None)
+        if cancelled_bill:
+            payee = cancelled_bill["payee"]
             from nessie_actions import _request
-            _request("PUT", f"/bills/{gym['bill_id']}", {
-                "status": "recurring", "payee": "Gym Co", "nickname": "Gym membership",
-                "payment_date": "2026-09-07", "recurring_date": 5, "payment_amount": float(gym["payment_amount"]),
+            _request("PUT", f"/bills/{cancelled_bill['bill_id']}", {
+                "status": "recurring", "payee": payee, "nickname": payee,
+                "payment_date": "2026-09-07", "recurring_date": 5, "payment_amount": float(cancelled_bill["payment_amount"]),
             })
             table.update_item(
-                Key={"user_id": user_id, "sk": "BILL#Gym Co"},
+                Key={"user_id": user_id, "sk": f"BILL#{payee}"},
                 UpdateExpression="SET #s = :s",
                 ExpressionAttributeNames={"#s": "status"},
                 ExpressionAttributeValues={":s": "recurring"},
             )
     except Exception:
         pass
-    return _response(200, {"reset": True, "message": "Simulacion reiniciada a Dia 0. Bill de Gym Co reactivado en Nessie para poder re-ensayar."})
+    return _response(200, {"reset": True, "message": "Simulacion reiniciada a Dia 0. Bill de fuga reactivado en Nessie para poder re-ensayar."})
 
 
 def _response(status, body):

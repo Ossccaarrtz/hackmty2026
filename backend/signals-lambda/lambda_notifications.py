@@ -24,7 +24,7 @@ def decimal_default(obj):
 
 def lambda_handler(event, context):
     params = event.get("queryStringParameters") or {}
-    user_id = params.get("user_id", "mia")
+    user_id = params.get("user_id", "ana")
 
     resp = table.query(KeyConditionExpression=Key("user_id").eq(user_id))
     notifications = [i for i in resp["Items"] if i.get("type") == "notification"]

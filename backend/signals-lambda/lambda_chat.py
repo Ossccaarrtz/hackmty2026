@@ -10,8 +10,8 @@ existio, o pide un monto fuera de rango, la funcion lo rechaza de todas
 formas -- la seguridad no depende de que el LLM se porte bien, depende del
 codigo determinista debajo.
 
-Memoria: se persiste en DynamoDB solo el intercambio visible (lo que Mia
-escribio + la respuesta final de Centinel) -- no los pasos internos de que
+Memoria: se persiste en DynamoDB solo el intercambio visible (lo que Ana
+escribio + la respuesta final de Spark) -- no los pasos internos de que
 herramienta se llamo. Cada mensaje nuevo reconstruye la conversacion con
 ese historial antes de mandarla a Gemini.
 """
@@ -40,12 +40,12 @@ TOOLS = [{
     "functionDeclarations": [
         {
             "name": "get_status",
-            "description": "Consulta el score de resiliencia financiera actual, las fugas detectadas y la liquidez de Mia. Usa esto siempre que necesites datos reales de su cuenta -- nunca inventes numeros.",
+            "description": "Consulta el score de resiliencia financiera actual, las fugas detectadas y la liquidez de Ana. Usa esto siempre que necesites datos reales de su cuenta -- nunca inventes numeros.",
             "parameters": {"type": "object", "properties": {}},
         },
         {
             "name": "get_score_history",
-            "description": "Consulta el historial real de scores de Mia, un punto por cada fecha en la que se calculo su score (no es diario, son los checkpoints/consultas reales que han ocurrido). Usa esto cuando Mia pregunte por su score en un mes o fecha pasada especifica, por ejemplo '¿como estaba mi score en septiembre?' o '¿cual era mi score hace dos semanas?'. Razona tu mismo sobre la lista de puntos {date, value} que te regresa para responder -- nunca inventes un valor para una fecha que no este en la lista, y aclarale a Mia si no hay ningun punto registrado en el rango que pregunto.",
+            "description": "Consulta el historial real de scores de Ana, un punto por cada fecha en la que se calculo su score (no es diario, son los checkpoints/consultas reales que han ocurrido). Usa esto cuando Ana pregunte por su score en un mes o fecha pasada especifica, por ejemplo '¿como estaba mi score en septiembre?' o '¿cual era mi score hace dos semanas?'. Razona tu mismo sobre la lista de puntos {date, value} que te regresa para responder -- nunca inventes un valor para una fecha que no este en la lista, y aclarale a Ana si no hay ningun punto registrado en el rango que pregunto.",
             "parameters": {"type": "object", "properties": {}},
         },
         {
@@ -88,7 +88,7 @@ TOOLS = [{
         },
         {
             "name": "get_envelopes_status",
-            "description": "Consulta los apartados de gastos fijos de Mia (ej. gasolina, comida) con su meta mensual y saldo acumulado actual.",
+            "description": "Consulta los apartados de gastos fijos de Ana (ej. gasolina, comida) con su meta mensual y saldo acumulado actual.",
             "parameters": {"type": "object", "properties": {}},
         },
         {
@@ -105,7 +105,7 @@ TOOLS = [{
         },
         {
             "name": "set_income_pattern",
-            "description": "Declara el patron de nomina de Mia (monto aproximado y frecuencia en dias) para que el sistema sepa distinguir su nomina de un deposito random (ej. un amigo mandandole dinero). Los apartados solo se reparten cuando un deposito coincide con este patron.",
+            "description": "Declara el patron de nomina de Ana (monto aproximado y frecuencia en dias) para que el sistema sepa distinguir su nomina de un deposito random (ej. un amigo mandandole dinero). Los apartados solo se reparten cuando un deposito coincide con este patron.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -162,16 +162,18 @@ TOOLS = [{
 }]
 
 SYSTEM_INSTRUCTION = (
-    "Eres el asistente de Centinel One, un agente financiero para Mia (freelancer, ingreso irregular, "
-    "sin historial de credito). Tienes memoria real de esta conversacion -- los mensajes anteriores estan "
+    "Eres el asistente de Spark, una plataforma que activa tarjetas bancarias universitarias dormidas y educa "
+    "financieramente a estudiantes. Hablas con Ana (estudiante universitaria, tarjeta-credencial emitida por su "
+    "banco al inscribirse, ingreso irregular por mesada/trabajo de medio tiempo, sin historial de credito). "
+    "Tienes memoria real de esta conversacion -- los mensajes anteriores estan "
     "incluidos abajo, usalos para entender referencias como 'eso' o 'el mismo monto'. Reglas estrictas: "
     "1) Nunca inventes NI DERIVES numeros de su cuenta que no aparezcan literalmente en el resultado de una herramienta -- si necesitas datos reales, llama a get_status primero, o a get_score_history si pregunta por una fecha o mes pasado. Si una herramienta no te da un monto especifico (ej. solo te da el costo anual de una fuga, no el mensual), NO calcules ni asumas ese monto -- di explicitamente que no tienes ese dato exacto en vez de inventar una cifra que suene razonable. "
-    "2) Nunca llames move_to_savings o release_savings_buffer sin que el usuario lo haya pedido o confirmado explicitamente en la conversacion. "
-    "3) stop_subscription SIEMPRE es un proceso de dos pasos: la primera llamada solo propone (nunca detiene nada de verdad) y te va a devolver una advertencia de riesgo contractual para que se la muestres a Mia tal cual. Si Mia confirma explicitamente despues de leer esa advertencia, llama confirm_stop_bill -- no vuelvas a llamar stop_subscription. "
-    "4) Si una herramienta rechaza la accion, explicale a Mia por que en lenguaje simple, no insistas ni la reintentes con otros valores. "
-    "5) release_savings_buffer es para semanas de ingreso bajo -- no lo ofrezcas a menos que Mia mencione que le entro poco dinero o necesita liquidez extra. "
-    "6) Los apartados (create_envelope) se reparten solos cuando llega un deposito que coincide con el patron de nomina declarado (set_income_pattern) -- si Mia no ha declarado su patron todavia y quiere crear un apartado, pidele primero el monto y frecuencia aproximada de su nomina. "
-    "7) simulate_decision y get_financial_lesson NUNCA ejecutan nada real -- son simulaciones educativas, no acciones. Puedes llamarlas libremente sin pedir confirmacion, y explica siempre que el resultado es una proyeccion, no un cambio ya hecho. Si Mia pregunta '¿que pasaria si...?' sobre un cargo o su gasto, usa simulate_decision en vez de estimar tu mismo el impacto. "
+    "2) Nunca llames move_to_savings o release_savings_buffer sin que Ana lo haya pedido o confirmado explicitamente en la conversacion. "
+    "3) stop_subscription SIEMPRE es un proceso de dos pasos: la primera llamada solo propone (nunca detiene nada de verdad) y te va a devolver una advertencia de riesgo contractual para que se la muestres a Ana tal cual. Si Ana confirma explicitamente despues de leer esa advertencia, llama confirm_stop_bill -- no vuelvas a llamar stop_subscription. "
+    "4) Si una herramienta rechaza la accion, explicale a Ana por que en lenguaje simple, no insistas ni la reintentes con otros valores. "
+    "5) release_savings_buffer es para semanas de ingreso bajo -- no lo ofrezcas a menos que Ana mencione que le entro poco dinero o necesita liquidez extra. "
+    "6) Los apartados (create_envelope) se reparten solos cuando llega un deposito que coincide con el patron de nomina declarado (set_income_pattern) -- si Ana no ha declarado su patron todavia y quiere crear un apartado, pidele primero el monto y frecuencia aproximada de su mesada/ingreso. "
+    "7) simulate_decision y get_financial_lesson NUNCA ejecutan nada real -- son simulaciones educativas, no acciones. Puedes llamarlas libremente sin pedir confirmacion, y explica siempre que el resultado es una proyeccion, no un cambio ya hecho. Si Ana pregunta '¿que pasaria si...?' sobre un cargo o su gasto, usa simulate_decision en vez de estimar tu mismo el impacto. "
     "8) log_external_expense es solo para gasto que el usuario declara en efectivo o con OTRA tarjeta -- si menciona 'other_card' como fuente y no dijo con que tarjeta pago, PREGUNTASELO primero y espera su respuesta antes de llamar la tool; nunca inventes ni dejes vacio el nombre de la tarjeta. La categoria debe ser exactamente una de: rent, groceries, transport, utilities, discretionary -- si no es obvio cual, pregunta o usa discretionary. "
     "9) Se breve y claro, en español."
 )
@@ -312,7 +314,7 @@ def execute_tool(name, args, user_id):
 def lambda_handler(event, context):
     body = json.loads(event.get("body") or "{}")
     user_message = body.get("message", "")
-    user_id = body.get("user_id", "mia")
+    user_id = body.get("user_id", "ana")
 
     if not user_message.strip():
         return _response(400, {"error": "Falta el campo 'message'."})
@@ -327,7 +329,7 @@ def lambda_handler(event, context):
             result = call_gemini(contents)
         except Exception as e:
             status = 429 if "429" in str(e) else 200
-            reply = "Centinel esta saturado ahorita mismo (limite de solicitudes), intenta de nuevo en un minuto." if status == 429 else f"No pude conectar con el modelo: {e}"
+            reply = "Spark esta saturado ahorita mismo (limite de solicitudes), intenta de nuevo en un minuto." if status == 429 else f"No pude conectar con el modelo: {e}"
             # No se persiste: un mensaje que nunca se proceso no debe contaminar la memoria de la conversacion.
             return _response(status, {"reply": reply, "actions_taken": actions_taken})
 

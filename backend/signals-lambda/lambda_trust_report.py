@@ -20,7 +20,7 @@ import agent_actions as actions
 
 def lambda_handler(event, context):
     params = event.get("queryStringParameters") or {}
-    user_id = params.get("user_id", "mia")
+    user_id = params.get("user_id", "ana")
 
     report = actions.get_trust_report(user_id)
     return _response(200, report)
