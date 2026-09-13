@@ -71,6 +71,20 @@ function readSession() {
   try { const saved = JSON.parse(sessionStorage.getItem(sessionKey)); if (Array.isArray(saved?.feed) && Array.isArray(saved?.history)) return { ...emptySession(), ...saved }; } catch { /* Storage is optional. */ }
   return emptySession();
 }
+const BUDGET_KEY = `${sessionKey}:monthly-budget`;
+function readMonthlyBudget() {
+  try { const value = Number(localStorage.getItem(BUDGET_KEY)); return Number.isFinite(value) && value > 0 ? value : null; } catch { return null; }
+}
+function budgetTone(percent) {
+  if (percent >= 100) return 'over';
+  if (percent >= 75) return 'warn';
+  return 'good';
+}
+function budgetMessage(tone, percent, overBy) {
+  if (tone === 'over') return `Ya te pasaste de tu meta por ${money(overBy)}.`;
+  if (tone === 'warn') return `Cuidado, ya usaste ${Math.round(percent)}% de tu meta.`;
+  return `Vas bien -- llevas ${Math.round(percent)}% de tu meta.`;
+}
 function LineChart({ values, label }) {
   if (values.length < 2) return <p className="chart-empty">Se necesitan al menos dos registros para mostrar la evolución.</p>;
   const min = Math.min(...values), range = Math.max(...values) - min || 1;
@@ -243,6 +257,12 @@ function App() {
   const [incomeFrequency, setIncomeFrequency] = useState('');
   const [payrollBusy, setPayrollBusy] = useState(false);
   const [chatInput, setChatInput] = useState('');
+  // La meta de gasto vive solo en este navegador (localStorage) -- no hay ruta de
+  // backend para persistirla todavia, ver commit que agrega este feature. El % usado
+  // en cambio siempre se calcula con transacciones reales del backend.
+  const [monthlyBudget, setMonthlyBudget] = useState(readMonthlyBudget);
+  const [editingBudget, setEditingBudget] = useState(false);
+  const [budgetInput, setBudgetInput] = useState('');
   const locked = useRef(false), requestId = useRef(0), closeRef = useRef(null);
   const chatEndRef = useRef(null);
   const signals = data?.signals;
@@ -268,6 +288,15 @@ function App() {
   const statementOpening = statementTransactions.length ? statementTransactions[0].running_balance - statementTransactions[0].signed_amount : null;
   const statementClosing = statementTransactions.length ? statementTransactions.at(-1).running_balance : null;
   const editingEnvelope = newEnvelopeCategory.trim() && envelopes?.envelopes.some(env => env.slug === slugify(newEnvelopeCategory));
+  // "Mes actual" = el mes mas reciente con movimientos en el ledger, no la fecha real
+  // del dispositivo -- la simulacion puede estar parada en cualquier dia sembrado.
+  // Deliberadamente independiente de `statementMonth` (el selector de Estado de
+  // cuenta): cambiar de mes ahi no debe mover la meta de gasto del home.
+  const currentMonthKey = statementMonths[0] || '';
+  const currentMonthExpense = transactions
+    .filter(tx => tx.date.slice(0, 7) === currentMonthKey && tx.signed_amount < 0 && tx.category !== 'savings_transfer' && !tx.category?.startsWith('envelope:'))
+    .reduce((sum, tx) => sum - tx.signed_amount, 0);
+  const budgetPercent = monthlyBudget ? (currentMonthExpense / monthlyBudget) * 100 : 0;
   const MONEY_MOVING_TYPES = ['bill_stopped', 'savings_moved', 'notification']; // mismo criterio que agent_actions.get_trust_report en el backend
   const trustStats = trustReport ? {
     resolvedLeaks: trustReport.verified_actions.filter(a => a.type === 'bill_stopped').length,
@@ -372,6 +401,13 @@ function App() {
     } catch (err) { setEnvelopesError(err.message); }
     finally { setPayrollBusy(false); }
   }
+  function submitBudget(event) {
+    event.preventDefault();
+    const value = Number(budgetInput);
+    if (!Number.isFinite(value) || value <= 0) return;
+    setMonthlyBudget(value);
+    setEditingBudget(false);
+  }
   async function refresh() {
     const id = ++requestId.current;
     setLoading(true);
@@ -394,6 +430,7 @@ function App() {
   useEffect(() => { try { sessionStorage.setItem(sessionKey, JSON.stringify(session)); } catch { /* Storage is optional. */ } }, [session]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth', block: 'end' }); }, [session.chatLog, chatBusy]);
   useEffect(() => { try { sessionStorage.setItem(AUTH_KEY, authed ? 'true' : 'false'); } catch { /* Storage is optional. */ } }, [authed]);
+  useEffect(() => { try { if (monthlyBudget != null) localStorage.setItem(BUDGET_KEY, String(monthlyBudget)); else localStorage.removeItem(BUDGET_KEY); } catch { /* Storage is optional. */ } }, [monthlyBudget]);
   useEffect(() => {
     if (!modal) return;
     const previous = document.activeElement;
@@ -600,6 +637,18 @@ function App() {
           </>}
         </motion.section>}
         {page === 'home' && <motion.section className="balance-card glass" key="balance-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><div className="balance-top"><div><h2>Score de resiliencia financiera</h2><div className="total score-hero">{signals?.score.value ?? '—'}<span>/100</span></div>{signals && <TrendBadge trend={signals.score.trend} />}<p className={`score-status-message ${signals ? `is-${scoreStatusFeedback(signals).tone}` : ''}`}>{signals ? scoreStatusFeedback(signals).text : 'Cargando tu score…'}</p></div></div><div className="balance-bottom"><div className="account-orbs"><div className="orb-bridge" /><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.balance)}</strong><span>Saldo disponible</span></button><button className="orb purple" onClick={() => setModal('score')}><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong><span>Gastos cubiertos</span></button><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.summary.total_income)}</strong><span>Ingresos registrados</span></button></div></div><button className="outline-button score-details-button" onClick={() => setModal('score')}>Entender mi score</button></motion.section>}
+        {page === 'home' && <motion.section className="glass budget-goal-card" key="budget-goal-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}>
+          <header className="card-heading"><h2>Meta de gasto del mes</h2>{monthlyBudget != null && !editingBudget && <button className="text-button budget-edit-link" onClick={() => { setBudgetInput(String(monthlyBudget)); setEditingBudget(true); }}>Editar</button>}</header>
+          {monthlyBudget == null || editingBudget ? <form className="budget-goal-form" onSubmit={submitBudget}>
+            <label className="ledger-filter"><span>¿Cuánto quieres gastar como máximo este mes?</span><input type="number" min="1" step="1" required autoFocus value={budgetInput} onChange={event => setBudgetInput(event.target.value)} placeholder="Ej. 7000" /></label>
+            <div className="budget-goal-form-actions"><button className="black-button small" type="submit">Guardar meta</button>{monthlyBudget != null && <button type="button" className="text-button" onClick={() => setEditingBudget(false)}>Cancelar</button>}</div>
+          </form> : !currentMonthKey ? <p className="empty">Aún no hay movimientos este mes para comparar contra tu meta.</p> : <>
+            <p className="muted-copy budget-goal-month">{monthLabel(currentMonthKey)}</p>
+            <div className="budget-goal-numbers"><strong>{money(currentMonthExpense)}</strong><span> de {money(monthlyBudget)}</span></div>
+            <div className="budget-track"><div className={`budget-fill tone-${budgetTone(budgetPercent)}`} style={{ width: `${Math.min(budgetPercent, 100)}%` }} /></div>
+            <p className={`budget-goal-message tone-${budgetTone(budgetPercent)}`}>{budgetMessage(budgetTone(budgetPercent), budgetPercent, currentMonthExpense - monthlyBudget)}</p>
+          </>}
+        </motion.section>}
         {page === 'home' && <motion.section className="payments-card glass alerts-card" key="alerts-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Lo que necesita tu atención</h2><span className="pill">{signals?.alerts.length ?? '—'} alertas</span></header>{signals ? signals.alerts.length ? signals.alerts.map(alert => <article className="live-alert" key={alert.id}><ShieldAlert size={24} /><div><strong>{alert.title}</strong><p>{alert.detail}</p>{alert.annual_cost > 0 && <small>{money(alert.monthly_amount)}/mes · {money(alert.annual_cost)} al año · potencial, no ahorro realizado</small>}</div><button className="black-button small" onClick={() => setPage('chat')}>Revisar</button></article>) : <p className="empty">Todo al día: el backend no reporta alertas activas.</p> : <p className="empty">{loading ? 'Consultando alertas…' : 'Alertas no disponibles.'}</p>}{signals?.upcoming_expenses?.length > 0 && <div className="upcoming-expenses"><h3>Próximos gastos esperados</h3>{signals.upcoming_expenses.map(item => <div className="upcoming-expense-row" key={item.category}><span>{item.category_label}</span><span className="muted-copy">{item.days_until === 0 ? 'Hoy' : item.days_until === 1 ? 'Mañana' : `En ${item.days_until} días`} · {dateLabel(item.expected_date)} · {item.confidence}% confianza</span><strong>{money(item.expected_amount)}</strong></div>)}</div>}<p className="muted-copy">Detener un cargo no cancela el contrato con el comercio.</p></motion.section>}
       </AnimatePresence>
     </section>
