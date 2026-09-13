@@ -14,11 +14,13 @@ import json
 import time
 import boto3
 from botocore.exceptions import ClientError
+from datetime import date
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 
 from signal_engine import compute_totals
 import agent_actions as actions
+import email_notifications
 
 REGION = "us-east-1"
 TABLE_NAME = "jarbis-financiero-data"
@@ -94,6 +96,48 @@ def load_data(user_id):
     purchases = [i for i in items if i.get("type") == "purchase"]
     bills = [i for i in items if i.get("type") == "bill"]
     return deposits, purchases, bills
+
+
+def _send_subscription_reminders(signals):
+    """Un correo por cada gasto recurrente esperado que caiga a 5, 3 o 1
+    dia de distancia -- para que el usuario decida si de verdad lo quiere
+    seguir pagando antes de que se cobre solo."""
+    for item in signals.get("upcoming_expenses", []):
+        days = item.get("days_until")
+        if days not in (5, 3, 1):
+            continue
+        plural = "día" if days == 1 else "días"
+        email_notifications.send_email(
+            subject=f"Faltan {days} {plural} para {item['category_label']} -- ¿lo sigues queriendo pagar?",
+            html=(
+                f"<p>En {days} {plural} Kivo espera un cargo de <strong>${item['expected_amount']:.2f}</strong> "
+                f"de {item['category_label']}.</p>"
+                f"<p>Si ya no lo usas, dile a Kivo en el chat: \"cancela {item['category_label']}\" "
+                "antes de que se cobre.</p>"
+            ),
+        )
+
+
+def _send_external_expense_reminder(purchases):
+    """Si hoy (fecha real, no la del checkpoint simulado -- asi es como
+    log_external_expense ya guarda estos gastos) no se registro en el chat
+    ningun gasto en efectivo/otra tarjeta, manda un recordatorio: sin esto,
+    el score y el presupuesto solo ven la fraccion de la vida financiera
+    real que paso por la tarjeta del banco."""
+    today = date.today().isoformat()
+    logged_today = any(
+        p.get("date") == today and p.get("sk", "").split("#")[2].startswith("external")
+        for p in purchases if p.get("sk", "").count("#") >= 2
+    )
+    if not logged_today:
+        email_notifications.send_email(
+            subject="¿Gastaste en efectivo u otra tarjeta hoy?",
+            html=(
+                "<p>Hoy no le registraste a Kivo ningun gasto en efectivo o con otra tarjeta.</p>"
+                "<p>Si gastaste algo que no paso por tu tarjeta del banco, diselo en el chat "
+                "para que tu score y tu presupuesto queden completos.</p>"
+            ),
+        )
 
 
 def lambda_handler(event, context):
@@ -214,6 +258,9 @@ def lambda_handler(event, context):
         deposits, purchases, bills = load_data(user_id)
         bills_plain = [{"payee": b["payee"], "status": b["status"], "payment_amount": float(b["payment_amount"]), "bill_id": b["bill_id"]} for b in bills]
         signals = actions.get_full_signals(deposits, purchases, bills_plain, user_id=user_id, as_of_date=as_of)
+
+    _send_subscription_reminders(signals)
+    _send_external_expense_reminder(purchases)
 
     state["checkpoint_idx"] = idx
     save_state(user_id, state)
