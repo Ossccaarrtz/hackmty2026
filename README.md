@@ -2,9 +2,9 @@
 
 Plataforma que activa tarjetas bancarias universitarias dormidas — le da al banco la activación que ya está pagando y no consigue, y al estudiante educación financiera + acciones reales y verificadas sobre su propio dinero, preparándolo para su primera tarjeta de crédito.
 
-## ⚠️ Pivote de producto (2026-09-12)
+## ⚠️ Pivote de producto (2026-09-12) — ✅ completado
 
-Cambiamos la tesis de negocio a medio hackatón tras feedback de jueces/mentores sobre el modelo original (ver [PITCH.md](./PITCH.md) para el detalle completo del porqué). **Esta actualización toca solo documentación de contexto (este README, PLAN.md, PITCH.md) — el código (backend y frontend) todavía no se tocó**, así que el prototipo en vivo sigue corriendo con la persona anterior (Mia, freelancer) hasta que se complete el trabajo listado en [PLAN.md](./PLAN.md) sección 8.
+Cambiamos la tesis de negocio a medio hackatón tras feedback de jueces/mentores sobre el modelo original (ver [PITCH.md](./PITCH.md) para el detalle completo del porqué). El pivote ya está completo de punta a punta: backend, tests, frontend y datos. La persona `mia` (freelancer, tesis original) fue eliminada por completo — código, tests y datos reales en DynamoDB — y **Ana (estudiante universitaria) es la única persona y el default en todo el sistema**, para que ningún agente o colaborador futuro se confunda sobre quién es el cliente objetivo. Detalle de la purga en [PLAN.md](./PLAN.md) sección 8.
 
 **Qué se queda igual (motor técnico, cero cambios de código):**
 | Pieza | Por qué se queda |
@@ -20,12 +20,12 @@ Cambiamos la tesis de negocio a medio hackatón tras feedback de jueces/mentores
 **Qué se re-narra (mismo código, cambia el copy/los datos de ejemplo):**
 | Pieza | De → A | Estado |
 |---|---|---|
-| Persona | Mia, 24, freelance, ingreso irregular → **Ana, 19, estudiante universitaria, tarjeta-credencial bancaria emitida al inscribirse y nunca activada** | ✅ Seed de Nessie + DynamoDB listo (`user_id=ana`), en paralelo a Mia |
+| Persona | Mia, 24, freelance, ingreso irregular → **Ana, 19, estudiante universitaria, tarjeta-credencial bancaria emitida al inscribirse y nunca activada** | ✅ Único seed en Nessie + DynamoDB (`user_id=ana`) — los datos de Mia se eliminaron tras validar que Ana funciona de punta a punta |
 | Narrativa de cierre del score | "camino a tarjeta secured" → "de tarjeta dormida a lista para su primera tarjeta de crédito con el mismo banco" | Pendiente en frontend |
 | Seed de Nessie | Misma estructura (depósitos + compras + bills), relabeleo de merchants/categorías a contexto de campus, montos en MXN | ✅ Hecho — ver detalle abajo |
 | Modelo de negocio | "se lo vendemos a Capital One sobre sus propios clientes" → dos líneas de ingreso: comisión del banco por estudiante activado + comisión por oferta de marca redimida (ver PITCH.md) | ✅ Documentado |
 
-**Detalle del re-seed de Ana (ya en vivo):** cliente y cuentas nuevas en Nessie (`user_id="ana"` en DynamoDB, en paralelo a Mia, nada se reemplazó). Mesada/pago de medio tiempo irregular en MXN ($1,150-$2,100), renta de cuarto, cafetería, transporte, plan celular (bill sano), FitZone Campus (bill fuga sin actividad). Al sembrar esta primera persona nueva se encontraron y corrigieron **dos bugs reales de arquitectura** que solo aparecían con un persona distinta a Mia — detalle completo en [PLAN.md](./PLAN.md) sección 8.2: (1) la detección de bills sanos usaba un mapeo de comercios hardcodeado a los nombres de Mia en vez del `merchant_name` real de cada compra, y (2) las acciones de dinero (ahorro, apartados) escribían siempre en la cuenta de Nessie de Mia sin importar qué persona las disparara. Ambos corregidos y probados en vivo end-to-end con la cuenta real de Ana.
+**Detalle del re-seed de Ana (ya en vivo, y ahora la única persona en el sistema):** cliente y cuentas nuevas en Nessie (`user_id="ana"` en DynamoDB). Mesada/pago de medio tiempo irregular en MXN ($1,150-$2,100), renta de cuarto, cafetería, transporte, plan celular (bill sano), FitZone Campus (bill fuga sin actividad). Al sembrar esta primera persona nueva (en paralelo a Mia, la persona original, todavía viva en ese momento) se encontraron y corrigieron **dos bugs reales de arquitectura** que solo aparecían con una persona distinta a Mia — detalle completo en [PLAN.md](./PLAN.md) sección 8.2: (1) la detección de bills sanos usaba un mapeo de comercios hardcodeado a los nombres de Mia en vez del `merchant_name` real de cada compra, y (2) las acciones de dinero (ahorro, apartados) escribían siempre en la cuenta de Nessie de Mia sin importar qué persona las disparara. Ambos corregidos y probados en vivo end-to-end con la cuenta real de Ana. Una vez confirmado que Ana funcionaba de punta a punta, los datos de seed de Mia (código, tests y los ~80 items reales en DynamoDB) se eliminaron por completo — ver [`seed/README.md`](./seed/README.md#nota-histórica).
 
 **Qué es nuevo de verdad (no construido todavía, backlog en PLAN.md sección 8):**
 - Señal de "activación" (qué tan dormida está la tarjeta) en `signal_engine.py`
@@ -61,7 +61,7 @@ Cambiamos la tesis de negocio a medio hackatón tras feedback de jueces/mentores
 
 **Tamaño de mercado (ver TAM/SAM/SOM completo en [PITCH.md](./PITCH.md)):** del orden de millones de estudiantes de educación superior en México, de los cuales un subconjunto ya identificable tiene tarjeta-credencial de un banco con convenio universitario activo.
 
-**Persona anterior (Mia, 24, freelance/ingreso irregular) — sigue siendo el contexto técnico del prototipo en vivo hasta que se complete el re-seed.** El motor de scoring/verificación no distingue entre ambas personas; el argumento de mercado y el modelo de negocio sí cambiaron — ver la nota de pivote arriba.
+**Persona anterior (Mia, 24, freelance/ingreso irregular)** fue la persona técnica de validación de la tesis original ("Centinel One") — el motor de scoring/verificación no distingue entre personas, así que sirvió igual para probar el mecanismo. Sus datos ya se eliminaron del sistema tras completar el pivote a Ana; se menciona aquí solo como contexto histórico. Ver la nota de pivote arriba.
 
 **Precedente de industria (sigue aplicando, agnóstico de persona):** VantageScore 4plus ya usa datos alternativos/cash-flow para calificar a ~33M adultos que FICO no puede. CFPB, Fed, OCC y NCUA emitieron un comunicado conjunto respaldando el uso de datos alternativos en underwriting (con advertencia de fair lending).
 
@@ -150,19 +150,19 @@ Validación real: Capital One ya tiene en su app la función "Block Future Charg
 
 ## Datos sembrados (seed)
 
-**Nota del pivote:** lo de abajo describe el seed de Mia (sigue vivo sin cambios). El seed de Ana (estudiante, MXN) ya existe en paralelo bajo `user_id="ana"` — ver detalle en la sección de pivote arriba y en [PLAN.md](./PLAN.md) sección 8.2. El frontend todavía apunta a Mia por default (`VITE_USER_ID`); apuntarlo a Ana es parte del re-skin de frontend pendiente.
-
-~90 días de historial de Mia ya viven en el sandbox de Nessie (ver [`/seed`](./seed)):
+~90 días de historial de Ana (`user_id="ana"`, en MXN) viven en el sandbox de Nessie (ver [`/seed`](./seed) para el detalle completo, IDs y el script `ana-seed.js`):
 
 | | |
 |---|---|
-| Depósitos (ingreso freelance irregular) | 8, entre $300 y $720 |
-| Compras (renta, súper, transporte, teléfono, discrecional) | 55 |
-| Bills recurrentes | Gym Co ($40/mes, `recurring`, sin actividad relacionada — la fuga) + Telco Co ($45/mes, `recurring`, con pago mensual real — control sano) |
-| Ingreso total / gasto total | $4,520 / $4,014 |
-| Balance real (ledger propio, no el de Nessie) | $506 |
+| Depósitos (mesada + medio tiempo, irregular) | 8, entre $1,150 y $2,100 MXN |
+| Compras (renta de cuarto, cafetería, transporte, plan celular, discrecional) | 51 |
+| Bills recurrentes | FitZone Campus ($250/mes, `recurring`, sin actividad relacionada — la fuga) + Telcel Plan ($200/mes, `recurring`, con 3 pagos reales — control sano) |
+| Ingreso total / gasto total | $12,650 / $12,442 MXN |
+| Balance real (ledger propio, no el de Nessie) | $208 MXN |
 
-**Motor de señales corriendo contra estos datos ahora mismo:** score = 64/100, 1/2 bills sanos, fuga detectada en Gym Co (~$480/año), colchón cubre 12 días. Prototipo en Node en [`/backend/signal-engine.js`](./backend/signal-engine.js); versión real desplegada en Python en [`/backend/signals-lambda`](./backend/signals-lambda).
+**Motor de señales corriendo contra estos datos ahora mismo:** score = 57/100, fuga detectada en FitZone Campus (~$3,000/año sin uso, Telcel Plan NO se marca), activación 100/100, wallet share 100% (sin gasto externo declarado todavía). Versión real desplegada en Python en [`/backend/signals-lambda`](./backend/signals-lambda).
+
+**Nota histórica:** la primera persona sembrada en este proyecto fue "Mia" (freelancer, tesis original "Centinel One") — sus datos (seed, código y ~80 items en DynamoDB) se eliminaron por completo tras validar que Ana funciona de punta a punta, para no dejar dos personas y confundir a futuros colaboradores/agentes sobre quién es el cliente objetivo. Las menciones a "Mia" en las secciones técnicas de abajo son bitácora de ingeniería de cuando ese endpoint se validó por primera vez — el mecanismo probado es agnóstico de persona y ya corre en producción sobre Ana.
 
 ## CI/CD del frontend — ✅ en vivo
 
@@ -190,31 +190,31 @@ Se descubrió que la infraestructura de Jarbis ya vive en esta cuenta (`jarbis-*
 
 El frontend ya puede apuntar a este endpoint real en vez del mock del README — el shape es idéntico al contrato definido abajo (le falta `actions`, que se agrega cuando el agente decisor esté conectado).
 
-`/signals` ahora también trae un campo `anomaly` — `{ detected: bool, reason?: string }`. Es el guardrail de seguridad: compara el gasto reciente (14 días) contra el propio historial de la persona. Con los datos normales de Mia siempre sale `detected: false` — solo se activa si alguien altera el seed para simular un gasto atípico. El agente decisor ya lo consulta antes de ejecutar la acción autónoma de ahorro (ver más abajo).
+`/signals` ahora también trae un campo `anomaly` — `{ detected: bool, reason?: string }`. Es el guardrail de seguridad: compara el gasto reciente (14 días) contra el propio historial de la persona. Con los datos normales de Ana siempre sale `detected: false` — solo se activa si alguien altera el seed para simular un gasto atípico. El agente decisor ya lo consulta antes de ejecutar la acción autónoma de ahorro (ver más abajo).
 
 Los totales (`_debug.total_income`/`total_expense`) ya se calculan sumando las transacciones reales en la tabla, no un registro estático — cualquier movimiento nuevo que el agente escriba se refleja solo en la siguiente consulta, sin necesitar sincronización manual.
 
 **Segundo endpoint en vivo — todos los movimientos crudos, sin filtrar (para la vista de detalle y para que el frontend tenga con qué jugar libremente):**
 ```
-GET https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/transactions?user_id=mia
+GET https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/transactions?user_id=ana
 ```
-Devuelve `{ transactions: [...], summary: {...} }` — cada transacción con `date`, `type` (deposit/purchase), `category`, `category_label`, `merchant_name`, `amount`, `signed_amount`, y `running_balance` ya calculado (para graficar balance en el tiempo sin re-derivar nada). `summary` trae totales y gasto por categoría. 62 movimientos reales de los 90 días de Mia.
+Devuelve `{ transactions: [...], summary: {...} }` — cada transacción con `date`, `type` (deposit/purchase), `category`, `category_label`, `merchant_name`, `amount`, `signed_amount`, y `running_balance` ya calculado (para graficar balance en el tiempo sin re-derivar nada). `summary` trae totales y gasto por categoría. 59 movimientos reales de los 90 días de historial de Ana (51 compras + 8 depósitos).
 
 **Tercer endpoint en vivo — el agente decisor completo, probado de punta a punta con escrituras reales en Nessie:**
 ```
-POST https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/simulation/advance-day?user_id=mia
-POST .../simulation/advance-day?user_id=mia&reset=true   ← reinicia la simulacion a Dia 0
+POST https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/simulation/advance-day?user_id=ana
+POST .../simulation/advance-day?user_id=ana&reset=true   ← reinicia la simulacion a Dia 0
 ```
-Cada llamada avanza un checkpoint de la historia de Mia (Día 45 → 62 → 63 → 90) aplicando la política de riesgo real:
+Cada llamada avanza un checkpoint de la historia de la persona sembrada (Día 45 → 62 → 63 → 90) aplicando la política de riesgo real. El checkpoint es genérico desde esta sesión: deriva la fuga real de `signals["alerts"]` y el monto real del bill cancelado en vez de tener un nombre/monto hardcodeado, así que funciona igual para cualquier persona sembrada, no solo la que se usó para construirlo originalmente:
 
 | Checkpoint | Qué pasa | ¿Se ejecuta solo? |
 |---|---|---|
 | Día 45 | Solo observación — reporta el score | N/A, no hay acción |
-| Día 62 | Detecta la fuga de Gym Co | **No** — genera un `leak_detected` con `requires_confirmation: true` y la advertencia de riesgo contractual, no toca nada |
+| Día 62 | Detecta la fuga real (para Ana, FitZone Campus) | **No** — genera un `leak_detected` con `requires_confirmation: true` y la advertencia de riesgo contractual, no toca nada |
 | Día 63 | Confirmación asumida → verificación → `PUT /bills` real en Nessie (`status: cancelled`) | Solo después de "confirmar", nunca antes |
-| Día 90 | Verifica que el bill de arriba sí se detuvo (dependencia causal real) **y** que el guardrail de anomalía esté en `detected: false` → `POST /withdrawals` + `POST /deposits` reales en Nessie | Autónomo — solo si ambas verificaciones pasan. Si el guardrail detecta algo raro, genera un `anomaly_pause` con `requires_confirmation: true` en su lugar y no toca el dinero |
+| Día 90 | Verifica que el bill de arriba sí se detuvo (dependencia causal real) **y** que el guardrail de anomalía esté en `detected: false` → `POST /withdrawals` + `POST /deposits` reales en Nessie | Autónomo — solo si ambas verificaciones pasan **y** el monto no excede `MAX_AUTONOMOUS_SAVINGS` ($100) |
 
-Probado en vivo: el bill queda `cancelled` de verdad en Nessie, aparecen el withdrawal y el deposit de $40 reales, el score sube de 64 a **74** una vez resuelta la fuga, y el nuevo movimiento se refleja solo en `/transactions` (balance $506 → $466) — la causa→efecto es real de punta a punta, no simulada en el frontend.
+Probado en vivo originalmente contra Mia (bill de $40/mes): el bill quedó `cancelled` de verdad en Nessie, aparecieron el withdrawal y el deposit reales, y el score subió de 64 a 74. Al re-probar el mismo flujo genérico contra Ana se encontró una diferencia real y correcta: la fuga de Ana (FitZone Campus, $250/mes) **supera el tope autónomo de $100** — el Día 90 no mueve el dinero solo, en su lugar debería generar el mismo tipo de pausa de confirmación que usa el guardrail de anomalía, en vez de saltarse el límite. Es el guardrail funcionando como se diseñó, no un bug: un ahorro autónomo de $250 sin confirmación sería precisamente el tipo de UDAAP (ver PITCH.md, caso Hello Digit) que el tope existe para prevenir.
 
 **Cuarto endpoint en vivo — chat real con tool-calling (Gemini), no texto fijo:**
 ```
@@ -251,30 +251,30 @@ Probado en vivo reproduciendo el mismo prompt 5 veces seguidas: el modelo alucin
 
 **Quinto endpoint en vivo — notificaciones reales, disparadas por un webhook (DynamoDB Streams), no por polling:**
 ```
-GET https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/notifications?user_id=mia
+GET https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/notifications?user_id=ana
 ```
 
 Nessie no puede mandarnos webhooks (es una API estática, no push). El equivalente nativo de AWS es **DynamoDB Streams**: cada vez que se escribe algo en `jarbis-financiero-data` (un `savings_transfer` nuevo, un bill que pasa de `recurring` a `cancelled`), se dispara automáticamente `jarbis-financiero-notifier` — sin que nadie llame nada, sin importar si la acción vino del chat o de `advance-day`, porque ambos escriben en la misma tabla.
 
 Probado en vivo de punta a punta: se le pidió al chat mover $15 a ahorro → el chat ejecutó la acción real en Nessie → **sin ninguna llamada adicional**, la notificación ya estaba disponible en `/notifications` segundos después. Esto es lo más cercano a "tiempo real" que se puede lograr sin un backend de bancos de verdad con webhooks propios.
 
-**El chat tiene memoria real de conversación** — no es solo un endpoint sin estado. Cada mensaje reconstruye el historial visible (lo que Mia escribió + la respuesta final de Centinel, no los pasos internos de qué herramienta se llamó) desde DynamoDB (`sk: CHAT_HISTORY`) antes de mandarlo a Gemini, y lo vuelve a guardar al final. Topado a los últimos 10 intercambios para controlar costo/latencia. `reset=true` también borra la memoria, para que cada ensayo empiece limpio.
+**El chat tiene memoria real de conversación** — no es solo un endpoint sin estado. Cada mensaje reconstruye el historial visible (lo que la usuaria escribió + la respuesta final de Spark, no los pasos internos de qué herramienta se llamó) desde DynamoDB (`sk: CHAT_HISTORY`) antes de mandarlo a Gemini, y lo vuelve a guardar al final. Topado a los últimos 10 intercambios para controlar costo/latencia. `reset=true` también borra la memoria, para que cada ensayo empiece limpio.
 
 Probado en vivo: le pedí al chat "¿cuál sería un monto razonable para ahorrar?", sugirió $30, y en el siguiente mensaje escribí solo "ok, hazlo con ese monto" (sin repetir el número) — ejecutó los $30 correctamente. Después de un reset, la misma frase ambigua sin contexto previo hizo que el modelo preguntara en vez de inventar un monto — la memoria funciona, y su ausencia no produce alucinaciones.
 
 **Sexto endpoint en vivo — apartados de gastos fijos (envelope budgeting) con reparto proporcional automático de nómina:**
 ```
-GET  https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/envelopes?user_id=mia
+GET  https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/envelopes?user_id=ana
 POST .../envelopes                    { "category": "gasolina", "monthly_target": 2000 }
 POST .../envelopes/income-pattern     { "expected_amount": 565, "frequency_days": 11 }
 POST .../envelopes/confirm-allocation
 ```
 
-La idea: el usuario define gastos fijos mensuales por categoría (ej. gasolina $2000/mes), y cuando cae un depósito que coincide con su nómina, se reparte proporcional a cada apartado según los **días reales transcurridos** desde el depósito anterior — no una fracción fija de "1/4 si es semanal", porque el ingreso de Mia es irregular.
+La idea: el usuario define gastos fijos mensuales por categoría (ej. gasolina $2000/mes), y cuando cae un depósito que coincide con su nómina, se reparte proporcional a cada apartado según los **días reales transcurridos** desde el depósito anterior — no una fracción fija de "1/4 si es semanal", porque el ingreso de la persona (mesada/medio tiempo de Ana, o freelance en el prototipo original) es irregular.
 
 **Cómo distingue una nómina real de un depósito random (ej. un amigo mandando $100):** Nessie no da ninguna señal estructurada para esto (el objeto `deposit` solo trae monto, fecha y una descripción de texto libre). En vez de adivinar con pattern-matching frágil sobre texto, el usuario declara su patrón de ingreso **una sola vez** (`POST /envelopes/income-pattern`) — monto aproximado + frecuencia — y cada depósito nuevo se compara contra ese patrón con tolerancia. Solo un depósito que matchea dispara el reparto. Misma doctrina anti-alucinación del resto del proyecto: el sistema no asume, verifica contra algo ya confirmado explícitamente.
 
-**La tolerancia no es un 25% fijo — se deriva del historial real de depósitos.** Validado contra los 8 depósitos reales de Mia (ingreso freelance: $300-$720, media $565): un ±25% fijo dejaba **4 de 8 fuera de su propio patrón** — justo el perfil de ingreso irregular que el proyecto dice servir, rechazado por su propia verificación. `suggested_income_tolerance()` calcula ±2 desviaciones estándar sobre el historial real (piso de 30% si hay poco historial) en vez de un número arbitrario — con Mia da 54%, cubre sus 8 depósitos reales y sigue rechazando un depósito fuera de rango. Se puede forzar un `tolerance_pct` explícito si alguien lo prefiere.
+**La tolerancia no es un 25% fijo — se deriva del historial real de depósitos.** Validado originalmente contra los 8 depósitos reales de la persona de prueba original (ingreso freelance: $300-$720, media $565): un ±25% fijo dejaba **4 de 8 fuera de su propio patrón** — justo el perfil de ingreso irregular que el proyecto dice servir, rechazado por su propia verificación. `suggested_income_tolerance()` calcula ±2 desviaciones estándar sobre el historial real (piso de 30% si hay poco historial) en vez de un número arbitrario. Re-validado contra los 8 depósitos reales de Ana (mesada/medio tiempo: $1,150-$2,100 MXN, media $1,581): un ±25% fijo dejaría fuera 2 de sus 8 depósitos (justo los extremos, $1,150 y $2,100); la tolerancia derivada da 41% y cubre los 8. Se puede forzar un `tolerance_pct` explícito si alguien lo prefiere.
 
 **Disparo automático, sin endpoint nuevo que llamar:** reutiliza el mismo webhook de DynamoDB Streams del punto anterior — `jarbis-financiero-notifier` ya reacciona a cada depósito nuevo, ahora también intenta el reparto si coincide con el patrón.
 
@@ -285,11 +285,11 @@ Probado en vivo end-to-end: se crearon apartados de gasolina ($2000/mes) y comid
 - Un depósito de $100 inmediatamente después **no movió nada** — no coincide con el patrón, cero notificación, cero reparto.
 - Hallazgo de una auditoría propia durante esta prueba: los repartos a apartados se contaban como "gasto discrecional" en el score (`essential_ratio` cayó de 79 a 56), porque `signal_engine.py` no sabía que `category="envelope:*"` es una reasignación interna de dinero, no un gasto. Corregido tratándolo igual que `savings_transfer` (ni esencial ni discrecional, no dispara el guardrail de anomalía).
 
-**Nota de escala señalada por una revisión externa:** los montos de prueba de arriba ($2000/mes gasolina, $3000/mes comida) se ven a escala de MXN, mientras el resto de la historia de Mia (renta $650, depósitos ~$565) está en USD — inconsistencia cosmética de los datos de prueba, no del código (el sistema no impone moneda, solo números). Ajustar los montos de ejemplo antes de mostrarlos en el pitch para no generar confusión de moneda en vivo.
+**Nota histórica:** esta prueba (apartados de gasolina/comida, patrón de nómina ~$565/11 días) se corrió originalmente contra la persona de prueba anterior, ya eliminada. El sistema no impone moneda (son solo números) — con Ana, todos los montos de ejemplo ya están en MXN de forma consistente (ver seed/README.md).
 
 **Séptimo endpoint en vivo — reporte de confiabilidad exportable:**
 ```
-GET https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/trust-report?user_id=mia
+GET https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/trust-report?user_id=ana
 ```
 
 Convierte el score interno en un artefacto de confiabilidad: score actual + historial real (`score_history`) + **el historial completo de acciones verificadas**, sin importar si las disparó un checkpoint de `advance-day`, el chat, o el reparto automático de apartados, + un resumen narrativo generado de forma **determinística, no por un LLM** (cada número está respaldado por una transacción real en Nessie o un registro real en DynamoDB).
@@ -298,7 +298,7 @@ Ver [PITCH.md](./PITCH.md) para el porqué de este endpoint y a quién se lo ofr
 
 **Cómo evita el problema de las fuentes incompletas:** el log `ACTION#` solo lo escribe `advance-day` (tiene la narrativa más rica, incluye los momentos de "pedí confirmar antes de actuar"), pero si el reporte se basara solo en eso, se perdería cualquier acción ejecutada por el chat o por el reparto automático de apartados. La solución: también se lee `NOTIFICATION#`, que el webhook de DynamoDB Streams escribe sobre **cualquier** escritura real sin importar el origen — y se deduplica por cercanía de timestamp (~5 segundos) para no contar el mismo evento real dos veces cuando ambas fuentes lo capturan.
 
-Probado en vivo: se corrieron los 4 checkpoints de la demo + una acción adicional por chat (mover $15 a ahorro, fuera del flujo de `advance-day`) — el reporte final mostró correctamente las 5 acciones (1 fuga resuelta, 3 movimientos reales de dinero, 1 confirmación pedida), sin duplicados, con el resumen: *"En 88 días de historial verificado, el agente detectó y resolvió 1 fuga(s) de gasto, ejecutó 3 acción(es) real(es) sobre el dinero de mia, y pidió confirmación humana en 1 ocasión(es) antes de actuar cuando el riesgo lo ameritaba. Su score de resiliencia pasó de 54 a 73."*
+Probado en vivo (originalmente contra la persona de prueba ya eliminada): se corrieron los 4 checkpoints de la demo + una acción adicional por chat (mover $15 a ahorro, fuera del flujo de `advance-day`) — el reporte final mostró correctamente las 5 acciones (1 fuga resuelta, 3 movimientos reales de dinero, 1 confirmación pedida), sin duplicados, con el resumen (cita textual de esa corrida histórica): *"En 88 días de historial verificado, el agente detectó y resolvió 1 fuga(s) de gasto, ejecutó 3 acción(es) real(es) sobre el dinero de [usuario], y pidió confirmación humana en 1 ocasión(es) antes de actuar cuando el riesgo lo ameritaba. Su score de resiliencia pasó de 54 a 73."* El resumen es determinístico y genérico (usa el nombre real de la persona activa) — el mismo mecanismo corre hoy sobre Ana.
 
 **`/signals` también trae `upcoming_expenses` — gastos recurrentes que se esperan pronto, calculados de la cadencia real observada por categoría** (ej. "sueles pagar renta cada ~30 días, la próxima esperada es el 17 de septiembre, ~$650"). No asume periodicidad fija ni inventa nada: requiere al menos 3 ocurrencias reales de esa categoría, y descarta categorías donde el intervalo entre gastos es demasiado irregular (coeficiente de variación > 50%) para no fingir que un gasto genuinamente aleatorio es predecible. Expuesto también como tool de chat (`get_upcoming_expenses`). Es la parte "barata" de una idea más grande (avisar de gastos estacionales tipo diciembre). Esa parte "cara" ya se evaluó con medición real contra Nessie y **se decidió no construirla por ahora** — el tiempo de sembrado no es el problema (medido: hasta 5 años cabrían en minutos), sino que la versión barata no alcanza el propio estándar anti-alucinación de esta misma función (≥3 ocurrencias reales) y mostrarla en vivo tocaría el guion de demo ya ensayado. Detalle completo en [PLAN.md](./PLAN.md), sección 6.
 
@@ -306,17 +306,17 @@ Probado en vivo: se corrieron los 4 checkpoints de la demo + una acción adicion
 
 **Octavo endpoint en vivo — nómina real de un tercero (no una cuenta nuestra):**
 ```
-POST https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/envelopes/simulate-payroll?user_id=mia
-     { "employer_label": "Estudio Creativo", "amount": 565 }   -- ambos campos opcionales
+POST https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/envelopes/simulate-payroll?user_id=ana
+     { "employer_label": "Papa y mama", "amount": 565 }   -- ambos campos opcionales, default "Papa y mama" para Ana
 ```
 
-Hasta este punto, cada depósito de prueba usado para disparar el reparto automático de apartados se había insertado con nuestra propia cuenta/llave de Nessie — convincente para probar la lógica, pero no demuestra que el dinero venga de verdad de alguien más. Este endpoint mueve dinero real entre **dos cuentas de Nessie con dueños distintos**: un segundo customer (`Estudio Creativo`, el "cliente/empleador" de Mia) creado con la api key de un tercero, y la cuenta de Mia con la nuestra. `nessie_actions.receive_from_third_party` hace un `withdrawal` real en la cuenta ajena (autenticado con esa otra key) + un `deposit` real en la cuenta de Mia — dos transacciones con `_id` propio, verificables por separado en Nessie, no un solo movimiento interno como `sweep_to_savings`.
+Hasta este punto, cada depósito de prueba usado para disparar el reparto automático de apartados se había insertado con nuestra propia cuenta/llave de Nessie — convincente para probar la lógica, pero no demuestra que el dinero venga de verdad de alguien más. Este endpoint mueve dinero real entre **dos cuentas de Nessie con dueños distintos**: un segundo customer (el "empleador"/tercero que deposita, re-narrado de "Estudio Creativo" a "Papa y mama" con el pivote a Ana) creado con la api key de un tercero, y la cuenta real del usuario con la nuestra. `nessie_actions.receive_from_third_party` hace un `withdrawal` real en la cuenta ajena (autenticado con esa otra key) + un `deposit` real en la cuenta del usuario — dos transacciones con `_id` propio, verificables por separado en Nessie, no un solo movimiento interno como `sweep_to_savings`.
 
 **Detalle de arquitectura que vale explicitar:** nuestro sistema no escucha eventos de Nessie (Nessie no manda webhooks). Reacciona a escrituras en **nuestra propia tabla de DynamoDB** vía Streams. Por eso este endpoint, además de mover el dinero real en Nessie, escribe el depósito correspondiente en `jarbis-financiero-data` — ese `INSERT` es lo que de verdad dispara `lambda_notifier` → `verified_allocate_envelopes`, exactamente el mismo camino reactivo que cualquier otro depósito. Esto no es una limitación cosmética: es la misma arquitectura que tendría un banco real (reacciona a su propio núcleo bancario, no a sondear una API externa) — Nessie hace de sustituto del riel de pago (ACH/SPEI), DynamoDB hace de núcleo bancario.
 
 El monto por default es el patrón de nómina ya declarado (`get_income_pattern`) para que "encaje" sin tener que capturarlo a mano en vivo; se puede forzar un monto distinto para demostrar en el mismo demo que un depósito fuera de patrón **se recibe pero no se reparte solo** (`matches_income_pattern: false`).
 
-Probado en vivo de punta a punta, con las dos cuentas reales: `POST /envelopes/simulate-payroll` movió $565 de la cuenta del tercero a la de Mia (dos IDs de transacción reales en Nessie) → segundos después `/notifications` ya mostraba "Nómina detectada, pero repartirla dejaría tu colchón muy bajo — pendiente de confirmar" (el guardrail de liquidez de 7 días hizo su trabajo, ni siquiera con dinero de una cuenta ajena se salta la verificación) → `POST /envelopes/confirm-allocation` repartió $213.34 proporcional entre los 3 apartados → `GET /envelopes` reflejó los saldos nuevos. Reseteado a Día 0 después de la prueba (`reset=true` ahora también limpia los depósitos de esta demo y los repartos ya ejecutados, adición necesaria porque antes del reset no tocaba `category="envelope:*"`).
+Probado en vivo de punta a punta contra la persona de prueba original, con las dos cuentas reales: `POST /envelopes/simulate-payroll` movió $565 de la cuenta del tercero a la suya (dos IDs de transacción reales en Nessie) → segundos después `/notifications` ya mostraba "Nómina detectada, pero repartirla dejaría tu colchón muy bajo — pendiente de confirmar" (el guardrail de liquidez de 7 días hizo su trabajo, ni siquiera con dinero de una cuenta ajena se salta la verificación) → `POST /envelopes/confirm-allocation` repartió $213.34 proporcional entre los 3 apartados → `GET /envelopes` reflejó los saldos nuevos. Reseteado a Día 0 después de la prueba (`reset=true` ahora también limpia los depósitos de esta demo y los repartos ya ejecutados, adición necesaria porque antes del reset no tocaba `category="envelope:*"`). Re-verificado contra Ana al corregir el bug de `ACCOUNTS_BY_USER` (ver sección de pivote arriba): se declaró su patrón de nómina real (~$1,581 cada 12 días, tolerancia 41%) y un apartado de Transporte ($300/mes) — el depósito de prueba llegó de verdad a la cuenta de Ana (`GET /accounts/{ana_checking}/deposits`), confirmando que el fix de cuenta hardcodeada quedó resuelto.
 
 **Nota de manejo de credenciales:** la api key de la cuenta del tercero vive únicamente como variable de entorno del Lambda (`EMPLOYER_NESSIE_API_KEY`), nunca en el código fuente ni en este repo — mismo tratamiento que la key principal (`NESSIE_API_KEY`).
 
@@ -342,7 +342,7 @@ Probado en vivo contra la cuenta real de Ana: *"¿qué pasaría con mi score si 
 
 Solo cuenta compras reales de comercio — un depósito de mesada o un reparto a apartados no prueba que el banco vea la tarjeta en uso, así que ambos quedan excluidos (mismo `is_neutral()` que ya usa el resto del motor). Genera una alerta nueva (`activation_warning`, "Tarjeta inactiva") cuando el status es `dormida`. Aparece automáticamente en `GET /signals` y en `get_status` del chat, sin tool nueva.
 
-Probado en vivo contra las dos cuentas reales: Ana y Mia salen `activa` (100/100, última compra hace 0 días, 20 y 26 compras respectivamente en los últimos 30 días) — el número tiene sentido porque ambas tienen historial de compras reciente sembrado hasta el día de hoy. 7 tests nuevos, 114 en total en el backend.
+Probado en vivo contra la cuenta real de Ana: sale `activa` (100/100, última compra hace 0 días, 20 compras en los últimos 30 días) — el número tiene sentido porque su historial de compras está sembrado hasta el día de hoy. 7 tests nuevos, 114 en total en el backend.
 
 **Registro de gasto externo (efectivo/otra tarjeta) + índice de wallet share — nuevo tool de chat:**
 ```
@@ -385,7 +385,7 @@ Detalle completo de la historia simulada en [`/seed/README.md`](./seed/README.md
 1. **Pantalla 1 — Dashboard (home).** Login/onboarding: mockeado o saltado, no le gastes tiempo. Aterrizas directo aquí.
 2. **Pantalla 2 — Chat con el agente**, a pantalla completa (no un panel lateral apretado) — al estilo Eno real. Se llega por **un solo botón/ícono de chat siempre visible**, siempre el mismo destino — ese es todo el riesgo de navegación que se agrega.
 
-Narrativa de demo que esto habilita: *"aquí está Mia hoy (pantalla 1) → le pica al chat, aquí confirmó lo del gimnasio (pantalla 2) → regresamos y miren cómo ya subió el score (pantalla 1 de nuevo)"*.
+Narrativa de demo que esto habilita: *"aquí está Ana hoy (pantalla 1) → le pica al chat, aquí confirmó lo de FitZone Campus (pantalla 2) → regresamos y miren cómo ya subió el score (pantalla 1 de nuevo)"*.
 
 **Qué mostrar en el Dashboard (pantalla 1), en orden de importancia:**
 
@@ -437,7 +437,7 @@ Si el shape real cambia, avisa al resto del equipo antes de romperlo — es el c
 
 **Endpoint real ya en vivo (usa este en lugar del mock cuando quieras):**
 ```
-GET https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/signals?user_id=mia
+GET https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com/signals?user_id=ana
 ```
 Copia [`.env.example`](./.env.example) a `.env` — ahí está la URL como `VITE_API_BASE_URL`.
 
@@ -466,7 +466,7 @@ Dos agentes de revisión (uno para backend, uno para frontend) auditaron todo el
 **Pendiente antes de la demo real (no bloquea seguir construyendo):**
 - ~~Confirmar cuota de la API key de Gemini o habilitar billing~~ — **ya resuelto.** Billing activo (Cloud Prepay, MXN 100), modelo de vuelta a `gemini-3.6-flash`, probado en vivo con ráfaga de 8 llamadas sin ningún 429.
 - Dominio `.tech` propio, si el equipo lo tiene — conectarlo a la distribución de CloudFront ya existente
-- **Pivote de producto a Spark (persona Ana, re-seed, señal de activación, módulo de ofertas)** — documentación ya actualizada (este README, PLAN.md, PITCH.md); código pendiente, ver PLAN.md sección 8.
+- ~~Pivote de producto a Spark (persona Ana, re-seed, señal de activación, módulo de ofertas)~~ — **✅ resuelto**, código y documentación al día, persona anterior eliminada. Ver PLAN.md sección 8. Pendiente real: módulo de ofertas/card-linked offers (8.4) sigue sin construir.
 
 ## Track
 
