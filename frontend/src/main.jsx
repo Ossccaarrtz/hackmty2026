@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, ChevronLeft, Search, Bell, Send, User, Lock, Eye, EyeOff, Download, PiggyBank, CalendarDays, Gift, Percent, TrendingUp, Coins, GraduationCap } from 'lucide-react';
+import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, ChevronLeft, Search, Bell, Send, User, Lock, Eye, EyeOff, Download, PiggyBank, CalendarDays, Gift } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { api, sessionKey } from './api.js';
 import { appendCheckpoint, appendChatExchange, emptySession, normalizeData } from './data.js';
@@ -11,17 +11,44 @@ const money = value => Number.isFinite(value) ? new Intl.NumberFormat('en-US', {
 // Debe calzar con EXTERNAL_EXPENSE_CATEGORIES/EXTERNAL_CATEGORY_LABELS en
 // agent_actions.py -- son las mismas 5 categorias que usa el resto del
 // motor de senales, a proposito no se inventa una taxonomia nueva.
+// Ilustraciones planas propias (sin depender de imagenes externas -- nada que
+// romperse en la demo) para el apartado de Beneficios. Sencillas a proposito:
+// formas basicas con la paleta de marca, no iconos de linea.
+function BenefitIllustrationNoFee() {
+  return <svg viewBox="0 0 80 80" className="benefit-illustration" aria-hidden="true">
+    <rect x="8" y="20" width="64" height="42" rx="10" fill="var(--c1-navy)" />
+    <rect x="8" y="20" width="64" height="14" rx="10" fill="var(--c1-navy-dark)" />
+    <rect x="16" y="42" width="18" height="13" rx="3" fill="#ffd166" />
+    <circle cx="58" cy="16" r="15" fill="var(--c1-red)" />
+    <text x="58" y="21" textAnchor="middle" fontSize="13" fontWeight="700" fill="#fff">$0</text>
+  </svg>;
+}
+function BenefitIllustrationCreditHistory() {
+  return <svg viewBox="0 0 80 80" className="benefit-illustration" aria-hidden="true">
+    <rect x="10" y="50" width="12" height="20" rx="3" fill="#a9c4e0" />
+    <rect x="28" y="38" width="12" height="32" rx="3" fill="#6fa2cf" />
+    <rect x="46" y="24" width="12" height="46" rx="3" fill="var(--c1-navy)" />
+    <path d="M46 20 L66 8 L60 26 Z" fill="var(--c1-red)" />
+    <path d="M18 44 L38 30 L58 14" stroke="var(--c1-red)" strokeWidth="4" fill="none" strokeLinecap="round" />
+  </svg>;
+}
+function BenefitIllustrationAlerts() {
+  return <svg viewBox="0 0 80 80" className="benefit-illustration" aria-hidden="true">
+    <path d="M40 14a16 16 0 00-16 16v10l-6 10h44l-6-10V30a16 16 0 00-16-16z" fill="var(--c1-navy)" />
+    <path d="M33 60a7 7 0 0014 0z" fill="var(--c1-navy)" />
+    <circle cx="58" cy="20" r="16" fill="none" stroke="var(--c1-red)" strokeWidth="3" opacity="0.35" />
+    <circle cx="58" cy="20" r="10" fill="none" stroke="var(--c1-red)" strokeWidth="3" opacity="0.6" />
+    <circle cx="58" cy="20" r="5" fill="var(--c1-red)" />
+  </svg>;
+}
 // Hardcodeado a proposito -- estos son ejemplos de beneficios reales que
 // tendria la tarjeta-credencial universitaria de Kivo, no datos que vengan
 // del backend. Elegidos para reforzar el propio pitch del proyecto (historial
-// sin Buro, alertas en tiempo real, educacion financiera) en vez de generico.
+// sin Buro, alertas en tiempo real) en vez de una lista generica.
 const BENEFITS = [
-  { icon: Percent, title: 'Sin anualidad', detail: 'Nunca pagas por tener la tarjeta, la uses mucho o poco.' },
-  { icon: TrendingUp, title: 'Historial sin Buró', detail: 'Cada mes de uso responsable construye tu historial crediticio, aunque sea tu primera tarjeta.' },
-  { icon: Bell, title: 'Alertas en tiempo real', detail: 'Te avisamos de cada movimiento al instante -- un cargo nunca te toma por sorpresa.' },
-  { icon: Lock, title: 'Bloqueo instantáneo', detail: 'Si la pierdes, la bloqueas desde la app en un toque, sin llamar a nadie.' },
-  { icon: Coins, title: 'Cashback en lo esencial', detail: 'Devolución en supermercado y transporte, las categorías que más usa una estudiante.' },
-  { icon: GraduationCap, title: 'Educación financiera integrada', detail: 'Kivo te explica cada decisión en el momento, no solo te muestra números.' },
+  { Illustration: BenefitIllustrationNoFee, title: 'Sin anualidad', detail: 'Nunca pagas por tener la tarjeta, la uses mucho o poco.' },
+  { Illustration: BenefitIllustrationCreditHistory, title: 'Historial sin Buró', detail: 'Cada mes de uso responsable construye tu historial crediticio, aunque sea tu primera tarjeta.' },
+  { Illustration: BenefitIllustrationAlerts, title: 'Alertas en tiempo real', detail: 'Te avisamos de cada movimiento al instante -- un cargo nunca te toma por sorpresa.' },
 ];
 const BUDGET_CATEGORY_OPTIONS = [
   { value: 'rent', label: 'Renta' }, { value: 'groceries', label: 'Comida/Despensa' },
@@ -728,7 +755,7 @@ function App() {
           <p className="muted-copy">Lo que ya trae tu tarjeta-credencial, sin que tengas que buscarlo en letras chiquitas.</p>
           <div className="benefits-grid">
             {BENEFITS.map(benefit => <div className="benefit-card" key={benefit.title}>
-              <span className="benefit-icon"><benefit.icon size={22} /></span>
+              <benefit.Illustration />
               <strong>{benefit.title}</strong>
               <p>{benefit.detail}</p>
             </div>)}
