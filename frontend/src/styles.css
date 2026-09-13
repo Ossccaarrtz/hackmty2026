@@ -271,3 +271,79 @@ body,.login-page{
     background-attachment:scroll;
   }
 }
+
+/* Navegación inferior: conserva los mismos destinos y comportamiento. */
+body{padding-bottom:112px}
+.connected-dashboard{
+  grid-template-columns:minmax(0,1.85fr) minmax(350px,1fr);
+  padding-left:40px;
+  padding-bottom:40px;
+}
+.connected-dashboard.full-page-layout{grid-template-columns:minmax(0,1fr)}
+.connected-dashboard .sidebar{
+  position:fixed;
+  left:50%;
+  bottom:20px;
+  translate:-50% 0;
+  z-index:40;
+  width:min(680px,calc(100vw - 36px));
+  height:72px;
+  padding:9px 12px;
+  flex-direction:row;
+  justify-content:center;
+  gap:12px;
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:25px;
+  background:rgba(7,18,27,.94);
+  box-shadow:0 18px 45px rgba(8,25,39,.24),inset 0 1px 0 rgba(255,255,255,.08);
+  backdrop-filter:blur(18px);
+}
+.connected-dashboard .sidebar .brand-mark{display:none}
+.connected-dashboard .sidebar nav{
+  flex:1;
+  flex-direction:row;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  margin:0;
+}
+.connected-dashboard .sidebar .nav-button{color:#dce8ef}
+.connected-dashboard .sidebar .nav-button:hover{background:rgba(255,255,255,.1)}
+.connected-dashboard .sidebar .nav-button.active{background:#fff;color:#102330}
+.connected-dashboard .sidebar-bottom{
+  margin:0;
+  padding-left:12px;
+  flex-direction:row;
+  gap:8px;
+  border-left:1px solid rgba(255,255,255,.16);
+}
+.connected-dashboard .sidebar .notification i{background:var(--c1-red);border-color:#fff}
+.connected-dashboard .sidebar .mia-avatar{width:46px;height:46px;margin:0;background:#eaf1f7;color:var(--c1-navy-dark)}
+.connected-dashboard .right-column{grid-column:auto}
+
+@media(max-width:1100px){
+  .connected-dashboard,.connected-dashboard.full-page-layout{
+    grid-template-columns:minmax(0,1fr);
+    padding-left:28px;
+  }
+  .connected-dashboard .right-column{grid-column:auto}
+}
+
+@media(max-width:700px){
+  body{padding-bottom:94px}
+  .connected-dashboard{padding:20px 16px 26px}
+  .connected-dashboard .sidebar{
+    bottom:10px;
+    width:calc(100vw - 20px);
+    height:66px;
+    padding:7px 9px;
+    gap:5px;
+    border-radius:22px;
+  }
+  .connected-dashboard .sidebar nav{gap:2px}
+  .connected-dashboard .sidebar .nav-button{width:39px;height:46px;border-radius:15px}
+  .connected-dashboard .sidebar .nav-button svg{width:20px;height:20px}
+  .connected-dashboard .sidebar-bottom{padding-left:6px;gap:2px}
+  .connected-dashboard .sidebar-bottom>.notification{display:none}
+  .connected-dashboard .sidebar .mia-avatar{width:39px;height:39px}
+}
