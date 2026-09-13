@@ -1,8 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&display=swap');
 
-/* Paleta inspirada en Capital One (navy + rojo como acento puntual) --
-   reemplaza los gradientes azul/morado tipo "producto de IA generico"
-   por bloques de color planos, mas cercanos a una banca real. */
+/* Paleta de marca Kivo (navy + rojo como acento puntual) --
+   bloques de color planos, mas cercanos a una banca real, en vez de
+   los gradientes azul/morado tipo "producto de IA generico". */
 :root{
   --c1-navy:#004977; --c1-navy-dark:#00304f; --c1-red:#d22630;
   --c1-bg:#eef1f5; --c1-surface:#ffffff; --c1-border:#d7dee7;
@@ -389,7 +389,7 @@ body{padding-bottom:112px}
 .connected-dashboard .sidebar .user-avatar{width:46px;height:46px;margin:0;background:#eaf1f7;color:var(--c1-navy-dark)}
 .connected-dashboard .right-column{grid-column:auto}
 .page-brand{display:flex;align-items:center;gap:12px}
-.page-brand-logo{display:block;width:92px;height:34px;object-fit:contain}
+.page-brand-logo{display:block;width:38px;height:38px;object-fit:contain}
 
 @media(max-width:1100px){
   .connected-dashboard,.connected-dashboard.full-page-layout{
@@ -417,5 +417,5 @@ body{padding-bottom:112px}
   .connected-dashboard .sidebar-bottom>.notification{display:none}
   .connected-dashboard .sidebar .user-avatar{width:39px;height:39px}
   .page-brand{gap:8px}
-  .page-brand-logo{width:72px;height:28px}
+  .page-brand-logo{width:30px;height:30px}
 }
