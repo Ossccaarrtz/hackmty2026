@@ -410,19 +410,29 @@ def lambda_handler(event, context):
 
         candidate = result["candidates"][0]
         parts = candidate.get("content", {}).get("parts", [])
-        function_call = next((p["functionCall"] for p in parts if "functionCall" in p), None)
+        function_calls = [p["functionCall"] for p in parts if "functionCall" in p]
 
-        if not function_call:
+        if not function_calls:
             visible_reply = "".join(p.get("text", "") for p in parts) or "No tengo una respuesta clara para eso."
             break
 
+        # Gemini puede pedir VARIAS tools en un solo turno (ej. "compre 3
+        # pizzas, 2 aguas y pague transporte" -> 3 llamadas a
+        # log_external_expense de una vez). Antes solo se ejecutaba la
+        # primera (next(...)) y las demas se descartaban en silencio --
+        # Gemini seguia sin haber recibido functionResponse para esas
+        # llamadas, pero de todos modos las mencionaba en su resumen final
+        # como si hubieran pasado, montos que find_unverified_amounts
+        # correctamente marcaba como no verificados porque nunca se
+        # ejecutaron de verdad. Hay que resolver TODAS las llamadas del
+        # turno y regresar un functionResponse por cada una.
         contents.append({"role": "model", "parts": parts})
-        tool_result = execute_tool(function_call["name"], function_call.get("args", {}), user_id)
-        actions_taken.append({"tool": function_call["name"], "args": function_call.get("args", {}), "result": tool_result})
-        contents.append({
-            "role": "user",
-            "parts": [{"functionResponse": {"name": function_call["name"], "response": tool_result}}],
-        })
+        response_parts = []
+        for function_call in function_calls:
+            tool_result = execute_tool(function_call["name"], function_call.get("args", {}), user_id)
+            actions_taken.append({"tool": function_call["name"], "args": function_call.get("args", {}), "result": tool_result})
+            response_parts.append({"functionResponse": {"name": function_call["name"], "response": tool_result}})
+        contents.append({"role": "user", "parts": response_parts})
     else:
         visible_reply = "Esto necesito mas pasos de los permitidos, intenta reformular tu mensaje."
 

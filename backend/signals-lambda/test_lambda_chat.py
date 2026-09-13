@@ -13,8 +13,10 @@ que en el TEXTO de la respuesta, no en una accion ejecutada.
 
 Correr con: python -m unittest test_lambda_chat -v
 """
+import json
 import os
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("GEMINI_API_KEY", "test-key")  # lambda_chat.py la exige al importarse
 import lambda_chat as chat  # noqa: E402
@@ -101,3 +103,70 @@ class TestRedactUnverifiedAmounts(unittest.TestCase):
         reply = "Tu meta es de $80,000, con un aporte de $69.32/mes."
         redacted = chat.redact_unverified_amounts(reply, verified={80000.0, 69.32})
         self.assertEqual(redacted, reply)
+
+
+class TestLambdaHandlerMultipleToolCallsInOneTurn(unittest.TestCase):
+    """Unica clase de este archivo que si mockea (call_gemini/execute_tool/
+    historial) -- justificado por un hallazgo real: Gemini pedia VARIAS
+    tools en un solo turno (ej. "compre 3 pizzas, 2 aguas y pague
+    transporte" -> tres llamadas a log_external_expense de una vez), pero
+    el loop de lambda_handler solo ejecutaba la primera (next(...) sobre la
+    lista de parts) y descartaba las demas en silencio. El modelo de todos
+    modos las mencionaba en su resumen final, y como esas dos nunca se
+    ejecutaron de verdad, find_unverified_amounts las marcaba (con razon)
+    como '[monto no confirmado]' -- pero el problema real no era el texto,
+    era que esos dos gastos NUNCA se guardaron en DynamoDB."""
+
+    def _calls(self, *name_args_pairs):
+        return {"candidates": [{"content": {"parts": [
+            {"functionCall": {"name": name, "args": args}} for name, args in name_args_pairs
+        ]}}]}
+
+    def _text(self, text):
+        return {"candidates": [{"content": {"parts": [{"text": text}]}}]}
+
+    def _event(self, message):
+        return {"body": json.dumps({"message": message, "user_id": "ana"})}
+
+    @patch.object(chat, "save_chat_history")
+    @patch.object(chat, "get_chat_history", return_value=[])
+    @patch.object(chat, "execute_tool")
+    @patch.object(chat, "call_gemini")
+    def test_executes_every_function_call_requested_in_a_single_turn(self, mock_gemini, mock_execute, mock_history, mock_save):
+        mock_execute.side_effect = [
+            {"ok": True, "amount": 300.0}, {"ok": True, "amount": 40.0}, {"ok": True, "amount": 60.0},
+        ]
+        mock_gemini.side_effect = [
+            self._calls(
+                ("log_external_expense", {"amount": 300, "category": "groceries", "source": "cash"}),
+                ("log_external_expense", {"amount": 40, "category": "groceries", "source": "cash"}),
+                ("log_external_expense", {"amount": 60, "category": "transport", "source": "cash"}),
+            ),
+            self._text("Registre $300 en pizzas, $40 en aguas y $60 en transporte."),
+        ]
+        response = chat.lambda_handler(self._event("compre 3 pizzas de 100, 2 aguas de 20 y pague 60 de transporte, todo en efectivo"), None)
+        body = json.loads(response["body"])
+        self.assertEqual(mock_execute.call_count, 3)
+        self.assertEqual(len(body["actions_taken"]), 3)
+        self.assertNotIn("no confirmado", body["reply"])
+
+    @patch.object(chat, "save_chat_history")
+    @patch.object(chat, "get_chat_history", return_value=[])
+    @patch.object(chat, "execute_tool")
+    @patch.object(chat, "call_gemini")
+    def test_sends_one_function_response_per_function_call(self, mock_gemini, mock_execute, mock_history, mock_save):
+        """Gemini espera un functionResponse por cada functionCall del turno
+        -- mandar menos de los que pidio deja la conversacion desincronizada
+        para el siguiente turno."""
+        mock_execute.side_effect = [{"ok": True, "amount": 40.0}, {"ok": True, "amount": 60.0}]
+        mock_gemini.side_effect = [
+            self._calls(
+                ("log_external_expense", {"amount": 40, "category": "groceries", "source": "cash"}),
+                ("log_external_expense", {"amount": 60, "category": "transport", "source": "cash"}),
+            ),
+            self._text("Listo."),
+        ]
+        chat.lambda_handler(self._event("compre aguas y pague transporte en efectivo"), None)
+        second_call_contents = mock_gemini.call_args_list[1].args[0]
+        function_response_parts = [p for p in second_call_contents[-1]["parts"] if "functionResponse" in p]
+        self.assertEqual(len(function_response_parts), 2)
