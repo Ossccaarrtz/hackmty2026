@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, ChevronLeft, Search, Bell, Send, User, Lock, Eye, EyeOff, FileText, Copy, Check, Download, PiggyBank, CalendarDays } from 'lucide-react';
+import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, ChevronLeft, Search, Bell, Send, User, Lock, Eye, EyeOff, Download, PiggyBank, CalendarDays } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { api, sessionKey } from './api.js';
 import { appendCheckpoint, appendChatExchange, emptySession, normalizeData } from './data.js';
@@ -48,7 +48,7 @@ const SCORE_FACTOR_EXPLAINERS = {
   bill_health: '¿Los cargos fijos que tienes (como una membresía) los sigues usando de verdad? Si detectamos uno que ya no usas, este número baja -- por eso te avisamos antes de que siga cobrándote.',
   liquidity_cushion: '¿Cuántos días podrías cubrir tus gastos esenciales si hoy dejaras de recibir dinero? Más días cubiertos, más colchón para un imprevisto.',
 };
-// El feed de acciones y el reporte de confianza traen `action.type` en snake_case tal
+// El feed de acciones trae `action.type` en snake_case tal
 // cual lo usa el backend internamente (nombre de tool o tipo de evento) -- sin esto se
 // veian literales como "verification_blocked" o "move_to_savings" en la UI de Ana.
 const ACTION_TYPE_LABELS = {
@@ -281,15 +281,11 @@ function App() {
   const [notice, setNotice] = useState('');
   const [newNotification, setNewNotification] = useState(null);
   const lastNotificationSk = useRef(null);
-  const [trustReport, setTrustReport] = useState(null);
-  const [trustLoading, setTrustLoading] = useState(false);
-  const [trustError, setTrustError] = useState('');
   const [calendarExpenses, setCalendarExpenses] = useState(null);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarError, setCalendarError] = useState('');
   const [calendarMonthOffset, setCalendarMonthOffset] = useState(0);
   const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
-  const [summaryCopied, setSummaryCopied] = useState(false);
   const [statementMonth, setStatementMonth] = useState('');
   const [budgetData, setBudgetData] = useState(null);
   const [budgetLoading, setBudgetLoading] = useState(false);
@@ -362,21 +358,6 @@ function App() {
   const calendarDisplayedYearMonth = calendarReferenceYearMonth ? shiftYearMonth(calendarReferenceYearMonth, calendarMonthOffset) : null;
   const calendarCells = calendarDisplayedYearMonth ? buildCalendarGrid(calendarDisplayedYearMonth) : [];
   const selectedCalendarExpenses = selectedCalendarDay ? (calendarExpensesByDate[selectedCalendarDay] || []) : [];
-  const MONEY_MOVING_TYPES = ['bill_stopped', 'savings_moved', 'notification']; // mismo criterio que agent_actions.get_trust_report en el backend
-  const trustStats = trustReport ? {
-    resolvedLeaks: trustReport.verified_actions.filter(a => a.type === 'bill_stopped').length,
-    moneyActions: trustReport.verified_actions.filter(a => MONEY_MOVING_TYPES.includes(a.type)).length,
-    confirmations: trustReport.verified_actions.filter(a => a.requires_confirmation).length,
-  } : null;
-
-  async function loadTrustReport() {
-    setSummaryCopied(false);
-    setTrustLoading(true);
-    setTrustError('');
-    try { setTrustReport(await api.getTrustReport()); }
-    catch (err) { setTrustError(err.message); }
-    finally { setTrustLoading(false); }
-  }
   async function loadCalendar() {
     setCalendarLoading(true);
     setCalendarError('');
@@ -387,13 +368,6 @@ function App() {
       setCalendarExpenses(result?.upcoming_expenses || []);
     } catch (err) { setCalendarError(err.message); }
     finally { setCalendarLoading(false); }
-  }
-  function copyTrustSummary() {
-    if (!trustReport?.summary) return;
-    navigator.clipboard?.writeText(trustReport.summary).then(() => {
-      setSummaryCopied(true);
-      window.setTimeout(() => setSummaryCopied(false), 2000);
-    }).catch(() => { /* clipboard is best-effort */ });
   }
   async function loadBudget() {
     setBudgetLoading(true);
@@ -515,7 +489,6 @@ function App() {
     return () => clearInterval(id);
   }, [authed]);
   useEffect(() => { if (!newNotification) return; const t = setTimeout(() => setNewNotification(null), 8000); return () => clearTimeout(t); }, [newNotification]);
-  useEffect(() => { if (page === 'trust') loadTrustReport(); }, [page]);
   useEffect(() => { if (page === 'calendar') { setSelectedCalendarDay(null); setCalendarMonthOffset(0); loadCalendar(); } }, [page]);
   useEffect(() => { if (page === 'envelopes') { setBudgetNotice(''); loadBudget(); } }, [page]);
   useEffect(() => { try { sessionStorage.setItem(sessionKey, JSON.stringify(session)); } catch { /* Storage is optional. */ } }, [session]);
@@ -587,7 +560,7 @@ function App() {
 
   return <>
   <motion.main className={`dashboard connected-dashboard ${isFullPage ? 'full-page-layout page-focused' : ''}`} variants={dashboardContainer} initial="hidden" animate="visible">
-    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Kivo', 'chat'], [Wallet, 'Movimientos', 'transactions'], [CalendarDays, 'Calendario de gastos', 'calendar'], [FileText, 'Reporte de confianza', 'trust'], [PiggyBank, 'Presupuesto', 'envelopes']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
+    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Kivo', 'chat'], [Wallet, 'Movimientos', 'transactions'], [CalendarDays, 'Calendario de gastos', 'calendar'], [PiggyBank, 'Presupuesto', 'envelopes']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
     <section className="main-column">
       <motion.header className="page-header" variants={dashboardItem}><div><div className="page-brand"><img src="/kivo-logo.png" alt="" className="page-brand-logo" /><h1 className="sr-only">Kivo</h1></div><p>Hola, Ana. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></motion.header>
       {error && <div className="error-banner" role="alert">{error} <button disabled={loading || busy} onClick={refresh}>Reintentar lectura</button></div>}
@@ -675,46 +648,6 @@ function App() {
               {selectedCalendarExpenses.map((item, index) => <div className="detail-line" key={index}><span>{item.category_label}<small>{item.days_until === 0 ? 'Hoy' : item.days_until === 1 ? 'Mañana' : item.days_until > 0 ? `En ${item.days_until} días` : `Hace ${-item.days_until} días`} · {item.confidence}% confianza, según tu historial de compras</small></span><strong>{money(item.expected_amount)}</strong></div>)}
             </div> : <p className="empty calendar-hint">{Object.keys(calendarExpensesByDate).length ? 'Toca un día marcado para ver el gasto esperado.' : 'Todavía no hay gastos recurrentes predecibles -- Kivo necesita al menos 3 compras reales de una misma categoría para poder anticiparla.'}</p>}
           </>}
-        </motion.section>}
-        {page === 'trust' && <motion.section className="glass page-panel" key="trust-page"
-          initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
-          transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
-          <header className="card-heading"><h2>Reporte de confianza</h2>{backToHome}</header>
-          <p className="muted-copy">Evidencia verificada del comportamiento del agente, no una proyección: cada acción listada aquí ocurrió de verdad.</p>
-          {trustLoading && <p className="empty">Generando reporte…</p>}
-          {trustError && <div className="error-banner" role="alert">{trustError} <button onClick={loadTrustReport}>Reintentar</button></div>}
-          {trustReport && <>
-            <div className="trust-stats">
-              <div className="trust-stat"><strong>{trustStats.resolvedLeaks}</strong><span>Fugas resueltas</span></div>
-              <div className="trust-stat"><strong>{trustStats.moneyActions}</strong><span>Acciones reales sobre el dinero</span></div>
-              <div className="trust-stat"><strong>{trustStats.confirmations}</strong><span>Confirmaciones pedidas antes de actuar</span></div>
-            </div>
-            <div className="detail-line"><span>Score actual<small>Tendencia</small></span><strong><TrendBadge trend={trustReport.score.trend} /> {trustReport.score.value}/100</strong></div>
-            <LineChart values={trustReport.score_history.map(point => point.value)} label="Historial completo de score" />
-            <h3>Cómo se compone tu score</h3>
-            {trustReport.score.breakdown.map(item => <div className="detail-line score-factor-line" key={item.key}><span>{item.label}<small className="score-factor-explainer">{SCORE_FACTOR_EXPLAINERS[item.key]}</small><small className="score-factor-technical">{item.detail} · Peso: {item.weight}%</small></span><strong>{item.value}/100</strong></div>)}
-            <div className="detail-line"><span>Colchón de liquidez</span><strong>{trustReport.liquidity.days_covered} días</strong></div>
-            {trustReport.projection?.weeks_to_ready != null && <div className="detail-line"><span>Proyección</span><strong>~{trustReport.projection.weeks_to_ready} {trustReport.projection.weeks_to_ready === 1 ? 'checkpoint' : 'checkpoints'} para {trustReport.projection.product}</strong></div>}
-            <p className="tip-detail">{trustReport.summary}</p>
-            <h3>Acciones verificadas ({trustReport.verified_actions.length})</h3>
-            {trustReport.verified_actions.length ? trustReport.verified_actions.map((action, index) => <div className="detail-line" key={index}><span>{action.text}<small>{action.date && dateLabel(action.date)} · {actionTypeLabel(action.type)}</small></span></div>) : <p className="empty">Todavía no hay acciones verificadas -- esta lista se llena sola cuando el agente resuelve una fuga desde el chat, o avanzas un día y actúa en un checkpoint.</p>}
-            <button className="outline-button" onClick={copyTrustSummary}>{summaryCopied ? <><Check size={16} /> Copiado</> : <><Copy size={16} /> Copiar resumen</>}</button>
-          </>}
-          {signals?.activation && <div className="bank-signals-section">
-            <h3>Actividad con tu tarjeta del banco</h3>
-            <div className="bank-signals">
-              <div className="trust-stat">
-                <strong>{signals.activation.value}/100</strong>
-                <span>Activación · {{ activa: 'Activa', en_riesgo: 'En riesgo', dormida: 'Dormida', sin_datos: 'Sin datos' }[signals.activation.status] || signals.activation.status}</span>
-              </div>
-              <div className="trust-stat">
-                <strong>{signals.wallet_share?.value != null ? `${signals.wallet_share.value}%` : '—'}</strong>
-                <span>Wallet share · gasto capturado por el banco</span>
-              </div>
-            </div>
-            <p className="muted-copy">{signals.activation.detail}</p>
-            {signals.wallet_share?.value != null && <p className="muted-copy">{signals.wallet_share.detail}</p>}
-          </div>}
         </motion.section>}
         {page === 'envelopes' && <motion.section className="glass page-panel" key="envelopes-page"
           initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
@@ -809,9 +742,23 @@ function App() {
           <div className="health-value">{session.history.at(-1)?.value ?? '—'}<small>/100</small></div>
           <LineChart values={session.history.map(point => point.value)} label="Evolución del score en los checkpoints recibidos" />
         </div>
-        <button className="outline-button" onClick={() => { setModal(null); setPage('trust'); }}>Ver reporte de confianza completo</button>
+        {signals?.activation && <div className="bank-signals-section">
+          <h3>Actividad con tu tarjeta del banco</h3>
+          <div className="bank-signals">
+            <div className="trust-stat">
+              <strong>{signals.activation.value}/100</strong>
+              <span>Activación · {{ activa: 'Activa', en_riesgo: 'En riesgo', dormida: 'Dormida', sin_datos: 'Sin datos' }[signals.activation.status] || signals.activation.status}</span>
+            </div>
+            <div className="trust-stat">
+              <strong>{signals.wallet_share?.value != null ? `${signals.wallet_share.value}%` : '—'}</strong>
+              <span>Wallet share · gasto capturado por el banco</span>
+            </div>
+          </div>
+          <p className="muted-copy">{signals.activation.detail}</p>
+          {signals.wallet_share?.value != null && <p className="muted-copy">{signals.wallet_share.detail}</p>}
+        </div>}
       </>}
-      {modal === 'notifications' && <><h2 id="dialog-title">Avisos en tiempo real</h2><p className="muted-copy">Se generan automáticamente cada vez que el agente hace un movimiento real en tu cuenta — sin que nadie los pida. Esta lista se revisa sola cada ~20 segundos mientras tienes la app abierta.</p>{notifications.length ? notifications.map(n => <div className="detail-line" key={n.sk}><span>{n.text}<small>{dateLabel(n.date)}</small></span></div>) : <p>Sin avisos todavía.</p>}</>}
+      {modal === 'notifications' && <><h2 id="dialog-title">Avisos en tiempo real</h2><p className="muted-copy">Se generan automáticamente cuando pasa algo en tu cuenta -- un movimiento real de dinero, o algo que Kivo detecta y deja de contar (como cancelar un cargo o armarte un plan de nómina) -- sin que nadie los pida. Esta lista se revisa sola cada ~20 segundos mientras tienes la app abierta.</p>{notifications.length ? notifications.map(n => <div className="detail-line" key={n.sk}><span>{n.text}<small>{dateLabel(n.date)}</small></span></div>) : <p>Sin avisos todavía. Aquí aparecerán cosas como un cargo cancelado, un plan de nómina nuevo, o un movimiento a tu ahorro.</p>}</>}
       {modal === 'advance' && <><h2 id="dialog-title">Avanzar la simulación</h2><p>El siguiente checkpoint puede observar la cuenta, detectar una fuga, detener el cargo de FitZone Campus, o mover dinero a ahorro en el sandbox Nessie.</p><p>El backend no permite consultar el checkpoint actual. Si el próximo paso es detener FitZone Campus, al continuar confirmas que ya no lo usas y autorizas detener ese cargo de demostración.</p><div className="agent-alert"><ShieldAlert size={20} /><span>Un contrato anual puede generar penalizaciones o cobranza. Bloquear el cargo no cancela la suscripción con el comercio.</span></div><button className="black-button" disabled={busy || uncertain || !data || !!error || session.done} onClick={() => mutate('advance')}>Confirmo y autorizo el siguiente paso</button><button className="text-button" onClick={() => setModal(null)}>Volver sin avanzar</button></>}
       {modal === 'reset' && <><h2 id="dialog-title">Reiniciar demo</h2><p>Solicitará al backend volver al día 0 y reactivar FitZone Campus en el sandbox compartido. Borrará el feed y el chat de esta pestaña, pero no revierte los depósitos o retiros anteriores de Nessie.</p><button className="black-button" disabled={busy} onClick={() => mutate('reset')}>Reiniciar simulación</button></>}
       {modal === 'profile' && <>

@@ -36,7 +36,6 @@ export function createApi({ baseUrl = DEFAULT_BASE, userId = 'ana', fetchImpl = 
     getSignals: (params) => request('/signals', { params }),
     getTransactions: () => request('/transactions'),
     getNotifications: () => request('/notifications'),
-    getTrustReport: () => request('/trust-report'),
     getBudget: () => request('/envelopes'),
     setCategoryBudget: (category, monthlyTarget, label) => request('/envelopes', { method: 'POST', body: { category, monthly_target: monthlyTarget, label: label || undefined } }),
     setMonthlyBudget: (amount) => request('/envelopes', { method: 'POST', body: { monthly_budget: amount } }),

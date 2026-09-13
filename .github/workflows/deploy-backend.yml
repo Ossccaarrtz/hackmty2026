@@ -2,9 +2,9 @@ name: Deploy backend
 
 # Se dispara solo cuando algo dentro de backend/signals-lambda/ cambia en
 # main. Corre la suite completa ANTES de tocar AWS -- si un test falla, no
-# se despliega nada. Los 6 Lambdas comparten los mismos 3 modulos (
+# se despliega nada. Los 5 Lambdas comparten los mismos 3 modulos (
 # agent_actions.py, nessie_actions.py, signal_engine.py), asi que un
-# cambio en cualquiera de ellos se empaqueta y despliega a los 6 -- evita
+# cambio en cualquiera de ellos se empaqueta y despliega a los 5 -- evita
 # el problema real de esta sesion de olvidar redesplegar alguno tras tocar
 # un modulo compartido.
 on:
@@ -55,7 +55,6 @@ jobs:
             [jarbis-financiero-chat]=lambda_chat.py
             [jarbis-financiero-advance-day]=lambda_advance_day.py
             [jarbis-financiero-notifier]=lambda_notifier.py
-            [jarbis-financiero-trust-report]=lambda_trust_report.py
             [jarbis-financiero-signals]=lambda_function.py
           )
           for fn in "${!HANDLERS[@]}"; do

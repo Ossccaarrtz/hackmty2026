@@ -779,39 +779,5 @@ class TestGetWeakestFactorLesson(BaseAgentActionsTest):
             self.assertTrue(aa.FACTOR_LESSONS[key]["how"])
 
 
-class TestVerifiedActionHistoryDedup(BaseAgentActionsTest):
-    def _mock_two_queries(self, action_items, notif_items):
-        # get_verified_action_history llama table.query() dos veces en orden
-        # fijo: ACTION# primero, NOTIFICATION# despues (ver el codigo fuente) --
-        # el objeto KeyConditionExpression de boto3 no se puede inspeccionar
-        # por texto (su __str__ es solo la direccion de memoria), asi que se
-        # usa el orden de las llamadas en vez de intentar parsear la expresion.
-        aa.table.query.side_effect = [{"Items": action_items}, {"Items": notif_items}]
-
-    def test_dedup_within_five_seconds_keeps_only_action_entry(self):
-        action_items = [{"sk": "ACTION#2026-08-16#1000000000000", "date": "2026-08-16", "type": "bill_stopped", "text": "detuve el cargo", "requires_confirmation": False}]
-        notif_items = [{"sk": "NOTIFICATION#2026-08-16#1000000002000", "date": "2026-08-16", "text": "se detuvo el cargo automatico"}]  # 2s de diferencia
-        self._mock_two_queries(action_items, notif_items)
-        events = aa.get_verified_action_history("ana")
-        self.assertEqual(len(events), 1)
-        self.assertEqual(events[0]["type"], "bill_stopped")
-
-    def test_events_far_apart_are_not_deduplicated(self):
-        action_items = [{"sk": "ACTION#2026-08-16#1000000000000", "date": "2026-08-16", "type": "bill_stopped", "text": "detuve el cargo", "requires_confirmation": False}]
-        notif_items = [{"sk": "NOTIFICATION#2026-08-16#1000030000000", "date": "2026-08-16", "text": "se movieron $15 a tu ahorro"}]  # 30s despues, evento distinto
-        self._mock_two_queries(action_items, notif_items)
-        events = aa.get_verified_action_history("ana")
-        self.assertEqual(len(events), 2)
-
-    def test_sorted_by_date_then_timestamp(self):
-        action_items = [
-            {"sk": "ACTION#2026-08-16#2000000000000", "date": "2026-08-16", "type": "savings_moved", "text": "b", "requires_confirmation": False},
-            {"sk": "ACTION#2026-08-15#1000000000000", "date": "2026-08-15", "type": "leak_detected", "text": "a", "requires_confirmation": True},
-        ]
-        self._mock_two_queries(action_items, [])
-        events = aa.get_verified_action_history("ana")
-        self.assertEqual([e["text"] for e in events], ["a", "b"])
-
-
 if __name__ == "__main__":
     unittest.main()

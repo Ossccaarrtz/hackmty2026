@@ -1,10 +1,12 @@
 """
 Lambda disparado por DynamoDB Streams -- el "webhook tras cada transaccion".
-Se ejecuta automaticamente cuando algo cambia en jarbis-financiero-data,
-sin que nadie tenga que llamar nada. Reacciona a los dos eventos que
-realmente importan para Ana: un bill que se detiene, o dinero que se mueve
-a ahorro. Funciona igual sin importar si la accion vino del chat o de
-advance-day -- ambos escriben en la misma tabla.
+Se ejecuta automaticamente cuando algo cambia en jarbis-financiero-data, sin
+que nadie tenga que llamar nada. Reacciona a los eventos que realmente
+importan para Ana: dinero que se mueve de/a ahorro (real), un bill que se
+detiene (solo local -- Kivo deja de contarlo, no toca el banco), y un
+deposito que dispara el plan de presupuesto (informativo, no ejecuta nada).
+Funciona igual sin importar si la accion vino del chat o de advance-day --
+ambos escriben en la misma tabla.
 """
 import json
 import time
@@ -82,7 +84,8 @@ def lambda_handler(event, context):
         elif event_name == "MODIFY" and old_image.get("status") == "recurring" and new_image.get("status") == "cancelled":
             write_notification(
                 user_id,
-                f"Nuevo movimiento detectado: se detuvo el cargo automatico de {new_image.get('payee', 'un cargo')}.",
+                f"Kivo ya no cuenta el cargo de {new_image.get('payee', 'un cargo')} en tu score ni tus recordatorios "
+                "(esto no lo cancela con el banco ni el comercio).",
                 time.strftime("%Y-%m-%d")
             )
 
