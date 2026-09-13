@@ -12,6 +12,30 @@ const slugify = category => category.trim().toLowerCase().replaceAll(' ', '_'); 
 const dateLabel = date => new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`));
 const monthLabel = yearMonth => new Intl.DateTimeFormat('es-MX', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${yearMonth}-01T00:00:00Z`));
 const PENDING_TYPES = ['leak_detected', 'anomaly_pause'];
+// El backend devuelve label + un "detail" tecnico por factor (ej. "gasto discrecional
+// es 34% del ingreso total") pensado para depurar el motor de senales, no para una
+// estudiante de primera vez en banca. Esto traduce cada factor (por su `key`, estable)
+// a una explicacion en espanol simple; el detalle tecnico se conserva como nota chica.
+const SCORE_FACTOR_EXPLAINERS = {
+  income_regularity: '¿Te llega dinero de forma constante y en fechas parecidas? Entre más regular sea tu ingreso, más sube este número.',
+  essential_ratio: '¿Qué tanto de tu dinero se va en cosas que sí o sí necesitas (comida, transporte, renta) contra gastos opcionales (streaming, salidas)? Gastar menos en lo opcional lo sube.',
+  bill_health: '¿Los cargos fijos que tienes (como una membresía) los sigues usando de verdad? Si detectamos uno que ya no usas, este número baja -- por eso te avisamos antes de que siga cobrándote.',
+  liquidity_cushion: '¿Cuántos días podrías cubrir tus gastos esenciales si hoy dejaras de recibir dinero? Más días cubiertos, más colchón para un imprevisto.',
+};
+// El feed de acciones y el reporte de confianza traen `action.type` en snake_case tal
+// cual lo usa el backend internamente (nombre de tool o tipo de evento) -- sin esto se
+// veian literales como "verification_blocked" o "move_to_savings" en la UI de Ana.
+const ACTION_TYPE_LABELS = {
+  score_check: 'Revisión de tu cuenta', info: 'Aviso', error: 'Error',
+  leak_detected: 'Fuga detectada', anomaly_pause: 'Pausa por actividad inusual',
+  bill_stopped: 'Cargo detenido', verification_blocked: 'Acción bloqueada por seguridad',
+  chat_rejected: 'Acción no realizada', savings_moved: 'Dinero movido a ahorro',
+  stop_subscription: 'Suscripción detenida', confirm_stop_bill: 'Cargo detenido',
+  move_to_savings: 'Dinero movido a ahorro', release_savings_buffer: 'Ahorro liberado',
+  create_envelope: 'Apartado creado', set_income_pattern: 'Patrón de nómina guardado',
+  confirm_pending_allocation: 'Reparto confirmado', log_external_expense: 'Gasto externo registrado',
+};
+const actionTypeLabel = type => ACTION_TYPE_LABELS[type] || type.replaceAll('_', ' ');
 
 // El chat manda markdown ligero (negritas con **, listas con *) que Gemini
 // genera de forma natural -- sin esto se veian los asteriscos literales en
@@ -325,7 +349,7 @@ function App() {
         await loadEnvelopes();
         return;
       }
-      setEnvelopesNotice(`${result.message} Esperando a que el webhook reaccione…`);
+      setEnvelopesNotice(`${result.message} Esperando a que el sistema reparta el dinero…`);
       // El reparto no es sincrono con esta respuesta: lo dispara DynamoDB
       // Streams -> lambda_notifier unos segundos despues, no esta llamada
       // HTTP. Sin este sondeo breve, la pantalla se queda mostrando saldos
@@ -342,7 +366,7 @@ function App() {
       } else if (updated?.envelopes?.some(env => env.balance > 0)) {
         setEnvelopesNotice(`${result.message} Reparto ejecutado automáticamente -- revisa los saldos abajo.`);
       } else {
-        setEnvelopesNotice(`${result.message} (El webhook puede tardar unos segundos más -- si los saldos no cambian, vuelve a abrir esta pestaña.)`);
+        setEnvelopesNotice(`${result.message} (Puede tardar unos segundos más -- si los saldos no cambian, vuelve a abrir esta pestaña.)`);
       }
       await refresh();
     } catch (err) { setEnvelopesError(err.message); }
@@ -425,7 +449,7 @@ function App() {
   }
 
   const controls = <div className="agent-controls"><button className="black-button small" disabled={busy || loading || !!error || !data || session.done || uncertain} onClick={() => setModal('advance')}><Play size={15} />{busy ? 'Procesando…' : session.done ? 'Demo completada' : 'Avanzar día'}</button><button className="outline-button small" disabled={busy || loading} onClick={() => setModal('reset')}><RotateCcw size={15} /> Reiniciar</button></div>;
-  const feed = <div className="agent-feed">{session.feed.length ? session.feed.map(action => <article className={`agent-feed-item ${['error', 'verification_blocked', 'chat_rejected'].includes(action.type) ? 'action-error' : PENDING_TYPES.includes(action.type) || action.requires_confirmation ? 'action-pending' : ''}`} key={action.id}><span>{action.date && dateLabel(action.date)} · {action.type}</span><p>{action.text}</p></article>) : <p className="empty">Todavía no hay acciones recibidas en esta sesión. Avanza la simulación o escríbele a Spark para ver sus respuestas.</p>}</div>;
+  const feed = <div className="agent-feed">{session.feed.length ? session.feed.map(action => <article className={`agent-feed-item ${['error', 'verification_blocked', 'chat_rejected'].includes(action.type) ? 'action-error' : PENDING_TYPES.includes(action.type) || action.requires_confirmation ? 'action-pending' : ''}`} key={action.id}><span>{action.date && dateLabel(action.date)} · {actionTypeLabel(action.type)}</span><p>{action.text}</p></article>) : <p className="empty">Todavía no hay acciones recibidas en esta sesión. Avanza la simulación o escríbele a Spark para ver sus respuestas.</p>}</div>;
   const chatTranscript = <div className="chat-transcript">{session.chatLog.length ? session.chatLog.map(m => <div className={`chat-bubble ${m.role}`} key={m.id}>{renderChatText(m.text)}</div>) : <p className="empty">Escríbele a Spark: puede revisar tu score, detener una suscripción marcada como fuga, mover dinero a tu ahorro, o liberar parte de tu ahorro si esta semana te entró poco.</p>}{chatBusy && <TypingIndicator />}<div ref={chatEndRef} /></div>;
 
   if (!authed) return <Login onLogin={remember => { if (remember) { try { localStorage.setItem(AUTH_KEY, 'true'); } catch { /* Storage is optional. */ } } setAuthed(true); }} />;
@@ -491,7 +515,7 @@ function App() {
             {trustReport.projection?.weeks_to_ready != null && <div className="detail-line"><span>Proyección</span><strong>~{trustReport.projection.weeks_to_ready} {trustReport.projection.weeks_to_ready === 1 ? 'checkpoint' : 'checkpoints'} para {trustReport.projection.product}</strong></div>}
             <p className="tip-detail">{trustReport.summary}</p>
             <h3>Acciones verificadas ({trustReport.verified_actions.length})</h3>
-            {trustReport.verified_actions.length ? trustReport.verified_actions.map((action, index) => <div className="detail-line" key={index}><span>{action.text}<small>{action.date && dateLabel(action.date)} · {action.type}</small></span></div>) : <p className="empty">Sin acciones verificadas todavía.</p>}
+            {trustReport.verified_actions.length ? trustReport.verified_actions.map((action, index) => <div className="detail-line" key={index}><span>{action.text}<small>{action.date && dateLabel(action.date)} · {actionTypeLabel(action.type)}</small></span></div>) : <p className="empty">Sin acciones verificadas todavía.</p>}
             <button className="outline-button" onClick={copyTrustSummary}>{summaryCopied ? <><Check size={16} /> Copiado</> : <><Copy size={16} /> Copiar resumen</>}</button>
           </>}
           {signals?.activation && <div className="bank-signals-section">
@@ -569,17 +593,17 @@ function App() {
             <button className="outline-button" onClick={confirmAllocation} disabled={envelopesBusy || !envelopes.pending_allocation}>Confirmar reparto pendiente</button>
             <p className="muted-copy">Si una nómina detectada dejaba tu colchón muy bajo para repartirse sola, la propuesta queda aquí para tu confirmación explícita.</p>
             <h3>Simular nómina de un tercero</h3>
-            <p className="muted-copy">Mueve dinero real desde una cuenta Nessie que no es la nuestra (papá y mamá de Ana) hasta su cuenta -- el reparto a apartados que veas después ocurre solo, disparado por el mismo webhook que reacciona a cualquier depósito real.</p>
+            <p className="muted-copy">Mueve dinero real desde una cuenta externa (papá y mamá de Ana) hasta su cuenta -- el reparto a apartados que veas después ocurre solo, de forma automática, igual que con cualquier depósito real.</p>
             <button className="black-button" onClick={simulatePayroll} disabled={payrollBusy}>{payrollBusy ? 'Procesando en Nessie…' : 'Simular nómina de un tercero'}</button>
           </>}
         </motion.section>}
-        {page === 'home' && <motion.section className="balance-card glass" key="balance-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><div className="balance-top"><div><h2>Score de resiliencia financiera</h2><div className="total score-hero">{signals?.score.value ?? '—'}<span>/100</span></div>{signals && <TrendBadge trend={signals.score.trend} />}<p className={`score-status-message ${signals ? `is-${scoreStatusFeedback(signals).tone}` : ''}`}>{signals ? scoreStatusFeedback(signals).text : 'Cargando tu score…'}</p></div></div><div className="balance-bottom"><div className="account-orbs"><div className="orb-bridge" /><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.balance)}</strong><span>Saldo del ledger</span></button><button className="orb purple" onClick={() => setModal('score')}><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong><span>Gastos cubiertos</span></button><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.summary.total_income)}</strong><span>Ingresos registrados</span></button></div></div><button className="outline-button score-details-button" onClick={() => setModal('score')}>Entender mi score</button></motion.section>}
+        {page === 'home' && <motion.section className="balance-card glass" key="balance-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><div className="balance-top"><div><h2>Score de resiliencia financiera</h2><div className="total score-hero">{signals?.score.value ?? '—'}<span>/100</span></div>{signals && <TrendBadge trend={signals.score.trend} />}<p className={`score-status-message ${signals ? `is-${scoreStatusFeedback(signals).tone}` : ''}`}>{signals ? scoreStatusFeedback(signals).text : 'Cargando tu score…'}</p></div></div><div className="balance-bottom"><div className="account-orbs"><div className="orb-bridge" /><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.balance)}</strong><span>Saldo disponible</span></button><button className="orb purple" onClick={() => setModal('score')}><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong><span>Gastos cubiertos</span></button><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.summary.total_income)}</strong><span>Ingresos registrados</span></button></div></div><button className="outline-button score-details-button" onClick={() => setModal('score')}>Entender mi score</button></motion.section>}
         {page === 'home' && <motion.section className="payments-card glass alerts-card" key="alerts-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Lo que necesita tu atención</h2><span className="pill">{signals?.alerts.length ?? '—'} alertas</span></header>{signals ? signals.alerts.length ? signals.alerts.map(alert => <article className="live-alert" key={alert.id}><ShieldAlert size={24} /><div><strong>{alert.title}</strong><p>{alert.detail}</p>{alert.annual_cost > 0 && <small>{money(alert.monthly_amount)}/mes · {money(alert.annual_cost)} al año · potencial, no ahorro realizado</small>}</div><button className="black-button small" onClick={() => setPage('chat')}>Revisar</button></article>) : <p className="empty">Todo al día: el backend no reporta alertas activas.</p> : <p className="empty">{loading ? 'Consultando alertas…' : 'Alertas no disponibles.'}</p>}{signals?.upcoming_expenses?.length > 0 && <div className="upcoming-expenses"><h3>Próximos gastos esperados</h3>{signals.upcoming_expenses.map(item => <div className="upcoming-expense-row" key={item.category}><span>{item.category_label}</span><span className="muted-copy">{item.days_until === 0 ? 'Hoy' : item.days_until === 1 ? 'Mañana' : `En ${item.days_until} días`} · {dateLabel(item.expected_date)} · {item.confidence}% confianza</span><strong>{money(item.expected_amount)}</strong></div>)}</div>}<p className="muted-copy">Detener un cargo no cancela el contrato con el comercio.</p></motion.section>}
       </AnimatePresence>
     </section>
     {page === 'home' && <section className="right-column"><motion.section className="transactions" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="transactions-heading"><div><h2>Movimientos</h2><p>Historial de Ana</p></div><button className="black-button small" onClick={() => setPage('transactions')}>Ver todos</button></header><div className="transaction-list">{transactions.slice(-3).reverse().map(tx => <div className="transaction-row live-transaction" key={tx.id}><span className={`direction ${tx.signed_amount > 0 ? 'inflow' : 'outflow'}`}>{tx.signed_amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={tx.name}>{tx.name}</strong><span className="transaction-date">{dateLabel(tx.date)}</span><span className={`transaction-amount ${tx.signed_amount > 0 ? 'inflow' : ''}`}>{money(tx.signed_amount)}</span></div>)}{!transactions.length && <p className="empty">{loading ? 'Cargando movimientos…' : data ? 'No hay movimientos registrados.' : 'Historial no disponible.'}</p>}</div></motion.section><CategorySpending summary={data?.summary} loading={loading} variants={dashboardItem} /></section>}
     {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className="modal glass" role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={event => event.stopPropagation()}><button ref={closeRef} className="close-modal icon-button" aria-label="Cerrar" onClick={() => setModal(null)}><X /></button>
-      {modal === 'score' && <><h2 id="dialog-title">Tu score, explicado</h2><p>Indicador propio de resiliencia financiera; no es un score de Buró ni garantiza aprobación de crédito.</p>{signals?.score.breakdown.map(item => <div className="detail-line" key={item.key}><span>{item.label}<small>{item.detail} · Peso: {item.weight}%</small></span><strong>{item.value}/100</strong></div>)}
+      {modal === 'score' && <><h2 id="dialog-title">Tu score, explicado</h2><p>Indicador propio de resiliencia financiera; no es un score de Buró ni garantiza aprobación de crédito.</p>{signals?.score.breakdown.map(item => <div className="detail-line score-factor-line" key={item.key}><span>{item.label}<small className="score-factor-explainer">{SCORE_FACTOR_EXPLAINERS[item.key]}</small><small className="score-factor-technical">{item.detail} · Peso: {item.weight}%</small></span><strong>{item.value}/100</strong></div>)}
         <div className="score-progress-section">
           <h3>Tu progreso</h3>
           <p className="muted-copy">Evolución de tu score en los checkpoints recibidos en esta sesión.</p>
@@ -587,14 +611,14 @@ function App() {
           <LineChart values={session.history.map(point => point.value)} label="Evolución del score en los checkpoints recibidos" />
         </div>
       </>}
-      {modal === 'notifications' && <><h2 id="dialog-title">Avisos en tiempo real</h2><p className="muted-copy">Generados automáticamente por un webhook (DynamoDB Streams) cada vez que el agente hace un movimiento real — sin que nadie los pida.</p>{notifications.length ? notifications.map(n => <div className="detail-line" key={n.sk}><span>{n.text}<small>{dateLabel(n.date)}</small></span></div>) : <p>Sin avisos todavía.</p>}</>}
+      {modal === 'notifications' && <><h2 id="dialog-title">Avisos en tiempo real</h2><p className="muted-copy">Se generan automáticamente cada vez que el agente hace un movimiento real en tu cuenta — sin que nadie los pida.</p>{notifications.length ? notifications.map(n => <div className="detail-line" key={n.sk}><span>{n.text}<small>{dateLabel(n.date)}</small></span></div>) : <p>Sin avisos todavía.</p>}</>}
       {modal === 'advance' && <><h2 id="dialog-title">Avanzar la simulación</h2><p>El siguiente checkpoint puede observar la cuenta, detectar una fuga, detener el cargo de FitZone Campus, o mover dinero a ahorro en el sandbox Nessie.</p><p>El backend no permite consultar el checkpoint actual. Si el próximo paso es detener FitZone Campus, al continuar confirmas que ya no lo usas y autorizas detener ese cargo de demostración.</p><div className="agent-alert"><ShieldAlert size={20} /><span>Un contrato anual puede generar penalizaciones o cobranza. Bloquear el cargo no cancela la suscripción con el comercio.</span></div><button className="black-button" disabled={busy || uncertain || !data || !!error || session.done} onClick={() => mutate('advance')}>Confirmo y autorizo el siguiente paso</button><button className="text-button" onClick={() => setModal(null)}>Volver sin avanzar</button></>}
       {modal === 'reset' && <><h2 id="dialog-title">Reiniciar demo</h2><p>Solicitará al backend volver al día 0 y reactivar FitZone Campus en el sandbox compartido. Borrará el feed y el chat de esta pestaña, pero no revierte los depósitos o retiros anteriores de Nessie.</p><button className="black-button" disabled={busy} onClick={() => mutate('reset')}>Reiniciar simulación</button></>}
       {modal === 'profile' && <>
         <h2 id="dialog-title">Perfil</h2>
         <div className="profile-header"><span className="user-avatar profile-avatar-lg">A</span><div><strong>Ana</strong><p className="muted-copy">Estudiante universitaria · Tarjeta bancaria sin activar · Sin historial en Buró</p></div></div>
         <div className="detail-line"><span>Usuario<small>ID de demo</small></span><strong>ana</strong></div>
-        <div className="detail-line"><span>Cuentas Nessie<small>Checking + Savings, sandbox</small></span><strong>2</strong></div>
+        <div className="detail-line"><span>Cuentas bancarias<small>Checking + Ahorros</small></span><strong>2</strong></div>
         <div className="detail-line"><span>Colchón de liquidez<small>Días de gasto esencial cubiertos</small></span><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong></div>
         <button className="outline-button profile-logout" onClick={() => { try { localStorage.removeItem(AUTH_KEY); } catch { /* Storage is optional. */ } setModal(null); setAuthed(false); }}>Cerrar sesión</button>
         <div className="demo-controls-section">
