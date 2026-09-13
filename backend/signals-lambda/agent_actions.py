@@ -646,16 +646,34 @@ def _months_between(start_iso, end_iso):
 
 def estimate_monthly_disposable(user_id, exclude_goal_slug=None):
     """Cuanto dinero real le queda libre a Ana por mes, al ritmo actual --
-    ingreso real menos gasto real (bank-only, mismo criterio que
-    compute_totals) menos lo que ya comprometio en otras metas de ahorro.
-    NO resta las metas de categoria: esas son techos sobre gasto que YA
-    esta contado en total_expense, restarlas tambien contaria ese gasto
-    dos veces."""
+    ingreso real menos gasto real (bank-only) menos lo que ya comprometio
+    en otras metas de ahorro. NO resta las metas de categoria: esas son
+    techos sobre gasto que YA esta contado en total_expense, restarlas
+    tambien contaria ese gasto dos veces.
+
+    OJO: esto NO reutiliza signals["_debug"]["total_expense"] tal cual.
+    Ese total (compute_totals) cuenta un sweep a ahorro (savings_transfer)
+    como salida real -- correcto para current_balance/liquidez, porque ese
+    dinero de verdad sale de checking. Pero para "cuanto te queda libre
+    por mes", un sweep a tu propio ahorro no es gasto real (is_neutral()),
+    es solo reubicar dinero tuyo -- si se contara como gasto aqui, cada
+    prueba en vivo de move_to_savings (fuera del ciclo de reset de
+    advance-day) iba inflando este total_expense para siempre sin un
+    income correspondiente, hasta casi empatar con total_income y dejar
+    el disponible en centavos. Se recalcula aparte, con la misma
+    exclusion is_neutral() que ya usan score_essential_ratio/detect_anomaly."""
     deposits, purchases, bills_plain = load_data(user_id)
     signals = get_full_signals(deposits, purchases, bills_plain, user_id=user_id, persist=False)
     elapsed_days = max(signals["_debug"]["elapsed_days"], 1)
-    monthly_income = signals["_debug"]["total_income"] / elapsed_days * 30
-    monthly_expense = signals["_debug"]["total_expense"] / elapsed_days * 30
+    total_income = signals["_debug"]["total_income"]
+    real_expense = sum(
+        float(p["amount"]) for p in purchases
+        if p.get("source", "bank") == "bank"
+        and p.get("category") != "savings_release"
+        and not is_neutral(p.get("category"))
+    )
+    monthly_income = total_income / elapsed_days * 30
+    monthly_expense = real_expense / elapsed_days * 30
     committed_goals = sum(
         float(g["monthly_contribution"]) for g in get_goals(user_id) if g["slug"] != exclude_goal_slug
     )

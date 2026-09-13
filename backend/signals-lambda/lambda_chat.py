@@ -441,12 +441,26 @@ def lambda_handler(event, context):
         # Se le da UNA oportunidad de corregirse antes de sanitizar a la
         # fuerza -- casi siempre basta con señalarle la cifra exacta que
         # invento para que responda de nuevo sin ella.
+        #
+        # OJO: este mensaje se inyecta con role="user" porque la API de
+        # Gemini solo acepta user/model en `contents` (no hay un role de
+        # sistema a media conversacion) -- pero el texto tiene que dejar
+        # clarisimo que esto NO lo escribio la usuaria, o el modelo le
+        # contesta a ELLA como si se estuviera disculpando por un error
+        # que ella nunca senalo ("tienes toda la razon, corrijo mi
+        # respuesta...", dirigido a Ana, que nunca dijo nada). Bug real
+        # encontrado en produccion: la usuaria veia una disculpa de la
+        # nada porque el chequeo interno se leia como si fuera su propio
+        # mensaje.
         contents.append({"role": "model", "parts": [{"text": visible_reply}]})
         contents.append({"role": "user", "parts": [{"text": (
-            f"Tu respuesta menciona ${sorted(bad_amounts)[0]:.0f}, pero ese monto no aparece en ninguna "
-            "herramienta que llamaste en esta conversacion. No inventes ni derives cifras en dolares -- usa "
+            f"[Verificacion automatica interna -- esto NO lo escribio la usuaria, es un chequeo del sistema] "
+            f"Tu respuesta anterior menciona ${sorted(bad_amounts)[0]:.0f}, pero ese monto no aparece en ninguna "
+            "herramienta que llamaste en este turno. No inventes ni derives cifras en pesos -- usa "
             "unicamente los numeros que regresaron las herramientas, o di explicitamente que no tienes ese "
-            "dato exacto. Responde de nuevo corrigiendo esto."
+            "dato exacto. Genera de nuevo tu respuesta final para la usuaria ya corregida, dirigida a ella "
+            "como si fuera tu primera respuesta a su mensaje original -- no le digas que estas corrigiendo "
+            "nada, no te disculpes ni menciones este aviso."
         )}]})
         try:
             retry = call_gemini(contents)

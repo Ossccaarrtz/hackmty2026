@@ -61,11 +61,17 @@ def compute_elapsed_days(deposits, purchases, as_of_date):
     return max(days_between(earliest, latest), 1)
 
 
+NON_RECURRING_DEPOSIT_CATEGORIES = {"savings_release", "opening_balance"}
+
+
 def score_income_regularity(deposits):
-    # Los retornos de ahorro (savings_release) son movimientos internos, no
-    # ingreso real -- si se cuentan aqui, inflan artificialmente la
-    # "regularidad de ingreso" de la persona.
-    deposits = [d for d in deposits if d.get("category") != "savings_release"]
+    # Los retornos de ahorro (savings_release) y el saldo inicial de antes
+    # del historial sembrado (opening_balance, un ajuste de datos unico)
+    # son movimientos internos, no ingreso recurrente real -- si se
+    # cuentan aqui, inflan artificialmente la varianza de "regularidad de
+    # ingreso" de la persona (un solo deposito grande y fuera de patron
+    # rompe la comparacion contra su mesada tipica).
+    deposits = [d for d in deposits if d.get("category") not in NON_RECURRING_DEPOSIT_CATEGORIES]
     if not deposits:
         return {"value": 0, "detail": "sin depositos registrados todavia"}
 
@@ -348,7 +354,17 @@ def compute_totals(deposits, purchases):
     de verdad tiene, solo porque el usuario gasto efectivo. Ese gasto SI
     debe contar para el ratio esencial/discrecional (ve mas abajo en
     score_essential_ratio, que no filtra por source a proposito) -- son
-    dos preguntas distintas sobre los mismos datos."""
+    dos preguntas distintas sobre los mismos datos.
+
+    IMPORTANTE: 'savings_transfer' SI cuenta como salida real aqui a
+    proposito, a diferencia de score_essential_ratio/detect_anomaly (que
+    la tratan como neutral via is_neutral()). Esta funcion alimenta
+    current_balance (el saldo real de checking, ver compute_signals mas
+    abajo) -- cuando el dinero se mueve a ahorro, de verdad sale de
+    checking, y el colchon de liquidez tiene que reflejar eso o
+    move_to_savings/release_savings_buffer verificarian contra un saldo
+    que no existe. 'is_neutral' aplica a "es esto gasto discrecional o
+    esencial", una pregunta distinta de "sigue este dinero en checking"."""
     income = sum(float(d["amount"]) for d in deposits)
     expense = 0.0
     for p in purchases:
