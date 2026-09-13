@@ -44,6 +44,23 @@ def signals_with(current_balance=500.0, elapsed_days=90, anomaly_detected=False,
     }
 
 
+class TestGetAccountIds(unittest.TestCase):
+    """Regresion directa de un hallazgo real: CHECKING_ID/SAVINGS_ID estaban
+    hardcodeados a la cuenta de Mia -- cualquier accion de dinero disparada
+    con otro user_id (ej. "ana", la persona nueva del pivote a Spark)
+    habria escrito de verdad en la cuenta de Mia en Nessie, aunque el
+    registro en DynamoDB dijera el user_id correcto."""
+
+    def test_known_users_get_their_own_accounts(self):
+        mia = aa.get_account_ids("mia")
+        ana = aa.get_account_ids("ana")
+        self.assertNotEqual(mia["checking"], ana["checking"])
+        self.assertNotEqual(mia["savings"], ana["savings"])
+
+    def test_unknown_user_falls_back_to_mia(self):
+        self.assertEqual(aa.get_account_ids("alguien-nuevo"), aa.get_account_ids("mia"))
+
+
 class TestVerifiedMoveToSavings(BaseAgentActionsTest):
     def setUp(self):
         super().setUp()

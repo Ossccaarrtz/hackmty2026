@@ -1,0 +1,315 @@
+{
+  "customer_id": "cf8635eb-36e1-4987-8c13-1a977e228130",
+  "checking_id": "3303b959-15c4-4a5d-aeea-1e0503712d37",
+  "savings_id": "5616be1c-84c4-4e37-9736-9028d5d444a0",
+  "merchants": {
+    "Casa Renta Estudiantil": "36642007-aa05-488a-8bc9-6248f4da64b6",
+    "Cafeteria Central": "8200ea7f-801f-4ad2-9f2d-b5e1ebe7560e",
+    "Ruta Universidad": "14f570b4-c332-4f3e-937a-ea42b0593879",
+    "Telcel Plan": "08bcf27d-7112-47c2-a766-990c9e390f64",
+    "Cafe Central": "e5bdb2aa-e597-4860-947d-600474756e01",
+    "CineExtra": "d8a49b40-3669-4309-9e9e-3582def31ef2"
+  },
+  "gym_bill_id": "7e4623ce-5eed-4d68-9e1f-76723029c597",
+  "phone_bill_id": "4463ee11-fdcf-4caa-a7fd-f09a1ea87317",
+  "window_days": 90,
+  "today": "2026-09-12",
+  "ledger": {
+    "deposits": [
+      {
+        "date": "2026-06-16",
+        "amount": 1200
+      },
+      {
+        "date": "2026-06-30",
+        "amount": 1450
+      },
+      {
+        "date": "2026-07-07",
+        "amount": 1800
+      },
+      {
+        "date": "2026-07-21",
+        "amount": 1350
+      },
+      {
+        "date": "2026-08-04",
+        "amount": 1900
+      },
+      {
+        "date": "2026-08-11",
+        "amount": 1150
+      },
+      {
+        "date": "2026-08-25",
+        "amount": 1700
+      },
+      {
+        "date": "2026-09-08",
+        "amount": 2100
+      }
+    ],
+    "purchases": [
+      {
+        "date": "2026-06-19",
+        "amount": 2800,
+        "category": "rent"
+      },
+      {
+        "date": "2026-07-19",
+        "amount": 2800,
+        "category": "rent"
+      },
+      {
+        "date": "2026-08-18",
+        "amount": 2800,
+        "category": "rent"
+      },
+      {
+        "date": "2026-09-06",
+        "amount": 61,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-09-07",
+        "amount": 84,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-09-05",
+        "amount": 109,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-09-01",
+        "amount": 86,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-08-29",
+        "amount": 75,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-08-25",
+        "amount": 41,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-08-19",
+        "amount": 107,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-08-17",
+        "amount": 105,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-08-15",
+        "amount": 120,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-08-13",
+        "amount": 85,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-08-04",
+        "amount": 71,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-08-04",
+        "amount": 113,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-07-31",
+        "amount": 116,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-07-28",
+        "amount": 80,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-07-19",
+        "amount": 63,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-07-23",
+        "amount": 108,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-07-17",
+        "amount": 128,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-07-12",
+        "amount": 72,
+        "category": "groceries"
+      },
+      {
+        "date": "2026-09-10",
+        "amount": 28,
+        "category": "transport"
+      },
+      {
+        "date": "2026-09-02",
+        "amount": 24,
+        "category": "transport"
+      },
+      {
+        "date": "2026-09-02",
+        "amount": 40,
+        "category": "transport"
+      },
+      {
+        "date": "2026-08-26",
+        "amount": 36,
+        "category": "transport"
+      },
+      {
+        "date": "2026-08-19",
+        "amount": 21,
+        "category": "transport"
+      },
+      {
+        "date": "2026-08-21",
+        "amount": 34,
+        "category": "transport"
+      },
+      {
+        "date": "2026-08-09",
+        "amount": 17,
+        "category": "transport"
+      },
+      {
+        "date": "2026-08-08",
+        "amount": 16,
+        "category": "transport"
+      },
+      {
+        "date": "2026-08-08",
+        "amount": 28,
+        "category": "transport"
+      },
+      {
+        "date": "2026-07-31",
+        "amount": 22,
+        "category": "transport"
+      },
+      {
+        "date": "2026-07-23",
+        "amount": 28,
+        "category": "transport"
+      },
+      {
+        "date": "2026-07-12",
+        "amount": 32,
+        "category": "transport"
+      },
+      {
+        "date": "2026-06-22",
+        "amount": 78,
+        "category": "discretionary"
+      },
+      {
+        "date": "2026-07-11",
+        "amount": 108,
+        "category": "discretionary"
+      },
+      {
+        "date": "2026-06-19",
+        "amount": 139,
+        "category": "discretionary"
+      },
+      {
+        "date": "2026-06-15",
+        "amount": 62,
+        "category": "discretionary"
+      },
+      {
+        "date": "2026-08-13",
+        "amount": 99,
+        "category": "discretionary"
+      },
+      {
+        "date": "2026-06-23",
+        "amount": 119,
+        "category": "discretionary"
+      },
+      {
+        "date": "2026-08-18",
+        "amount": 109,
+        "category": "discretionary"
+      },
+      {
+        "date": "2026-06-30",
+        "amount": 53,
+        "category": "discretionary"
+      },
+      {
+        "date": "2026-08-04",
+        "amount": 156,
+        "category": "discretionary"
+      },
+      {
+        "date": "2026-08-09",
+        "amount": 115,
+        "category": "discretionary"
+      },
+      {
+        "date": "2026-06-23",
+        "amount": 131,
+        "category": "discretionary"
+      },
+      {
+        "date": "2026-08-08",
+        "amount": 88,
+        "category": "discretionary"
+      },
+      {
+        "date": "2026-06-26",
+        "amount": 48,
+        "category": "discretionary"
+      },
+      {
+        "date": "2026-08-02",
+        "amount": 82,
+        "category": "discretionary"
+      },
+      {
+        "date": "2026-06-23",
+        "amount": 105,
+        "category": "discretionary"
+      },
+      {
+        "date": "2026-06-21",
+        "amount": 200,
+        "category": "utilities"
+      },
+      {
+        "date": "2026-07-21",
+        "amount": 200,
+        "category": "utilities"
+      },
+      {
+        "date": "2026-08-20",
+        "amount": 200,
+        "category": "utilities"
+      }
+    ]
+  },
+  "totals": {
+    "totalIn": 12650,
+    "totalOut": 12442,
+    "computedBalance": 208
+  }
+}

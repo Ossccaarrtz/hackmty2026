@@ -16,13 +16,6 @@ NEUTRAL_CATEGORIES = {"income", "savings_transfer"}  # no cuentan como gasto dis
 LIQUIDITY_WARNING_DAYS = 7  # si el colchon cubre menos de esto, se genera una alerta
 WEIGHTS = {"income": 0.35, "essential": 0.25, "bills": 0.20, "liquidity": 0.20}
 
-CATEGORY_TO_MERCHANT = {
-    "groceries": "SuperMart",
-    "transport": "MetroTransit",
-    "rent": "Landlord Properties",
-    "utilities": "Telco Co",
-}
-
 
 def is_neutral(category):
     """Reasignaciones internas de dinero (ahorro, apartados) -- no son gasto
@@ -106,12 +99,19 @@ LEAK_LOOKBACK_DAYS = 60  # ventana de "actividad reciente" -- antes se comprobab
 
 
 def evaluate_bills(bills, purchases, as_of_date=None):
+    """Compara cada bill contra actividad real relacionada, usando el
+    merchant_name real de cada compra -- NO un mapeo categoria->comercio
+    fijo. Un mapeo fijo solo puede tener los nombres de comercio de UNA
+    persona sembrada (ej. "Telco Co" de Mia); con cualquier otra persona
+    (otros nombres de comercio, ej. "Telcel Plan" de Ana) el bill sano
+    siempre saldria como fuga aunque exista actividad real -- encontrado
+    al sembrar la primera persona nueva del proyecto."""
     reference = resolve_reference_date(as_of_date, purchases)
     results = []
     for bill in bills:
         merchant_name = bill["payee"]
         related = any(
-            CATEGORY_TO_MERCHANT.get(p["category"]) == merchant_name
+            p.get("merchant_name") == merchant_name
             and (reference is None or days_between(p["date"], reference) <= LEAK_LOOKBACK_DAYS)
             for p in purchases
         )

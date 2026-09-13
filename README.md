@@ -17,13 +17,15 @@ Cambiamos la tesis de negocio a medio hackatón tras feedback de jueces/mentores
 | Depósito de un tercero (dos cuentas Nessie reales) | Se re-narra de "pago de cliente freelance" a "mesada de los papás" — mismo pipeline técnico |
 | Los 89 tests de backend + 12 de frontend | Ninguno de estos deja de aplicar |
 
-**Qué se re-narra (mismo código, cambia el copy/los datos de ejemplo — pendiente, no hecho todavía):**
-| Pieza | De → A |
-|---|---|
-| Persona | Mia, 24, freelance, ingreso irregular → **Ana, 19, estudiante universitaria, tarjeta-credencial bancaria emitida al inscribirse y nunca activada** |
-| Narrativa de cierre del score | "camino a tarjeta secured" → "de tarjeta dormida a lista para su primera tarjeta de crédito con el mismo banco" |
-| Seed de Nessie | Misma estructura (depósitos + compras + bills), relabeleo de merchants/categorías a contexto de campus |
-| Modelo de negocio | "se lo vendemos a Capital One sobre sus propios clientes" → dos líneas de ingreso: comisión del banco por estudiante activado + comisión por oferta de marca redimida (ver PITCH.md) |
+**Qué se re-narra (mismo código, cambia el copy/los datos de ejemplo):**
+| Pieza | De → A | Estado |
+|---|---|---|
+| Persona | Mia, 24, freelance, ingreso irregular → **Ana, 19, estudiante universitaria, tarjeta-credencial bancaria emitida al inscribirse y nunca activada** | ✅ Seed de Nessie + DynamoDB listo (`user_id=ana`), en paralelo a Mia |
+| Narrativa de cierre del score | "camino a tarjeta secured" → "de tarjeta dormida a lista para su primera tarjeta de crédito con el mismo banco" | Pendiente en frontend |
+| Seed de Nessie | Misma estructura (depósitos + compras + bills), relabeleo de merchants/categorías a contexto de campus, montos en MXN | ✅ Hecho — ver detalle abajo |
+| Modelo de negocio | "se lo vendemos a Capital One sobre sus propios clientes" → dos líneas de ingreso: comisión del banco por estudiante activado + comisión por oferta de marca redimida (ver PITCH.md) | ✅ Documentado |
+
+**Detalle del re-seed de Ana (ya en vivo):** cliente y cuentas nuevas en Nessie (`user_id="ana"` en DynamoDB, en paralelo a Mia, nada se reemplazó). Mesada/pago de medio tiempo irregular en MXN ($1,150-$2,100), renta de cuarto, cafetería, transporte, plan celular (bill sano), FitZone Campus (bill fuga sin actividad). Al sembrar esta primera persona nueva se encontraron y corrigieron **dos bugs reales de arquitectura** que solo aparecían con un persona distinta a Mia — detalle completo en [PLAN.md](./PLAN.md) sección 8.2: (1) la detección de bills sanos usaba un mapeo de comercios hardcodeado a los nombres de Mia en vez del `merchant_name` real de cada compra, y (2) las acciones de dinero (ahorro, apartados) escribían siempre en la cuenta de Nessie de Mia sin importar qué persona las disparara. Ambos corregidos y probados en vivo end-to-end con la cuenta real de Ana.
 
 **Qué es nuevo de verdad (no construido todavía, backlog en PLAN.md sección 8):**
 - Señal de "activación" (qué tan dormida está la tarjeta) en `signal_engine.py`
@@ -148,7 +150,7 @@ Validación real: Capital One ya tiene en su app la función "Block Future Charg
 
 ## Datos sembrados (seed)
 
-**Nota del pivote:** lo de abajo describe el seed actual, que sigue siendo el de Mia (freelancer) — el re-seed con la narrativa de Ana (estudiante) es trabajo pendiente (PLAN.md sección 8), no hecho todavía. La estructura de datos (depósitos + compras + bills) no necesita cambiar, solo los labels/merchants.
+**Nota del pivote:** lo de abajo describe el seed de Mia (sigue vivo sin cambios). El seed de Ana (estudiante, MXN) ya existe en paralelo bajo `user_id="ana"` — ver detalle en la sección de pivote arriba y en [PLAN.md](./PLAN.md) sección 8.2. El frontend todavía apunta a Mia por default (`VITE_USER_ID`); apuntarlo a Ana es parte del re-skin de frontend pendiente.
 
 ~90 días de historial de Mia ya viven en el sandbox de Nessie (ver [`/seed`](./seed)):
 

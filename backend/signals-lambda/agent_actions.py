@@ -18,8 +18,21 @@ from nessie_actions import stop_recurring_bill, sweep_to_savings, release_from_s
 
 REGION = "us-east-1"
 TABLE_NAME = "jarbis-financiero-data"
-CHECKING_ID = "3cbe83c6-e844-48b3-b86a-627b8a6e3028"
+CHECKING_ID = "3cbe83c6-e844-48b3-b86a-627b8a6e3028"  # Mia -- fallback para user_id no reconocidos
 SAVINGS_ID = "f9428a58-dbc4-49b3-9105-e69460a56a9a"
+ACCOUNTS_BY_USER = {
+    "mia": {"checking": CHECKING_ID, "savings": SAVINGS_ID},
+    "ana": {"checking": "3303b959-15c4-4a5d-aeea-1e0503712d37", "savings": "5616be1c-84c4-4e37-9736-9028d5d444a0"},
+}
+
+
+def get_account_ids(user_id):
+    """Cada persona tiene su propia cuenta real en Nessie -- sin esto, una
+    accion de dinero (mover a ahorro, apartados) disparada con user_id="ana"
+    escribiria de verdad en la cuenta de Mia, aunque el registro en DynamoDB
+    dijera "ana". Encontrado al sembrar la primera persona nueva del
+    proyecto (Ana, pivote a Spark)."""
+    return ACCOUNTS_BY_USER.get(user_id, ACCOUNTS_BY_USER["mia"])
 # Cuenta real de un tercero (otra app/otro dueno en el sandbox de Nessie, NO
 # nuestra) usada para la demo de "nomina de un tercero" -- ver
 # simulate_third_party_payroll.
@@ -239,7 +252,8 @@ def verified_move_to_savings(user_id, amount, reason):
         return {"ok": False, "reason": f"Mover ${amount} dejaria tu colchon en solo {projected_liquidity['days_covered']} dias de gasto esencial -- menos de una semana. No lo voy a hacer sin que lo confirmes fuera del chat."}
 
     try:
-        sweep_to_savings(CHECKING_ID, SAVINGS_ID, amount, reason or "Ahorro solicitado por chat")
+        accounts = get_account_ids(user_id)
+        sweep_to_savings(accounts["checking"], accounts["savings"], amount, reason or "Ahorro solicitado por chat")
     except Exception as e:
         return {"ok": False, "reason": f"No se pudo mover el dinero en Nessie ahorita: {e}. No se hizo ningun cambio."}
 
@@ -283,7 +297,8 @@ def verified_release_buffer(user_id, amount, reason):
         return {"ok": False, "reason": f"Ya liberaste ${already_today} hoy -- liberar ${amount} mas pasaria el tope diario autonomo de ${MAX_AUTONOMOUS_SAVINGS}."}
 
     try:
-        release_from_savings(CHECKING_ID, SAVINGS_ID, amount, reason or "Suavizado de ingreso solicitado por chat")
+        accounts = get_account_ids(user_id)
+        release_from_savings(accounts["checking"], accounts["savings"], amount, reason or "Suavizado de ingreso solicitado por chat")
     except Exception as e:
         return {"ok": False, "reason": f"No se pudo liberar el dinero en Nessie ahorita: {e}. No se hizo ningun cambio."}
 
@@ -385,7 +400,8 @@ def simulate_third_party_payroll(user_id, employer_label="Estudio Creativo", amo
     on_date = on_date or resolve_reference_date(None, purchases) or date.today().isoformat()
 
     try:
-        movement = receive_from_third_party(EMPLOYER_ACCOUNT_ID, CHECKING_ID, amount, f"Pago de nomina - {employer_label}", on_date=on_date)
+        checking_id = get_account_ids(user_id)["checking"]
+        movement = receive_from_third_party(EMPLOYER_ACCOUNT_ID, checking_id, amount, f"Pago de nomina - {employer_label}", on_date=on_date)
     except Exception as e:
         return {"ok": False, "reason": f"No se pudo mover el dinero en Nessie: {e}"}
 
@@ -458,12 +474,13 @@ def get_envelope_balances(user_id, purchases=None):
 
 
 def _execute_allocation(user_id, proposals, on_date):
+    accounts = get_account_ids(user_id)
     executed = []
     for p in proposals:
         if p["amount"] <= 0:
             continue
         try:
-            sweep_to_savings(CHECKING_ID, SAVINGS_ID, p["amount"], f"Apartado automatico: {p['category']}", on_date=on_date)
+            sweep_to_savings(accounts["checking"], accounts["savings"], p["amount"], f"Apartado automatico: {p['category']}", on_date=on_date)
         except Exception:
             continue
         table.put_item(Item=to_decimal({
