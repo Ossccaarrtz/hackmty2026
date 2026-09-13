@@ -472,8 +472,14 @@ def propose_stop_bill(user_id, bill_title):
         "user_id": user_id, "sk": PENDING_STOP_BILL_SK,
         "bill_id": bill["bill_id"], "payee": bill["payee"], "payment_amount": bill["payment_amount"],
     }))
+    # monthly_amount explicito -- mismo bug que set_category_budget: el
+    # monto solo vivia dentro del string "reason", asi que cuando Gemini le
+    # repetia el monto a la usuaria para pedirle confirmacion,
+    # find_unverified_amounts lo marcaba como no verificado y lo redactaba
+    # a "[monto no confirmado]" en el flujo central de la demo (la fuga de
+    # FitZone Campus).
     return {
-        "ok": False, "pending": True,
+        "ok": False, "pending": True, "payee": bill["payee"], "monthly_amount": bill["payment_amount"],
         "reason": f"Detecte que '{bill['payee']}' (${bill['payment_amount']}/mes) es una fuga real -- no tiene actividad relacionada. "
                   f"Si tiene contrato anual, cancelar antes de tiempo podria generarte una penalizacion o mandarte a cobranza. "
                   f"Confirma explicitamente que ya no lo usas y quieres que lo detenga.",
@@ -505,8 +511,16 @@ def verified_move_to_savings(user_id, amount, reason):
         return {"ok": False, "reason": "El monto no es un numero valido."}
     if amount <= 0:
         return {"ok": False, "reason": "El monto tiene que ser mayor a cero."}
+    # Nota general de esta funcion: cada return de rechazo trae los montos
+    # mencionados en "reason" tambien como campos explicitos (amount,
+    # already_moved_today, max_autonomous, days_covered) -- sin esto,
+    # find_unverified_amounts en lambda_chat.py no los reconoce como
+    # verificados (solo ve numeros que existan como campo real del
+    # resultado, no cifras que solo vivan dentro del string), y la
+    # explicacion que Gemini le da a la usuaria de por que se rechazo la
+    # accion se redacta a "[monto no confirmado]".
     if amount > MAX_AUTONOMOUS_SAVINGS:
-        return {"ok": False, "reason": f"${amount} es mas de lo que puedo mover de forma autonoma (limite ${MAX_AUTONOMOUS_SAVINGS} por transaccion). Esto necesitaria una confirmacion adicional fuera del chat."}
+        return {"ok": False, "amount": amount, "max_autonomous": MAX_AUTONOMOUS_SAVINGS, "reason": f"${amount} es mas de lo que puedo mover de forma autonoma (limite ${MAX_AUTONOMOUS_SAVINGS} por transaccion). Esto necesitaria una confirmacion adicional fuera del chat."}
 
     deposits, purchases, bills_plain = load_data(user_id)
     signals = get_full_signals(deposits, purchases, bills_plain, user_id=user_id, persist=False)
@@ -516,13 +530,13 @@ def verified_move_to_savings(user_id, amount, reason):
     today = date.today().isoformat()
     already_today = _amount_moved_today(purchases, "savings_transfer", today)
     if already_today + amount > MAX_AUTONOMOUS_SAVINGS:
-        return {"ok": False, "reason": f"Ya moviste ${already_today} a ahorro hoy -- mover ${amount} mas pasaria el tope diario autonomo de ${MAX_AUTONOMOUS_SAVINGS}."}
+        return {"ok": False, "amount": amount, "already_moved_today": already_today, "max_autonomous": MAX_AUTONOMOUS_SAVINGS, "reason": f"Ya moviste ${already_today} a ahorro hoy -- mover ${amount} mas pasaria el tope diario autonomo de ${MAX_AUTONOMOUS_SAVINGS}."}
 
     current_balance = signals["_debug"]["current_balance"]
     elapsed_days = signals["_debug"]["elapsed_days"]
     projected_liquidity = score_liquidity(current_balance - amount, purchases, elapsed_days)
     if projected_liquidity["days_covered"] < LIQUIDITY_WARNING_DAYS:
-        return {"ok": False, "reason": f"Mover ${amount} dejaria tu colchon en solo {projected_liquidity['days_covered']} dias de gasto esencial -- menos de una semana. No lo voy a hacer sin que lo confirmes fuera del chat."}
+        return {"ok": False, "amount": amount, "days_covered": projected_liquidity["days_covered"], "reason": f"Mover ${amount} dejaria tu colchon en solo {projected_liquidity['days_covered']} dias de gasto esencial -- menos de una semana. No lo voy a hacer sin que lo confirmes fuera del chat."}
 
     try:
         accounts = get_account_ids(user_id)
@@ -553,7 +567,7 @@ def verified_release_buffer(user_id, amount, reason):
     if amount <= 0:
         return {"ok": False, "reason": "El monto tiene que ser mayor a cero."}
     if amount > MAX_AUTONOMOUS_SAVINGS:
-        return {"ok": False, "reason": f"${amount} es mas de lo que puedo liberar de forma autonoma (limite ${MAX_AUTONOMOUS_SAVINGS} por transaccion)."}
+        return {"ok": False, "amount": amount, "max_autonomous": MAX_AUTONOMOUS_SAVINGS, "reason": f"${amount} es mas de lo que puedo liberar de forma autonoma (limite ${MAX_AUTONOMOUS_SAVINGS} por transaccion)."}
 
     deposits, purchases, bills_plain = load_data(user_id)
     signals = get_full_signals(deposits, purchases, bills_plain, user_id=user_id, persist=False)
@@ -562,12 +576,12 @@ def verified_release_buffer(user_id, amount, reason):
 
     available = _savings_pool_available(purchases)
     if amount > available:
-        return {"ok": False, "reason": f"Solo tienes ${available} acumulados en tu ahorro dentro de esta simulacion -- no puedo liberar ${amount}."}
+        return {"ok": False, "amount": amount, "available": available, "reason": f"Solo tienes ${available} acumulados en tu ahorro dentro de esta simulacion -- no puedo liberar ${amount}."}
 
     today = date.today().isoformat()
     already_today = _amount_moved_today(purchases, "savings_release", today)
     if already_today + amount > MAX_AUTONOMOUS_SAVINGS:
-        return {"ok": False, "reason": f"Ya liberaste ${already_today} hoy -- liberar ${amount} mas pasaria el tope diario autonomo de ${MAX_AUTONOMOUS_SAVINGS}."}
+        return {"ok": False, "amount": amount, "already_released_today": already_today, "max_autonomous": MAX_AUTONOMOUS_SAVINGS, "reason": f"Ya liberaste ${already_today} hoy -- liberar ${amount} mas pasaria el tope diario autonomo de ${MAX_AUTONOMOUS_SAVINGS}."}
 
     try:
         accounts = get_account_ids(user_id)
@@ -857,7 +871,18 @@ def set_category_budget(user_id, category, monthly_target, label=None):
         "created_at": existing["created_at"] if existing else date.today().isoformat(),
     }))
     verb = "actualizada" if existing else "creada"
-    return {"ok": True, "message": f"Meta {verb}: ${monthly_target}/mes en {final_label}. No aparto ni muevo nada -- comparo tus compras reales contra esto."}
+    # monthly_target explicito en la respuesta (no solo dentro de "message")
+    # -- find_unverified_amounts en lambda_chat.py solo reconoce numeros que
+    # vienen como campo real del resultado de la tool, no cifras que solo
+    # existan dentro de un string. Sin esto, cualquier respuesta del chat
+    # que mencionara el monto se redactaba a "[monto no confirmado]" aunque
+    # la meta se hubiera guardado bien -- mismo patron de bug que ya se
+    # habia corregido una vez para monthly_amount en las alertas de
+    # get_status y en simulate_decision.
+    return {
+        "ok": True, "category": category, "label": final_label, "monthly_target": monthly_target,
+        "message": f"Meta {verb}: ${monthly_target}/mes en {final_label}. No aparto ni muevo nada -- comparo tus compras reales contra esto.",
+    }
 
 
 def get_category_budgets(user_id):
