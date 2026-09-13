@@ -82,7 +82,7 @@ Cambiamos la tesis de negocio a medio hackatón tras feedback de jueces/mentores
 NESSIE API (datos) → Motor de señales (score + detección) → Agente decisor (política de riesgo + verificación) → interfaz (chat embebido/dashboard) + escritura de vuelta a Nessie
 ```
 
-**Stack:** React (frontend) + DynamoDB + Lambda + API Gateway + S3/CloudFront, dominio `.tech`. Se reutiliza la arquitectura de un proyecto previo del equipo ("Jarbis": tool-calling, verificación anti-alucinación, backend Lambda + DynamoDB, dashboard React) — la razón para seguir en serverless no es "los datos vienen de una API", es que las acciones del agente son eventos discretos (mensaje de chat, click en "avanzar día", petición del dashboard), no un stream continuo.
+**Stack:** React (frontend) + DynamoDB + Lambda + API Gateway + S3/CloudFront, dominio `.tech`. La razón para ir serverless no es "los datos vienen de una API", es que las acciones del agente son eventos discretos (mensaje de chat, click en "avanzar día", petición del dashboard), no un stream continuo.
 
 **Decisiones de la arquitectura (y por qué):**
 - **Interfaz: chat embebido en el propio dashboard, no Telegram.** Un banco real no manda datos financieros por la infraestructura de un tercero. El patrón real es el de **Eno** (el asistente de Capital One): chat dentro de la app, notificaciones dentro de la app. Además elimina una dependencia externa que podría fallar en vivo durante la demo.
@@ -178,7 +178,7 @@ Credenciales de AWS en GitHub Secrets separados de los del frontend (usuario IAM
 
 ## Backend desplegado (ya en la cuenta oficial de AWS del equipo)
 
-Se descubrió que la infraestructura de Jarbis ya vive en esta cuenta (`jarbis-*` tablas/Lambdas + API Gateway `jarbis`) — se reutilizó directamente en vez de crear infraestructura paralela.
+El backend corre en Lambda + DynamoDB + API Gateway, todo en la cuenta de AWS del equipo.
 
 | Recurso | Detalle |
 |---|---|
@@ -350,7 +350,7 @@ POST /chat/message  { "message": "pagué 150 en efectivo en tacos con amigos" }
 POST /chat/message  { "message": "gasté 300 con mi tarjeta de Banorte en gasolina" }
 ```
 
-Hueco real: hasta este punto, el score/ratio esencial-discrecional/señal de activación asumían que TODA la vida financiera del estudiante pasa por la tarjeta del banco aliado — falso para cualquiera que también pague en efectivo o con otra tarjeta. `log_external_expense` (tool nuevo, inspirado en el patrón `save_expense` del proyecto hermano [Jarbis](https://github.com/Ossccaarrtz/jarbis), incluida su misma protección anti-duplicado por ventana de tiempo de 2 minutos) registra ese gasto como una transacción más en DynamoDB, marcada con `source: "cash"` o `"other_card"` (+ `card_name` si aplica). Si el usuario no menciona con qué tarjeta pagó, el system prompt le indica al modelo **preguntárselo antes de llamar la tool** — nunca inventarlo ni dejarlo vacío.
+Hueco real: hasta este punto, el score/ratio esencial-discrecional/señal de activación asumían que TODA la vida financiera del estudiante pasa por la tarjeta del banco aliado — falso para cualquiera que también pague en efectivo o con otra tarjeta. `log_external_expense` (tool nuevo, con protección anti-duplicado por ventana de tiempo de 2 minutos) registra ese gasto como una transacción más en DynamoDB, marcada con `source: "cash"` o `"other_card"` (+ `card_name` si aplica). Si el usuario no menciona con qué tarjeta pagó, el system prompt le indica al modelo **preguntárselo antes de llamar la tool** — nunca inventarlo ni dejarlo vacío.
 
 **Manejo cuidadoso de qué número responde qué pregunta (el detalle que había que resolver bien):**
 - `compute_totals`/`score_liquidity` y el cálculo de balance en `agent_actions.py` **excluyen** el gasto externo — ese dinero nunca salió de la cuenta que el balance/colchón de liquidez representa. Si se sumara ahí, el sistema pensaría que la cuenta del banco tiene menos dinero del que realmente tiene, solo porque el usuario gastó efectivo.
