@@ -69,13 +69,13 @@ test('chat sends a JSON body with the message and user_id, and reads notificatio
   assert.equal(calls[1].url.pathname, '/notifications');
 });
 test('a 429 from the chat surfaces the backend-provided reply instead of a generic error', async () => {
-  const api = createApi({ fetchImpl: async () => ({ ok: false, status: 429, json: async () => ({ reply: 'Centinel esta saturado, intenta en un minuto.' }) }) });
+  const api = createApi({ fetchImpl: async () => ({ ok: false, status: 429, json: async () => ({ reply: 'Spark esta saturado, intenta en un minuto.' }) }) });
   await assert.rejects(api.sendChatMessage('hola'), /saturado/);
 });
 test('chat exchanges become a transcript, and only executed actions (not get_status) join the shared feed', () => {
-  const response = { reply: 'Detuve el cargo de Gym Co.', actions_taken: [
+  const response = { reply: 'Detuve el cargo de FitZone Campus.', actions_taken: [
     { tool: 'get_status', result: { score: { value: 64 } } },
-    { tool: 'stop_subscription', result: { ok: true, message: 'Detuve el cargo de Gym Co.' } },
+    { tool: 'stop_subscription', result: { ok: true, message: 'Detuve el cargo de FitZone Campus.' } },
     { tool: 'move_to_savings', result: { ok: false, reason: 'Supera el limite autonomo.' } },
   ] };
   const next = appendChatExchange(emptySession(), 'detén el gimnasio', response);

@@ -41,7 +41,7 @@ function renderChatText(text) {
     : <p key={i}>{block.content}</p>);
 }
 function TypingIndicator() {
-  return <div className="chat-bubble assistant typing-indicator" aria-label="Centinel está escribiendo"><span /><span /><span /></div>;
+  return <div className="chat-bubble assistant typing-indicator" aria-label="Spark está escribiendo"><span /><span /><span /></div>;
 }
 function readSession() {
   try { const saved = JSON.parse(sessionStorage.getItem(sessionKey)); if (Array.isArray(saved?.feed) && Array.isArray(saved?.history)) return { ...emptySession(), ...saved }; } catch { /* Storage is optional. */ }
@@ -68,7 +68,7 @@ function buildDashboardVariants(reduce) {
     },
   };
 }
-const AUTH_KEY = 'centinel:authed';
+const AUTH_KEY = 'spark:authed';
 function readAuthed() {
   try {
     if (localStorage.getItem(AUTH_KEY) === 'true') return true;
@@ -77,10 +77,10 @@ function readAuthed() {
 }
 const FAQS = [
   { q: '¿Qué es el Cash-Flow Resilience Score?', a: 'Un indicador propio (0-100) de qué tan resiliente es tu flujo de efectivo, calculado a partir de tu comportamiento real: regularidad de ingreso, ratio esencial/discrecional, recurrencia de bills y colchón de liquidez. No es un score de Buró y no requiere historial crediticio previo.' },
-  { q: '¿Cómo detecta Centinel una fuga de dinero?', a: 'Compara tus bills recurrentes contra actividad relacionada real (por ejemplo, un cargo de gimnasio sin visitas asociadas). Si no encuentra esa actividad por un periodo prolongado, la marca como posible fuga y te avisa antes de hacer nada.' },
-  { q: '¿Centinel puede mover mi dinero sin avisarme?', a: 'Solo en un caso: mover dinero a tu propio ahorro, porque es reversible y no involucra a terceros. Detener un cargo recurrente siempre pide tu confirmación explícita primero, y te advierte si podría tener implicaciones contractuales.' },
-  { q: '¿Qué pasa con mis datos financieros?', a: 'El modelo de lenguaje nunca ve tu historial crudo de transacciones -- solo señales ya derivadas (ej. "score=64, fuga detectada: Gym Co"). Toda la demo corre sobre el sandbox de Capital One Nessie, no datos reales.' },
-  { q: '¿Qué significa "Sin anomalías"?', a: 'Centinel compara tu actividad reciente contra tu propio historial. Si detecta un patrón fuera de lo normal, pausa cualquier acción autónoma y te pide confirmar antes de continuar, en vez de actuar solo.' },
+  { q: '¿Cómo detecta Spark una fuga de dinero?', a: 'Compara tus bills recurrentes contra actividad relacionada real (por ejemplo, un cargo de gimnasio sin visitas asociadas). Si no encuentra esa actividad por un periodo prolongado, la marca como posible fuga y te avisa antes de hacer nada.' },
+  { q: '¿Spark puede mover mi dinero sin avisarme?', a: 'Solo en un caso: mover dinero a tu propio ahorro, porque es reversible y no involucra a terceros. Detener un cargo recurrente siempre pide tu confirmación explícita primero, y te advierte si podría tener implicaciones contractuales.' },
+  { q: '¿Qué pasa con mis datos financieros?', a: 'El modelo de lenguaje nunca ve tu historial crudo de transacciones -- solo señales ya derivadas (ej. "score=57, fuga detectada: FitZone Campus"). Toda la demo corre sobre el sandbox de Capital One Nessie, no datos reales.' },
+  { q: '¿Qué significa "Sin anomalías"?', a: 'Spark compara tu actividad reciente contra tu propio historial. Si detecta un patrón fuera de lo normal, pausa cualquier acción autónoma y te pide confirmar antes de continuar, en vez de actuar solo.' },
 ];
 function FaqWidget() {
   const [open, setOpen] = useState(false);
@@ -111,8 +111,8 @@ function FaqWidget() {
 function PrivacyPolicy() {
   return <>
     <h2 id="privacy-title">Aviso de privacidad (demo)</h2>
-    <p>Centinel One es un proyecto para el Hackathon de Capital One (Track 1) — no procesa datos financieros reales; todos los movimientos vienen del sandbox de Capital One Nessie.</p>
-    <p>El modelo de lenguaje (Gemini) nunca recibe tu historial crudo de transacciones, solo señales ya derivadas por nuestro motor (por ejemplo, "score=64, fuga detectada: Gym Co"). Toda acción que mueve dinero pasa primero por una verificación que confirma que coincide con lo que el motor de señales ya calculó, antes de escribir en Nessie.</p>
+    <p>Spark es un proyecto para el Hackathon de Capital One (Track 1) — no procesa datos financieros reales; todos los movimientos vienen del sandbox de Capital One Nessie.</p>
+    <p>El modelo de lenguaje (Gemini) nunca recibe tu historial crudo de transacciones, solo señales ya derivadas por nuestro motor (por ejemplo, "score=57, fuga detectada: FitZone Campus"). Toda acción que mueve dinero pasa primero por una verificación que confirma que coincide con lo que el motor de señales ya calculó, antes de escribir en Nessie.</p>
     <p className="muted-copy">Para un producto real, esto requeriría un acuerdo de procesamiento de datos (DPA) con el proveedor del modelo y cumplimiento de GLBA — el mismo proceso que sigue cualquier institución financiera al usar un proveedor de nube.</p>
   </>;
 }
@@ -126,7 +126,7 @@ function Footer() {
   }, [open]);
   return <>
     <footer className="app-footer">
-      <span>© 2026 Centinel One — Capital One Hackathon</span>
+      <span>© 2026 Spark — Capital One Hackathon</span>
       <button className="footer-link" onClick={() => setOpen(true)}>Aviso de privacidad</button>
     </footer>
     {open && <div className="modal-overlay" onClick={() => setOpen(false)}>
@@ -138,7 +138,7 @@ function Footer() {
   </>;
 }
 function Login({ onLogin }) {
-  const [email, setEmail] = useState('mia@centinelone.com');
+  const [email, setEmail] = useState('ana@spark.mx');
   const [password, setPassword] = useState('demo1234');
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
@@ -169,7 +169,7 @@ function Login({ onLogin }) {
         <label className="login-remember"><input type="checkbox" checked={remember} onChange={event => setRemember(event.target.checked)} /> Recordarme</label>
         <button className="login-cta black-button" type="submit">Iniciar sesión</button>
         <button type="button" className="text-button login-forgot">¿Olvidaste tu usuario o contraseña?</button>
-        <p className="login-footnote">Acceso de demostración — cuenta de Mia precargada.</p>
+        <p className="login-footnote">Acceso de demostración — cuenta de Ana precargada.</p>
       </form>
     </div>
   </div>;
@@ -414,8 +414,8 @@ function App() {
   }
 
   const controls = <div className="agent-controls"><button className="black-button small" disabled={busy || loading || !!error || !data || session.done || uncertain} onClick={() => setModal('advance')}><Play size={15} />{busy ? 'Procesando…' : session.done ? 'Demo completada' : 'Avanzar día'}</button><button className="outline-button small" disabled={busy || loading} onClick={() => setModal('reset')}><RotateCcw size={15} /> Reiniciar</button></div>;
-  const feed = <div className="agent-feed">{session.feed.length ? session.feed.map(action => <article className={`agent-feed-item ${['error', 'verification_blocked', 'chat_rejected'].includes(action.type) ? 'action-error' : PENDING_TYPES.includes(action.type) || action.requires_confirmation ? 'action-pending' : ''}`} key={action.id}><span>{action.date && dateLabel(action.date)} · {action.type}</span><p>{action.text}</p></article>) : <p className="empty">Todavía no hay acciones recibidas en esta sesión. Avanza la simulación o escríbele a Centinel para ver sus respuestas.</p>}</div>;
-  const chatTranscript = <div className="chat-transcript">{session.chatLog.length ? session.chatLog.map(m => <div className={`chat-bubble ${m.role}`} key={m.id}>{renderChatText(m.text)}</div>) : <p className="empty">Escríbele a Centinel: puede revisar tu score, detener una suscripción marcada como fuga, mover dinero a tu ahorro, o liberar parte de tu ahorro si esta semana te entró poco.</p>}{chatBusy && <TypingIndicator />}</div>;
+  const feed = <div className="agent-feed">{session.feed.length ? session.feed.map(action => <article className={`agent-feed-item ${['error', 'verification_blocked', 'chat_rejected'].includes(action.type) ? 'action-error' : PENDING_TYPES.includes(action.type) || action.requires_confirmation ? 'action-pending' : ''}`} key={action.id}><span>{action.date && dateLabel(action.date)} · {action.type}</span><p>{action.text}</p></article>) : <p className="empty">Todavía no hay acciones recibidas en esta sesión. Avanza la simulación o escríbele a Spark para ver sus respuestas.</p>}</div>;
+  const chatTranscript = <div className="chat-transcript">{session.chatLog.length ? session.chatLog.map(m => <div className={`chat-bubble ${m.role}`} key={m.id}>{renderChatText(m.text)}</div>) : <p className="empty">Escríbele a Spark: puede revisar tu score, detener una suscripción marcada como fuga, mover dinero a tu ahorro, o liberar parte de tu ahorro si esta semana te entró poco.</p>}{chatBusy && <TypingIndicator />}</div>;
 
   if (!authed) return <Login onLogin={remember => { if (remember) { try { localStorage.setItem(AUTH_KEY, 'true'); } catch { /* Storage is optional. */ } } setAuthed(true); }} />;
 
@@ -424,9 +424,9 @@ function App() {
 
   return <>
   <motion.main className={`dashboard connected-dashboard ${isFullPage ? 'full-page-layout page-focused' : ''}`} variants={dashboardContainer} initial="hidden" animate="visible">
-    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Centinel', 'chat'], [Wallet, 'Movimientos', 'transactions'], [FileText, 'Reporte de confianza', 'trust'], [Receipt, 'Estado de cuenta', 'statement'], [PiggyBank, 'Apartados', 'envelopes']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="mia-avatar" aria-label="Perfil de Mia" onClick={() => setModal('profile')}>M</button></div></motion.aside>
+    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Spark', 'chat'], [Wallet, 'Movimientos', 'transactions'], [FileText, 'Reporte de confianza', 'trust'], [Receipt, 'Estado de cuenta', 'statement'], [PiggyBank, 'Apartados', 'envelopes']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
     <section className="main-column">
-      <motion.header className="page-header" variants={dashboardItem}><div><div className="page-brand"><img src="/capital-one-logo.svg" alt="Capital One" className="page-brand-logo" /><h1>Centinel One</h1></div><p>Hola, Mia. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></motion.header>
+      <motion.header className="page-header" variants={dashboardItem}><div><div className="page-brand"><img src="/capital-one-logo.svg" alt="Capital One" className="page-brand-logo" /><h1>Spark</h1></div><p>Hola, Ana. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></motion.header>
       {error && <div className="error-banner" role="alert">{error} <button disabled={loading || busy} onClick={refresh}>Reintentar lectura</button></div>}
       {operationError && <div className="error-banner" role="alert">{operationError}</div>}
       {notice && <p className="operation-notice" role="status">{notice}</p>}
@@ -434,10 +434,10 @@ function App() {
         {page === 'chat' && <motion.section className="glass chat-panel" key="chat-panel"
           initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
           transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
-          <header className="card-heading"><h2>Conversación con Centinel</h2><button className="pill" onClick={() => setPage('home')}>Volver al inicio</button></header>
+          <header className="card-heading"><h2>Conversación con Spark</h2><button className="pill" onClick={() => setPage('home')}>Volver al inicio</button></header>
           {chatTranscript}
           <form className="chat-form" onSubmit={sendChat}>
-            <input aria-label="Mensaje para Centinel" placeholder="Ej. ¿cómo va mi score? / detén el gimnasio / mueve 20 a mi ahorro" value={chatInput} onChange={event => setChatInput(event.target.value)} disabled={busy} />
+            <input aria-label="Mensaje para Spark" placeholder="Ej. ¿cómo va mi score? / cancela FitZone Campus / mueve 20 a mi ahorro" value={chatInput} onChange={event => setChatInput(event.target.value)} disabled={busy} />
             <button className="black-button" type="submit" disabled={busy || !chatInput.trim()} aria-label="Enviar mensaje"><Send size={16} /></button>
           </form>
           {controls}
@@ -489,7 +489,7 @@ function App() {
           initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
           transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
           <div className="statement-header">
-            <div><h2>Estado de cuenta</h2><p className="muted-copy">Libro financiero mensual de Mia: en qué se fue el dinero y de dónde vino.</p></div>
+            <div><h2>Estado de cuenta</h2><p className="muted-copy">Libro financiero mensual de Ana: en qué se fue el dinero y de dónde vino.</p></div>
             <div className="statement-header-actions">
               <select aria-label="Mes del estado de cuenta" value={activeStatementMonth} onChange={event => setStatementMonth(event.target.value)}>
                 {statementMonths.map(ym => <option key={ym} value={ym}>{monthLabel(ym)}</option>)}
@@ -544,7 +544,7 @@ function App() {
             <button className="outline-button" onClick={confirmAllocation} disabled={envelopesBusy || !envelopes.pending_allocation}>Confirmar reparto pendiente</button>
             <p className="muted-copy">Si una nómina detectada dejaba tu colchón muy bajo para repartirse sola, la propuesta queda aquí para tu confirmación explícita.</p>
             <h3>Simular nómina de un tercero</h3>
-            <p className="muted-copy">Mueve dinero real desde una cuenta Nessie que no es la nuestra (el "empleador" de Mia) hasta su cuenta -- el reparto a apartados que veas después ocurre solo, disparado por el mismo webhook que reacciona a cualquier depósito real.</p>
+            <p className="muted-copy">Mueve dinero real desde una cuenta Nessie que no es la nuestra (papá y mamá de Ana) hasta su cuenta -- el reparto a apartados que veas después ocurre solo, disparado por el mismo webhook que reacciona a cualquier depósito real.</p>
             <button className="black-button" onClick={simulatePayroll} disabled={payrollBusy}>{payrollBusy ? 'Procesando en Nessie…' : 'Simular nómina de un tercero'}</button>
           </>}
         </motion.section>}
@@ -568,15 +568,15 @@ function App() {
         {page === 'home' && <motion.section className="payments-card glass alerts-card" key="alerts-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="card-heading"><h2>Lo que necesita tu atención</h2><span className="pill">{signals?.alerts.length ?? '—'} alertas</span></header>{signals ? signals.alerts.length ? signals.alerts.map(alert => <article className="live-alert" key={alert.id}><ShieldAlert size={24} /><div><strong>{alert.title}</strong><p>{alert.detail}</p>{alert.annual_cost > 0 && <small>{money(alert.monthly_amount)}/mes · {money(alert.annual_cost)} al año · potencial, no ahorro realizado</small>}</div><button className="black-button small" onClick={() => setPage('chat')}>Revisar</button></article>) : <p className="empty">Todo al día: el backend no reporta alertas activas.</p> : <p className="empty">{loading ? 'Consultando alertas…' : 'Alertas no disponibles.'}</p>}{signals?.upcoming_expenses?.length > 0 && <div className="upcoming-expenses"><h3>Próximos gastos esperados</h3>{signals.upcoming_expenses.map(item => <div className="upcoming-expense-row" key={item.category}><span>{item.category_label}</span><span className="muted-copy">{item.days_until === 0 ? 'Hoy' : item.days_until === 1 ? 'Mañana' : `En ${item.days_until} días`} · {dateLabel(item.expected_date)} · {item.confidence}% confianza</span><strong>{money(item.expected_amount)}</strong></div>)}</div>}<p className="muted-copy">Detener un cargo no cancela el contrato con el comercio.</p></motion.section>}
       </AnimatePresence>
     </section>
-    {page === 'home' && <section className="right-column"><motion.section className="transactions" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="transactions-heading"><div><h2>Movimientos</h2><p>Historial de Mia</p></div><button className="black-button small" onClick={() => setPage('transactions')}>Ver todos</button></header><div className="transaction-list">{transactions.slice(-3).reverse().map(tx => <div className="transaction-row live-transaction" key={tx.id}><span className={`direction ${tx.signed_amount > 0 ? 'inflow' : 'outflow'}`}>{tx.signed_amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={tx.name}>{tx.name}</strong><span className="transaction-date">{dateLabel(tx.date)}</span><span className={`transaction-amount ${tx.signed_amount > 0 ? 'inflow' : ''}`}>{money(tx.signed_amount)}</span></div>)}{!transactions.length && <p className="empty">{loading ? 'Cargando movimientos…' : data ? 'No hay movimientos registrados.' : 'Historial no disponible.'}</p>}</div></motion.section><CategorySpending summary={data?.summary} loading={loading} variants={dashboardItem} /></section>}
+    {page === 'home' && <section className="right-column"><motion.section className="transactions" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><header className="transactions-heading"><div><h2>Movimientos</h2><p>Historial de Ana</p></div><button className="black-button small" onClick={() => setPage('transactions')}>Ver todos</button></header><div className="transaction-list">{transactions.slice(-3).reverse().map(tx => <div className="transaction-row live-transaction" key={tx.id}><span className={`direction ${tx.signed_amount > 0 ? 'inflow' : 'outflow'}`}>{tx.signed_amount > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><strong title={tx.name}>{tx.name}</strong><span className="transaction-date">{dateLabel(tx.date)}</span><span className={`transaction-amount ${tx.signed_amount > 0 ? 'inflow' : ''}`}>{money(tx.signed_amount)}</span></div>)}{!transactions.length && <p className="empty">{loading ? 'Cargando movimientos…' : data ? 'No hay movimientos registrados.' : 'Historial no disponible.'}</p>}</div></motion.section><CategorySpending summary={data?.summary} loading={loading} variants={dashboardItem} /></section>}
     {modal && <div className="modal-overlay" onClick={() => setModal(null)}><section className="modal glass" role="dialog" aria-modal="true" aria-labelledby="dialog-title" onClick={event => event.stopPropagation()}><button ref={closeRef} className="close-modal icon-button" aria-label="Cerrar" onClick={() => setModal(null)}><X /></button>
       {modal === 'score' && <><h2 id="dialog-title">Tu score, explicado</h2><p>Indicador propio de resiliencia financiera; no es un score de Buró ni garantiza aprobación de crédito.</p>{signals?.score.breakdown.map(item => <div className="detail-line" key={item.key}><span>{item.label}<small>{item.detail} · Peso: {item.weight}%</small></span><strong>{item.value}/100</strong></div>)}</>}
       {modal === 'notifications' && <><h2 id="dialog-title">Avisos en tiempo real</h2><p className="muted-copy">Generados automáticamente por un webhook (DynamoDB Streams) cada vez que el agente hace un movimiento real — sin que nadie los pida.</p>{notifications.length ? notifications.map(n => <div className="detail-line" key={n.sk}><span>{n.text}<small>{dateLabel(n.date)}</small></span></div>) : <p>Sin avisos todavía.</p>}</>}
-      {modal === 'advance' && <><h2 id="dialog-title">Avanzar la simulación</h2><p>El siguiente checkpoint puede observar la cuenta, detectar una fuga, detener el cargo de Gym Co, o mover dinero a ahorro en el sandbox Nessie.</p><p>El backend no permite consultar el checkpoint actual. Si el próximo paso es detener Gym Co, al continuar confirmas que ya no lo usas y autorizas detener ese cargo de demostración.</p><div className="agent-alert"><ShieldAlert size={20} /><span>Un contrato anual puede generar penalizaciones o cobranza. Bloquear el cargo no cancela la suscripción con el comercio.</span></div><button className="black-button" disabled={busy || uncertain || !data || !!error || session.done} onClick={() => mutate('advance')}>Confirmo y autorizo el siguiente paso</button><button className="text-button" onClick={() => setModal(null)}>Volver sin avanzar</button></>}
-      {modal === 'reset' && <><h2 id="dialog-title">Reiniciar demo</h2><p>Solicitará al backend volver al día 0 y reactivar Gym Co en el sandbox compartido. Borrará el feed y el chat de esta pestaña, pero no revierte los depósitos o retiros anteriores de Nessie.</p><button className="black-button" disabled={busy} onClick={() => mutate('reset')}>Reiniciar simulación</button></>}
+      {modal === 'advance' && <><h2 id="dialog-title">Avanzar la simulación</h2><p>El siguiente checkpoint puede observar la cuenta, detectar una fuga, detener el cargo de FitZone Campus, o mover dinero a ahorro en el sandbox Nessie.</p><p>El backend no permite consultar el checkpoint actual. Si el próximo paso es detener FitZone Campus, al continuar confirmas que ya no lo usas y autorizas detener ese cargo de demostración.</p><div className="agent-alert"><ShieldAlert size={20} /><span>Un contrato anual puede generar penalizaciones o cobranza. Bloquear el cargo no cancela la suscripción con el comercio.</span></div><button className="black-button" disabled={busy || uncertain || !data || !!error || session.done} onClick={() => mutate('advance')}>Confirmo y autorizo el siguiente paso</button><button className="text-button" onClick={() => setModal(null)}>Volver sin avanzar</button></>}
+      {modal === 'reset' && <><h2 id="dialog-title">Reiniciar demo</h2><p>Solicitará al backend volver al día 0 y reactivar FitZone Campus en el sandbox compartido. Borrará el feed y el chat de esta pestaña, pero no revierte los depósitos o retiros anteriores de Nessie.</p><button className="black-button" disabled={busy} onClick={() => mutate('reset')}>Reiniciar simulación</button></>}
       {modal === 'profile' && <>
         <h2 id="dialog-title">Perfil</h2>
-        <div className="profile-header"><span className="mia-avatar profile-avatar-lg">M</span><div><strong>Mia</strong><p className="muted-copy">Ingreso freelance / gig · Sin historial en Buró</p></div></div>
+        <div className="profile-header"><span className="user-avatar profile-avatar-lg">A</span><div><strong>Ana</strong><p className="muted-copy">Estudiante universitaria · Tarjeta bancaria sin activar · Sin historial en Buró</p></div></div>
         <div className="detail-line"><span>Usuario<small>ID de demo</small></span><strong>mia</strong></div>
         <div className="detail-line"><span>Cuentas Nessie<small>Checking + Savings, sandbox</small></span><strong>2</strong></div>
         <div className="detail-line"><span>Colchón de liquidez<small>Días de gasto esencial cubiertos</small></span><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong></div>
