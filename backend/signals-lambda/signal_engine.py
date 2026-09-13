@@ -121,6 +121,57 @@ def evaluate_bills(bills, purchases, as_of_date=None):
     return {"score": score, "bills": results}
 
 
+ACTIVATION_WINDOW_DAYS = 30  # ventana de "uso reciente" para el componente de frecuencia
+ACTIVATION_RECENCY_FULL_CREDIT_DAYS = 7  # actividad dentro de esta ventana = maxima puntuacion de "reciente"
+ACTIVATION_RECENCY_ZERO_CREDIT_DAYS = 60  # sin actividad por esto o mas = cero puntuacion de "reciente"
+ACTIVATION_DORMANT_THRESHOLD = 40  # por debajo de esto, se genera la alerta de tarjeta inactiva
+
+
+def compute_activation_signal(purchases, as_of_date=None):
+    """Mide que tan 'dormida' esta la tarjeta -- la senal que le importa al
+    banco (activar el convenio universitario que ya pago), separada a
+    proposito del Cash-Flow Resilience Score (que mide preparacion para
+    credito). Son dos preguntas distintas: 'esta usando su tarjeta' no es
+    lo mismo que 'esta lista para una tarjeta de credito' -- mezclarlas en
+    un solo numero habria obligado a re-normalizar los pesos ya probados
+    del score existente, y habria confundido a que responde cada uno.
+
+    Solo cuenta actividad real de comercio (purchases), no depositos ni
+    reasignaciones internas de dinero (apartados, ahorro) -- una mesada
+    que llega a la cuenta no prueba que el banco vea la tarjeta en uso."""
+    reference = resolve_reference_date(as_of_date, purchases)
+    real_purchases = [p for p in purchases if not is_neutral(p["category"])]
+    if not real_purchases or not reference:
+        return {
+            "value": 0, "status": "sin_datos",
+            "days_since_last_activity": None, "transactions_last_30_days": 0,
+            "detail": "No hay compras registradas todavia.",
+        }
+
+    last_date = max(p["date"] for p in real_purchases)
+    days_since_last_activity = days_between(last_date, reference)
+
+    if days_since_last_activity <= ACTIVATION_RECENCY_FULL_CREDIT_DAYS:
+        recency_score = 100
+    else:
+        span = ACTIVATION_RECENCY_ZERO_CREDIT_DAYS - ACTIVATION_RECENCY_FULL_CREDIT_DAYS
+        recency_score = clamp(100 - (days_since_last_activity - ACTIVATION_RECENCY_FULL_CREDIT_DAYS) / span * 100, 0, 100)
+
+    recent_count = sum(1 for p in real_purchases if days_between(p["date"], reference) <= ACTIVATION_WINDOW_DAYS)
+    frequency_score = clamp(recent_count * 15, 0, 100)  # ~7 compras/mes = puntuacion maxima
+
+    value = round(0.6 * recency_score + 0.4 * frequency_score)
+    status = "activa" if value >= 70 else ("en_riesgo" if value >= ACTIVATION_DORMANT_THRESHOLD else "dormida")
+
+    return {
+        "value": value,
+        "status": status,
+        "days_since_last_activity": days_since_last_activity,
+        "transactions_last_30_days": recent_count,
+        "detail": f"Ultima compra hace {days_since_last_activity} dias, {recent_count} compras en los ultimos {ACTIVATION_WINDOW_DAYS} dias.",
+    }
+
+
 def score_liquidity(current_balance, purchases, elapsed_days):
     essential_spend = sum(float(p["amount"]) for p in purchases if p["category"] in ESSENTIAL_CATEGORIES and p["category"] != "income")
     avg_daily = essential_spend / elapsed_days if elapsed_days else 0
@@ -285,6 +336,7 @@ def compute_signals(deposits, purchases, bills, total_income=None, total_expense
     bill_health = evaluate_bills(bills, purchases, as_of_date)
     liquidity = score_liquidity(current_balance, purchases, elapsed_days)
     anomaly = detect_anomaly(purchases, as_of_date)
+    activation = compute_activation_signal(purchases, as_of_date)
 
     final_score = round(
         income_regularity["value"] * WEIGHTS["income"]
@@ -316,6 +368,16 @@ def compute_signals(deposits, purchases, bills, total_income=None, total_expense
             "annual_cost": 0,
             "status": "detected",
         })
+    if activation["status"] == "dormida":
+        alerts.append({
+            "id": "activation-warning",
+            "type": "activation_warning",
+            "severity": "high",
+            "title": "Tarjeta inactiva",
+            "detail": f"Sin compras en los ultimos {activation['days_since_last_activity']} dias -- el banco no ve actividad reciente en tu cuenta.",
+            "annual_cost": 0,
+            "status": "detected",
+        })
 
     return {
         "score": {
@@ -332,6 +394,7 @@ def compute_signals(deposits, purchases, bills, total_income=None, total_expense
         },
         "alerts": alerts,
         "anomaly": anomaly,
+        "activation": activation,
         "upcoming_expenses": forecast_upcoming_expenses(purchases, as_of_date),
         "liquidity": {"days_covered": liquidity["days_covered"]},
         "projection": {"weeks_to_ready": project_readiness(score_history, final_score), "product": "tarjeta secured"},

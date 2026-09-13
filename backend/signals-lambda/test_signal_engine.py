@@ -223,5 +223,59 @@ class TestScoreLiquidity(unittest.TestCase):
         self.assertLess(low["days_covered"], high["days_covered"])
 
 
+class TestComputeActivationSignal(unittest.TestCase):
+    """Señal de 'activación' del pivote a Spark -- que tan dormida esta la
+    tarjeta, la metrica que le importa al banco (KPI del convenio
+    universitario), separada a proposito del Cash-Flow Resilience Score."""
+
+    def test_no_purchases_returns_sin_datos(self):
+        result = se.compute_activation_signal([], as_of_date="2026-09-12")
+        self.assertEqual(result["value"], 0)
+        self.assertEqual(result["status"], "sin_datos")
+        self.assertIsNone(result["days_since_last_activity"])
+
+    def test_recent_frequent_activity_is_activa(self):
+        purchases = [purchase(f"2026-09-{d:02d}", "groceries", 50) for d in range(5, 12)]  # 7 compras, la ultima hace 1 dia
+        result = se.compute_activation_signal(purchases, as_of_date="2026-09-12")
+        self.assertEqual(result["status"], "activa")
+        self.assertEqual(result["days_since_last_activity"], 1)
+        self.assertEqual(result["transactions_last_30_days"], 7)
+
+    def test_only_old_activity_is_dormida(self):
+        purchases = [purchase("2026-06-01", "groceries", 50)]  # ~103 dias antes del as_of
+        result = se.compute_activation_signal(purchases, as_of_date="2026-09-12")
+        self.assertEqual(result["status"], "dormida")
+
+    def test_internal_reassignments_do_not_count_as_activity(self):
+        """Regresion directa: una mesada que llega o un reparto a apartados
+        no prueba que el banco vea la tarjeta en uso -- solo compras reales
+        de comercio cuentan."""
+        purchases = [
+            purchase("2026-09-10", "savings_transfer", 100),
+            purchase("2026-09-11", "envelope:transporte", 50),
+        ]
+        result = se.compute_activation_signal(purchases, as_of_date="2026-09-12")
+        self.assertEqual(result["status"], "sin_datos")
+
+    def test_single_recent_purchase_has_high_recency_but_capped_frequency(self):
+        result = se.compute_activation_signal([purchase("2026-09-11", "groceries", 50)], as_of_date="2026-09-12")
+        self.assertEqual(result["transactions_last_30_days"], 1)
+        self.assertLess(result["value"], 100)  # recencia perfecta, pero frecuencia baja lo topa
+
+    def test_compute_signals_includes_activation_and_alert_when_dormant(self):
+        purchases = [purchase("2026-06-01", "groceries", 50)]
+        deposits = [{"date": "2026-06-01", "amount": 500, "category": "income"}]
+        result = se.compute_signals(deposits, purchases, [], as_of_date="2026-09-12")
+        self.assertEqual(result["activation"]["status"], "dormida")
+        self.assertTrue(any(a["type"] == "activation_warning" for a in result["alerts"]))
+
+    def test_compute_signals_no_activation_alert_when_active(self):
+        purchases = [purchase(f"2026-09-{d:02d}", "groceries", 50) for d in range(5, 12)]
+        deposits = [{"date": "2026-06-01", "amount": 500, "category": "income"}]
+        result = se.compute_signals(deposits, purchases, [], as_of_date="2026-09-12")
+        self.assertEqual(result["activation"]["status"], "activa")
+        self.assertFalse(any(a["type"] == "activation_warning" for a in result["alerts"]))
+
+
 if __name__ == "__main__":
     unittest.main()
