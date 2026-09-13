@@ -101,9 +101,6 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 @media(min-width:1101px) and (max-width:1400px){.category-content{flex-direction:column}.category-legend{width:100%}.category-donut{flex-basis:155px;width:155px;height:155px}}
 @media(max-width:700px){.category-spending{padding:23px 20px;border-radius:25px}.category-content{flex-direction:column;gap:22px}.category-donut{width:165px;height:165px;flex-basis:165px}.category-legend{width:100%}.category-legend li{font-size:12px}.category-amount{font-size:11px}}
 .login-page{position:fixed;inset:0;overflow-y:auto;display:flex;flex-direction:column;background:var(--c1-bg)}
-.login-topbar{display:flex;align-items:center;gap:14px;padding:16px 32px;background:#fff;border-bottom:1px solid #e2e8f0}
-.login-topbar-logo{height:26px;width:auto}
-.login-topbar-brand{display:flex;align-items:center;gap:6px;color:#004878;font-weight:650;font-size:15px}
 .login-center{flex:1;display:flex;align-items:center;justify-content:center;padding:32px 24px}
 .login-card{width:100%;max-width:380px;padding:40px 34px 34px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
 .login-logo{height:48px;width:auto;margin-bottom:6px}
@@ -121,7 +118,6 @@ progress::-webkit-progress-bar{background:#c0d1ee}progress::-webkit-progress-val
 .login-forgot{font-size:12px;color:#004878;margin-top:2px}
 .login-footnote{font-size:11px;color:#5c6d83;text-align:center;margin-top:2px}
 .app-footer{max-width:1600px;margin:18px auto 0;display:flex;justify-content:space-between;align-items:center;padding:0 22px;font-size:12px;color:#5c6d83}
-.login-page .app-footer{margin:0 auto;padding:18px 22px;color:#34404b}
 .footer-link{text-decoration:underline;text-underline-offset:3px;font-size:12px;color:#34465e}
 .profile-header{display:flex;align-items:center;gap:14px;margin:6px 0 20px}
 .profile-avatar-lg{width:64px;height:64px;font-size:22px}
