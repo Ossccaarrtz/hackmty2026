@@ -82,3 +82,22 @@ class TestFindUnverifiedAmounts(unittest.TestCase):
         reply = "Tu colchon cubre unos $479.99 de esa fuga anual."
         bad = chat.find_unverified_amounts(reply, [status_action()])
         self.assertEqual(bad, set())
+
+
+class TestRedactUnverifiedAmounts(unittest.TestCase):
+    """Regresion directa: create_goal devolvia el monto objetivo solo
+    embebido en `message` (texto), nunca como campo propio -- el modelo lo
+    marcaba como 'inventado' al mencionarlo, y el reemplazo de emergencia
+    (antes un DOLLAR_AMOUNT_RE.sub sobre TODA la respuesta) borraba de paso
+    montos legitimos que si estaban verificados, dejando varios
+    '[monto no confirmado]' en vez de solo el que de verdad era sospechoso."""
+
+    def test_only_redacts_the_unverified_amount(self):
+        reply = "Tu meta es de $80,000 con un aporte de $69.32/mes."
+        redacted = chat.redact_unverified_amounts(reply, verified={69.32})
+        self.assertEqual(redacted, "Tu meta es de [monto no confirmado] con un aporte de $69.32/mes.")
+
+    def test_leaves_reply_unchanged_when_everything_is_verified(self):
+        reply = "Tu meta es de $80,000, con un aporte de $69.32/mes."
+        redacted = chat.redact_unverified_amounts(reply, verified={80000.0, 69.32})
+        self.assertEqual(redacted, reply)

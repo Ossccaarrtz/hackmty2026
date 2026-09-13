@@ -259,6 +259,20 @@ def find_unverified_amounts(reply, actions_taken):
     return {n for n in mentioned if not any(abs(n - v) < 0.5 for v in verified)}
 
 
+def redact_unverified_amounts(reply, verified):
+    """Reemplazo quirurgico: solo tacha los $montos que NO calzan con un
+    numero verificado, no el texto completo. Antes un solo monto sospechoso
+    (ej. un campo real que el tool no exponia, ver create_goal) hacia
+    `DOLLAR_AMOUNT_RE.sub` sobre TODA la respuesta y borraba de paso montos
+    legitimos que si venian de una tool, dejando la respuesta ilegible."""
+    def replace(match):
+        value = round(float(match.group(1).replace(",", "")), 2)
+        if any(abs(value - v) < 0.5 for v in verified):
+            return match.group(0)
+        return "[monto no confirmado]"
+    return DOLLAR_AMOUNT_RE.sub(replace, reply)
+
+
 def get_chat_history(user_id):
     """Solo el intercambio visible (usuario + respuesta final) -- nunca los
     pasos internos de tool-calling, no hace falta guardarlos para que la
@@ -404,7 +418,7 @@ def lambda_handler(event, context):
         if retry_text and not find_unverified_amounts(retry_text, actions_taken):
             visible_reply = retry_text
         else:
-            visible_reply = DOLLAR_AMOUNT_RE.sub("[monto no confirmado]", visible_reply)
+            visible_reply = redact_unverified_amounts(visible_reply, collect_verified_numbers(actions_taken))
 
     save_chat_history(user_id, history + [
         {"role": "user", "parts": [{"text": user_message}]},

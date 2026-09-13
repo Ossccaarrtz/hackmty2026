@@ -411,6 +411,18 @@ class TestCreateGoal(BaseAgentActionsTest):
         self.assertEqual(saved_item["slug"], "viaje_a_japon")
         self.assertEqual(float(saved_item["contributed"]), 0)
 
+    def test_result_exposes_target_amount_and_disposable_as_top_level_numbers(self):
+        """Regresion: target_amount y disposable solo aparecian embebidos en
+        `message` (texto), nunca como campos propios -- el guardrail
+        anti-alucinacion de lambda_chat.py (find_unverified_amounts) los
+        marcaba como 'inventados' en cuanto el modelo los mencionaba en su
+        propia respuesta, aunque fueran 100% reales."""
+        aa.table.get_item.return_value = {}
+        with patch.object(aa, "estimate_monthly_disposable", return_value=3000):
+            result = aa.create_goal("ana", "Viaje a Japon", 30000)
+        self.assertEqual(result["target_amount"], 30000)
+        self.assertEqual(result["disposable"], 3000)
+
     def test_slugifies_accented_label(self):
         aa.table.get_item.return_value = {}
         with patch.object(aa, "estimate_monthly_disposable", return_value=1000):
@@ -487,6 +499,7 @@ class TestLogGoalContribution(BaseAgentActionsTest):
         result = aa.log_goal_contribution("ana", "japon", 500)
         self.assertTrue(result["ok"])
         self.assertEqual(result["contributed"], 2500)
+        self.assertEqual(result["target_amount"], 10000)  # ver TestCreateGoal.test_result_exposes_target_amount...
         saved_item = aa.table.put_item.call_args.kwargs["Item"]
         self.assertEqual(float(saved_item["contributed"]), 2500)
 

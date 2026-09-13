@@ -659,7 +659,11 @@ def create_goal(user_id, label, target_amount, target_date=None):
         message = f"Meta '{label}' {verb}: ${target_amount} en ~{months} meses (~${monthly_contribution}/mes segun tu disponible real). No aparto nada -- usa log_goal_contribution cuando de verdad apartes dinero para esto."
     else:
         message = f"Meta '{label}' {verb}: para llegar a ${target_amount} el {target_date} necesitas ~${monthly_contribution}/mes, mas de lo que veo disponible hoy (~${disposable}/mes). La guarde de todos modos, pero puede que tengas que mover la fecha o bajar otra meta."
-    return {"ok": True, "slug": slug, "months": months, "monthly_contribution": monthly_contribution, "realistic": realistic, "message": message}
+    return {
+        "ok": True, "slug": slug, "target_amount": target_amount, "months": months,
+        "monthly_contribution": monthly_contribution, "disposable": disposable,
+        "realistic": realistic, "message": message,
+    }
 
 
 def get_goals(user_id):
@@ -708,6 +712,7 @@ def log_goal_contribution(user_id, goal_slug, amount, note=None):
     done = remaining <= 0
     return {
         "ok": True, "contributed": new_total, "remaining": max(remaining, 0), "done": done,
+        "target_amount": float(goal["target_amount"]),
         "message": f"Anotado: llevas ${new_total} de ${float(goal['target_amount'])} para '{goal['label']}'." + (" Ya la cumpliste!" if done else ""),
     }
 
