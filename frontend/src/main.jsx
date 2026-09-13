@@ -384,7 +384,7 @@ function App() {
   // Bank-only, igual que running_balance del backend: un gasto en efectivo/otra
   // tarjeta nunca salio de esta cuenta, asi que no debe restarse del saldo que
   // el estado de cuenta reconcilia (saldo inicial + ingresos - gastos = saldo final).
-  const statementExpense = statementTransactions.filter(tx => tx.signed_amount < 0 && tx.source === 'bank').reduce((sum, tx) => sum - tx.signed_amount, 0);
+  const statementExpense = statementTransactions.filter(tx => tx.signed_amount < 0 && (tx.source || 'bank') === 'bank').reduce((sum, tx) => sum - tx.signed_amount, 0);
   const statementBreakdown = Object.entries(
     statementTransactions.filter(tx => tx.signed_amount < 0 && !['savings_transfer'].includes(tx.category) && !tx.category?.startsWith('envelope:'))
       .reduce((acc, tx) => { acc[tx.category_label] = (acc[tx.category_label] || 0) + Math.abs(tx.signed_amount); return acc; }, {})
@@ -748,9 +748,13 @@ function App() {
             {budgetData.budget.goals.length ? budgetData.budget.goals.map(goal => <div className="envelope-row" key={goal.slug}>
               <div className="envelope-row-top"><span>{goal.label}<small>Meta total: {money(goal.target_amount)} · ~{money(goal.monthly_contribution)}/mes · {goal.estimated_months} meses</small></span><strong>{money(goal.contributed)} <span className="muted-copy">de {money(goal.target_amount)}</span></strong></div>
               <div className="envelope-progress"><progress max={goal.target_amount || 1} value={Math.min(goal.contributed, goal.target_amount || 1)} aria-label={`Progreso de ${goal.label}`} /></div>
-              <small className={`budget-pace tone-${goal.percent >= 100 ? 'good' : goal.on_track ? 'good' : 'warn'}`}>
-                {goal.percent >= 100 ? 'Meta cumplida.' : goal.on_track ? 'Vas a buen ritmo.' : `Ibas a llevar ~${money(goal.expected_by_now)} para esta fecha -- vas atrás.`}
+              <small className={`budget-pace tone-${goal.pace === 'atrasada' ? 'warn' : 'good'}`}>
+                {goal.pace === 'cumplida' ? 'Meta cumplida.'
+                  : goal.pace === 'nueva' ? 'Meta recién creada -- registra tu primer aporte cuando apartes dinero por tu cuenta.'
+                  : goal.pace === 'bien' ? 'Vas a buen ritmo.'
+                  : `Ibas a llevar ~${money(goal.expected_by_now)} para esta fecha -- vas atrás.`}
               </small>
+              {!goal.realistic && <small className="budget-pace tone-warn">A tu ritmo libre actual, esta meta tomaría ~{goal.estimated_months} meses (~{Math.round(goal.estimated_months / 12 * 10) / 10} años) -- no es un plazo realista. Considera bajar el monto o pedirle a Kivo un reparto inteligente para ver cuánto margen tienes de verdad.</small>}
             </div>) : <p className="empty">Todavía no tienes metas de ahorro -- pídele a Kivo en el chat que te arme una.</p>}
             {budgetData.budget.goals.length > 0 && <form className="envelope-form" onSubmit={submitGoalContribution}>
               <label className="ledger-filter"><span>Meta</span>

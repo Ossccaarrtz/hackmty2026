@@ -56,17 +56,15 @@ test('checkpoints preserve backend messages and deduplicate replayed responses',
   assert.equal(appendCheckpoint(twice, { done: true }).done, true);
   assert.throws(() => appendCheckpoint(twice, {}), /Checkpoint/);
 });
-test('chat sends a JSON body with the message and user_id, and reads notifications', async () => {
+test('chat sends a JSON body with the message and user_id', async () => {
   const calls = [];
   const api = createApi({ userId: 'mia', fetchImpl: async (url, options) => {
     calls.push({ url: new URL(url), method: options.method, body: options.body ? JSON.parse(options.body) : null });
     return { ok: true, json: async () => ({ reply: 'ok', actions_taken: [] }) };
   } });
   await api.sendChatMessage('¿cómo va mi score?');
-  await api.getNotifications();
   assert.equal(calls[0].url.pathname, '/chat/message'); assert.equal(calls[0].method, 'POST');
   assert.deepEqual(calls[0].body, { message: '¿cómo va mi score?', user_id: 'mia' });
-  assert.equal(calls[1].url.pathname, '/notifications');
 });
 test('a 429 from the chat surfaces the backend-provided reply instead of a generic error', async () => {
   const api = createApi({ fetchImpl: async () => ({ ok: false, status: 429, json: async () => ({ reply: 'Spark esta saturado, intenta en un minuto.' }) }) });
