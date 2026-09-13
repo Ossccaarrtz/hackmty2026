@@ -368,7 +368,7 @@ def filter_up_to(items, as_of_date):
     return [i for i in items if i["date"] <= as_of_date]
 
 
-def compute_signals(deposits, purchases, bills, total_income=None, total_expense=None, as_of_date=None, score_history=None):
+def compute_signals(deposits, purchases, bills, total_income=None, total_expense=None, as_of_date=None, score_history=None, upcoming_lookahead_days=5):
     """as_of_date debe ser None o una fecha ISO (YYYY-MM-DD) ya validada por
     quien llama -- este modulo no valida el formato, eso es responsabilidad
     del Lambda handler (que si conoce el contexto de un request HTTP)."""
@@ -452,7 +452,7 @@ def compute_signals(deposits, purchases, bills, total_income=None, total_expense
         "anomaly": anomaly,
         "activation": activation,
         "wallet_share": wallet_share,
-        "upcoming_expenses": forecast_upcoming_expenses(purchases, as_of_date),
+        "upcoming_expenses": forecast_upcoming_expenses(purchases, as_of_date, lookahead_days=upcoming_lookahead_days),
         "liquidity": {"days_covered": liquidity["days_covered"]},
         "projection": {"weeks_to_ready": project_readiness(score_history, final_score), "product": "tarjeta secured"},
         "_debug": {"total_income": total_income, "total_expense": total_expense, "current_balance": current_balance, "elapsed_days": elapsed_days},

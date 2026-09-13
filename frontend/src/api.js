@@ -1,10 +1,11 @@
 const DEFAULT_BASE = 'https://qj0vumzrfa.execute-api.us-east-1.amazonaws.com';
 
 export function createApi({ baseUrl = DEFAULT_BASE, userId = 'ana', fetchImpl = fetch, timeoutMs = 30000 } = {}) {
-  async function request(path, { method = 'GET', reset = false, body = null } = {}) {
+  async function request(path, { method = 'GET', reset = false, body = null, params = null } = {}) {
     const url = new URL(`${baseUrl.replace(/\/+$/, '')}${path}`);
     url.searchParams.set('user_id', userId);
     if (reset) url.searchParams.set('reset', 'true');
+    if (params) Object.entries(params).forEach(([key, value]) => { if (value != null) url.searchParams.set(key, value); });
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -32,7 +33,7 @@ export function createApi({ baseUrl = DEFAULT_BASE, userId = 'ana', fetchImpl = 
     } finally { clearTimeout(timer); }
   }
   return {
-    getSignals: () => request('/signals'),
+    getSignals: (params) => request('/signals', { params }),
     getTransactions: () => request('/transactions'),
     getNotifications: () => request('/notifications'),
     getTrustReport: () => request('/trust-report'),

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, Search, Bell, Send, User, Lock, Eye, EyeOff, FileText, Copy, Check, Receipt, Download, PiggyBank } from 'lucide-react';
+import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, ChevronLeft, Search, Bell, Send, User, Lock, Eye, EyeOff, FileText, Copy, Check, Receipt, Download, PiggyBank, CalendarDays } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { api, sessionKey } from './api.js';
 import { appendCheckpoint, appendChatExchange, emptySession, normalizeData } from './data.js';
@@ -11,6 +11,25 @@ const money = value => Number.isFinite(value) ? new Intl.NumberFormat('en-US', {
 const slugify = category => category.trim().toLowerCase().replaceAll(' ', '_'); // debe calzar con agent_actions._slug() del backend
 const dateLabel = date => new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`));
 const monthLabel = yearMonth => new Intl.DateTimeFormat('es-MX', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${yearMonth}-01T00:00:00Z`));
+const WEEKDAY_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+function addDaysISO(iso, days) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function shiftYearMonth(yearMonth, offset) {
+  const [y, m] = yearMonth.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + offset, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+function buildCalendarGrid(yearMonth) {
+  const [y, m] = yearMonth.split('-').map(Number);
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const firstWeekday = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
+  const cells = Array(firstWeekday).fill(null);
+  for (let day = 1; day <= daysInMonth; day++) cells.push(`${yearMonth}-${String(day).padStart(2, '0')}`);
+  return cells;
+}
 const PENDING_TYPES = ['leak_detected', 'anomaly_pause'];
 // El backend devuelve label + un "detail" tecnico por factor (ej. "gasto discrecional
 // es 34% del ingreso total") pensado para depurar el motor de senales, no para una
@@ -253,9 +272,16 @@ function App() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [notice, setNotice] = useState('');
+  const [newNotification, setNewNotification] = useState(null);
+  const lastNotificationSk = useRef(null);
   const [trustReport, setTrustReport] = useState(null);
   const [trustLoading, setTrustLoading] = useState(false);
   const [trustError, setTrustError] = useState('');
+  const [calendarExpenses, setCalendarExpenses] = useState(null);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarError, setCalendarError] = useState('');
+  const [calendarMonthOffset, setCalendarMonthOffset] = useState(0);
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
   const [summaryCopied, setSummaryCopied] = useState(false);
   const [statementMonth, setStatementMonth] = useState('');
   const [envelopes, setEnvelopes] = useState(null);
@@ -313,6 +339,21 @@ function App() {
     .filter(tx => tx.date.slice(0, 7) === currentMonthKey && tx.signed_amount < 0 && tx.category !== 'savings_transfer' && !tx.category?.startsWith('envelope:'))
     .reduce((sum, tx) => sum - tx.signed_amount, 0);
   const budgetPercent = monthlyBudget ? (currentMonthExpense / monthlyBudget) * 100 : 0;
+  const calendarExpensesByDate = {};
+  (calendarExpenses || []).forEach(item => {
+    if (!calendarExpensesByDate[item.expected_date]) calendarExpensesByDate[item.expected_date] = [];
+    calendarExpensesByDate[item.expected_date].push(item);
+  });
+  // "Hoy" segun el backend (nunca el reloj real del dispositivo, ver signal_engine.
+  // resolve_reference_date) se deriva de cualquier item devuelto -- expected_date
+  // menos days_until siempre da esa misma fecha de referencia.
+  const calendarReferenceDate = calendarExpenses?.length
+    ? addDaysISO(calendarExpenses[0].expected_date, -calendarExpenses[0].days_until)
+    : (statementMonths[0] ? `${statementMonths[0]}-01` : null);
+  const calendarReferenceYearMonth = calendarReferenceDate ? calendarReferenceDate.slice(0, 7) : null;
+  const calendarDisplayedYearMonth = calendarReferenceYearMonth ? shiftYearMonth(calendarReferenceYearMonth, calendarMonthOffset) : null;
+  const calendarCells = calendarDisplayedYearMonth ? buildCalendarGrid(calendarDisplayedYearMonth) : [];
+  const selectedCalendarExpenses = selectedCalendarDay ? (calendarExpensesByDate[selectedCalendarDay] || []) : [];
   const MONEY_MOVING_TYPES = ['bill_stopped', 'savings_moved', 'notification']; // mismo criterio que agent_actions.get_trust_report en el backend
   const trustStats = trustReport ? {
     resolvedLeaks: trustReport.verified_actions.filter(a => a.type === 'bill_stopped').length,
@@ -327,6 +368,17 @@ function App() {
     try { setTrustReport(await api.getTrustReport()); }
     catch (err) { setTrustError(err.message); }
     finally { setTrustLoading(false); }
+  }
+  async function loadCalendar() {
+    setCalendarLoading(true);
+    setCalendarError('');
+    try {
+      // Ventana amplia solo para esta vista -- el home usa el default corto (5
+      // dias) para que "Lo que necesita tu atencion" no se llene de ruido lejano.
+      const result = await api.getSignals({ upcoming_days: 40 });
+      setCalendarExpenses(result?.upcoming_expenses || []);
+    } catch (err) { setCalendarError(err.message); }
+    finally { setCalendarLoading(false); }
   }
   function copyTrustSummary() {
     if (!trustReport?.summary) return;
@@ -449,7 +501,29 @@ function App() {
     finally { if (id === requestId.current) setLoading(false); }
   }
   useEffect(() => { refresh(); return () => { requestId.current++; }; }, []);
+  // Antes "Avisos en tiempo real" solo se actualizaba al recargar la pagina o tras
+  // Avanzar dia/Reiniciar -- no era real-time de verdad. Este poll (sin tocar el
+  // resto del dashboard) hace que un aviso nuevo aparezca solo mientras la pestana
+  // sigue abierta, igual que las notificaciones se generan solas en el backend.
+  useEffect(() => {
+    if (!authed) return;
+    const poll = async () => {
+      try {
+        const res = await api.getNotifications();
+        const list = Array.isArray(res?.notifications) ? res.notifications : [];
+        if (!list.length) return;
+        const latest = list[0];
+        if (lastNotificationSk.current && latest.sk !== lastNotificationSk.current) setNewNotification(latest);
+        lastNotificationSk.current = latest.sk;
+        setData(prev => prev ? { ...prev, notifications: list } : prev);
+      } catch { /* poll silencioso -- no interrumpe si una vuelta falla */ }
+    };
+    const id = setInterval(poll, 20000);
+    return () => clearInterval(id);
+  }, [authed]);
+  useEffect(() => { if (!newNotification) return; const t = setTimeout(() => setNewNotification(null), 8000); return () => clearTimeout(t); }, [newNotification]);
   useEffect(() => { if (page === 'trust') loadTrustReport(); }, [page]);
+  useEffect(() => { if (page === 'calendar') { setSelectedCalendarDay(null); setCalendarMonthOffset(0); loadCalendar(); } }, [page]);
   useEffect(() => { if (page === 'envelopes') { setEnvelopesNotice(''); loadEnvelopes(); } }, [page]);
   useEffect(() => { try { sessionStorage.setItem(sessionKey, JSON.stringify(session)); } catch { /* Storage is optional. */ } }, [session]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth', block: 'end' }); }, [session.chatLog, chatBusy]);
@@ -520,7 +594,7 @@ function App() {
 
   return <>
   <motion.main className={`dashboard connected-dashboard ${isFullPage ? 'full-page-layout page-focused' : ''}`} variants={dashboardContainer} initial="hidden" animate="visible">
-    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Spark', 'chat'], [Wallet, 'Movimientos', 'transactions'], [FileText, 'Reporte de confianza', 'trust'], [Receipt, 'Estado de cuenta', 'statement'], [PiggyBank, 'Apartados', 'envelopes']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
+    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Spark', 'chat'], [Wallet, 'Movimientos', 'transactions'], [CalendarDays, 'Calendario de gastos', 'calendar'], [FileText, 'Reporte de confianza', 'trust'], [Receipt, 'Estado de cuenta', 'statement'], [PiggyBank, 'Apartados', 'envelopes']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
     <section className="main-column">
       <motion.header className="page-header" variants={dashboardItem}><div><div className="page-brand"><img src="/capital-one-logo.svg" alt="Capital One" className="page-brand-logo" /><h1>Spark</h1></div><p>Hola, Ana. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></motion.header>
       {error && <div className="error-banner" role="alert">{error} <button disabled={loading || busy} onClick={refresh}>Reintentar lectura</button></div>}
@@ -556,6 +630,40 @@ function App() {
           </div>
           <p className="muted-copy ledger-filter-count">{filtered.length} de {transactions.length} movimientos</p>
           {filtered.map(tx => <div className="detail-line" key={tx.id}><span>{tx.name}<small>{dateLabel(tx.date)} · {tx.category_label}</small></span><strong className={tx.signed_amount > 0 ? 'inflow' : ''}>{money(tx.signed_amount)}</strong></div>)}{!filtered.length && <p>No hay movimientos que coincidan.</p>}
+        </motion.section>}
+        {page === 'calendar' && <motion.section className="glass page-panel calendar-page" key="calendar-page"
+          initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
+          transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
+          <header className="card-heading"><h2>Calendario de gastos</h2>{backToHome}</header>
+          <p className="muted-copy">Gastos recurrentes que Spark anticipa a partir de tu cadencia real de compras -- no son montos inventados.</p>
+          {calendarLoading && <p className="empty">Cargando calendario…</p>}
+          {calendarError && <div className="error-banner" role="alert">{calendarError} <button onClick={loadCalendar}>Reintentar</button></div>}
+          {!calendarLoading && !calendarError && calendarDisplayedYearMonth && <>
+            <div className="calendar-nav">
+              <button type="button" className="icon-button" aria-label="Mes anterior" disabled={calendarMonthOffset <= -1} onClick={() => { setCalendarMonthOffset(o => o - 1); setSelectedCalendarDay(null); }}><ChevronLeft /></button>
+              <h3 className="calendar-month-label">{monthLabel(calendarDisplayedYearMonth)}</h3>
+              <button type="button" className="icon-button" aria-label="Mes siguiente" disabled={calendarMonthOffset >= 2} onClick={() => { setCalendarMonthOffset(o => o + 1); setSelectedCalendarDay(null); }}><ChevronRight /></button>
+            </div>
+            <div className="calendar-grid">
+              {WEEKDAY_LABELS.map(w => <div className="calendar-weekday" key={w}>{w}</div>)}
+              {calendarCells.map((iso, index) => {
+                if (!iso) return <div className="calendar-cell calendar-cell-empty" key={`empty-${index}`} />;
+                const dayExpenses = calendarExpensesByDate[iso] || [];
+                const isToday = iso === calendarReferenceDate;
+                const isSelected = iso === selectedCalendarDay;
+                return <button type="button" key={iso} aria-label={`${dateLabel(iso)}${dayExpenses.length ? `, ${money(dayExpenses.reduce((sum, item) => sum + item.expected_amount, 0))} esperados` : ''}`}
+                  className={`calendar-cell ${dayExpenses.length ? 'has-expense' : ''} ${isToday ? 'is-today' : ''} ${isSelected ? 'is-selected' : ''}`}
+                  onClick={() => dayExpenses.length && setSelectedCalendarDay(isSelected ? null : iso)}>
+                  <span className="calendar-day-number">{Number(iso.slice(8))}</span>
+                  {dayExpenses.length > 0 && <><span className="calendar-expense-dot" /><span className="calendar-day-amount">{money(dayExpenses.reduce((sum, item) => sum + item.expected_amount, 0))}</span></>}
+                </button>;
+              })}
+            </div>
+            {selectedCalendarDay ? <div className="calendar-detail">
+              <h3>{dateLabel(selectedCalendarDay)}</h3>
+              {selectedCalendarExpenses.map((item, index) => <div className="detail-line" key={index}><span>{item.category_label}<small>{item.days_until === 0 ? 'Hoy' : item.days_until === 1 ? 'Mañana' : item.days_until > 0 ? `En ${item.days_until} días` : `Hace ${-item.days_until} días`} · {item.confidence}% confianza, según tu historial de compras</small></span><strong>{money(item.expected_amount)}</strong></div>)}
+            </div> : <p className="empty calendar-hint">{Object.keys(calendarExpensesByDate).length ? 'Toca un día marcado para ver el gasto esperado.' : 'Todavía no hay gastos recurrentes predecibles -- Spark necesita al menos 3 compras reales de una misma categoría para poder anticiparla.'}</p>}
+          </>}
         </motion.section>}
         {page === 'trust' && <motion.section className="glass page-panel" key="trust-page"
           initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
@@ -689,7 +797,7 @@ function App() {
         </div>
         <button className="outline-button" onClick={() => { setModal(null); setPage('trust'); }}>Ver reporte de confianza completo</button>
       </>}
-      {modal === 'notifications' && <><h2 id="dialog-title">Avisos en tiempo real</h2><p className="muted-copy">Se generan automáticamente cada vez que el agente hace un movimiento real en tu cuenta — sin que nadie los pida.</p>{notifications.length ? notifications.map(n => <div className="detail-line" key={n.sk}><span>{n.text}<small>{dateLabel(n.date)}</small></span></div>) : <p>Sin avisos todavía.</p>}</>}
+      {modal === 'notifications' && <><h2 id="dialog-title">Avisos en tiempo real</h2><p className="muted-copy">Se generan automáticamente cada vez que el agente hace un movimiento real en tu cuenta — sin que nadie los pida. Esta lista se revisa sola cada ~20 segundos mientras tienes la app abierta.</p>{notifications.length ? notifications.map(n => <div className="detail-line" key={n.sk}><span>{n.text}<small>{dateLabel(n.date)}</small></span></div>) : <p>Sin avisos todavía.</p>}</>}
       {modal === 'advance' && <><h2 id="dialog-title">Avanzar la simulación</h2><p>El siguiente checkpoint puede observar la cuenta, detectar una fuga, detener el cargo de FitZone Campus, o mover dinero a ahorro en el sandbox Nessie.</p><p>El backend no permite consultar el checkpoint actual. Si el próximo paso es detener FitZone Campus, al continuar confirmas que ya no lo usas y autorizas detener ese cargo de demostración.</p><div className="agent-alert"><ShieldAlert size={20} /><span>Un contrato anual puede generar penalizaciones o cobranza. Bloquear el cargo no cancela la suscripción con el comercio.</span></div><button className="black-button" disabled={busy || uncertain || !data || !!error || session.done} onClick={() => mutate('advance')}>Confirmo y autorizo el siguiente paso</button><button className="text-button" onClick={() => setModal(null)}>Volver sin avanzar</button></>}
       {modal === 'reset' && <><h2 id="dialog-title">Reiniciar demo</h2><p>Solicitará al backend volver al día 0 y reactivar FitZone Campus en el sandbox compartido. Borrará el feed y el chat de esta pestaña, pero no revierte los depósitos o retiros anteriores de Nessie.</p><button className="black-button" disabled={busy} onClick={() => mutate('reset')}>Reiniciar simulación</button></>}
       {modal === 'profile' && <>
@@ -709,6 +817,7 @@ function App() {
   </motion.main>
   <Footer />
   <FaqWidget />
+  {newNotification && <div className="toast" role="status"><Bell size={18} /><span>{newNotification.text}</span><button type="button" className="icon-button" aria-label="Cerrar aviso" onClick={() => setNewNotification(null)}><X size={16} /></button></div>}
   </>;
 }
 createRoot(document.getElementById('root')).render(<App />);

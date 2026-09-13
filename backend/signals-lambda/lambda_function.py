@@ -1,5 +1,5 @@
 """
-Lambda: GET /signals?user_id=mia[&as_of=YYYY-MM-DD]
+Lambda: GET /signals?user_id=mia[&as_of=YYYY-MM-DD][&upcoming_days=35]
 Lee las transacciones/bills de DynamoDB (jarbis-financiero-data) y devuelve
 el JSON del Cash-Flow Resilience Score + alertas + liquidez + proyeccion.
 """
@@ -40,6 +40,13 @@ def lambda_handler(event, context):
                 "body": json.dumps({"error": f"'as_of' debe ser una fecha YYYY-MM-DD valida, recibi '{as_of}'."}),
             }
 
+    # Opcional -- el home solo necesita ~5 dias para las alertas, pero la vista
+    # de calendario pide una ventana mas amplia para poder marcar el mes completo.
+    try:
+        upcoming_days = int(params.get("upcoming_days", 5))
+    except ValueError:
+        upcoming_days = 5
+
     response = table.query(KeyConditionExpression=Key("user_id").eq(user_id))
     items = response["Items"]
 
@@ -67,6 +74,7 @@ def lambda_handler(event, context):
         total_expense=total_expense,
         as_of_date=as_of,
         score_history=history,
+        upcoming_lookahead_days=upcoming_days,
     )
     # Solo se persiste historial en consultas del "ahora" real -- un as_of
     # exploratorio (ej. alguien probando una fecha vieja) no debe contaminar
