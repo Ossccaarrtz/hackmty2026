@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, ChevronLeft, Search, Bell, Send, User, Lock, Eye, EyeOff, Download, PiggyBank, CalendarDays } from 'lucide-react';
+import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, ChevronLeft, Search, Bell, Send, User, Lock, Eye, EyeOff, Download, PiggyBank, CalendarDays, Gift, Percent, TrendingUp, Coins, GraduationCap } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { api, sessionKey } from './api.js';
 import { appendCheckpoint, appendChatExchange, emptySession, normalizeData } from './data.js';
@@ -11,6 +11,18 @@ const money = value => Number.isFinite(value) ? new Intl.NumberFormat('en-US', {
 // Debe calzar con EXTERNAL_EXPENSE_CATEGORIES/EXTERNAL_CATEGORY_LABELS en
 // agent_actions.py -- son las mismas 5 categorias que usa el resto del
 // motor de senales, a proposito no se inventa una taxonomia nueva.
+// Hardcodeado a proposito -- estos son ejemplos de beneficios reales que
+// tendria la tarjeta-credencial universitaria de Kivo, no datos que vengan
+// del backend. Elegidos para reforzar el propio pitch del proyecto (historial
+// sin Buro, alertas en tiempo real, educacion financiera) en vez de generico.
+const BENEFITS = [
+  { icon: Percent, title: 'Sin anualidad', detail: 'Nunca pagas por tener la tarjeta, la uses mucho o poco.' },
+  { icon: TrendingUp, title: 'Historial sin Buró', detail: 'Cada mes de uso responsable construye tu historial crediticio, aunque sea tu primera tarjeta.' },
+  { icon: Bell, title: 'Alertas en tiempo real', detail: 'Te avisamos de cada movimiento al instante -- un cargo nunca te toma por sorpresa.' },
+  { icon: Lock, title: 'Bloqueo instantáneo', detail: 'Si la pierdes, la bloqueas desde la app en un toque, sin llamar a nadie.' },
+  { icon: Coins, title: 'Cashback en lo esencial', detail: 'Devolución en supermercado y transporte, las categorías que más usa una estudiante.' },
+  { icon: GraduationCap, title: 'Educación financiera integrada', detail: 'Kivo te explica cada decisión en el momento, no solo te muestra números.' },
+];
 const BUDGET_CATEGORY_OPTIONS = [
   { value: 'rent', label: 'Renta' }, { value: 'groceries', label: 'Comida/Despensa' },
   { value: 'transport', label: 'Transporte' }, { value: 'utilities', label: 'Servicios' },
@@ -560,7 +572,7 @@ function App() {
 
   return <>
   <motion.main className={`dashboard connected-dashboard ${isFullPage ? 'full-page-layout page-focused' : ''}`} variants={dashboardContainer} initial="hidden" animate="visible">
-    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Kivo', 'chat'], [Wallet, 'Movimientos', 'transactions'], [CalendarDays, 'Calendario de gastos', 'calendar'], [PiggyBank, 'Presupuesto', 'envelopes']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
+    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Kivo', 'chat'], [Wallet, 'Movimientos', 'transactions'], [CalendarDays, 'Calendario de gastos', 'calendar'], [PiggyBank, 'Presupuesto', 'envelopes'], [Gift, 'Beneficios', 'benefits']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
     <section className="main-column">
       <motion.header className="page-header" variants={dashboardItem}><div><div className="page-brand"><img src="/kivo-logo.png" alt="" className="page-brand-logo" /><h1 className="sr-only">Kivo</h1></div><p>Hola, Ana. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></motion.header>
       {error && <div className="error-banner" role="alert">{error} <button disabled={loading || busy} onClick={refresh}>Reintentar lectura</button></div>}
@@ -708,6 +720,19 @@ function App() {
                 : <p className="operation-notice" role="status">Ya están comprometidos {money(budgetData.payday_plan.reserved)}; te quedan {money(budgetData.payday_plan.free)} libres (~{money(budgetData.payday_plan.free_per_day)}/día hasta tu próximo depósito).</p>}
             </>}
           </>}
+        </motion.section>}
+        {page === 'benefits' && <motion.section className="glass page-panel benefits-page" key="benefits-page"
+          initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
+          transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
+          <header className="card-heading"><h2>Beneficios de tu tarjeta</h2>{backToHome}</header>
+          <p className="muted-copy">Lo que ya trae tu tarjeta-credencial, sin que tengas que buscarlo en letras chiquitas.</p>
+          <div className="benefits-grid">
+            {BENEFITS.map(benefit => <div className="benefit-card" key={benefit.title}>
+              <span className="benefit-icon"><benefit.icon size={22} /></span>
+              <strong>{benefit.title}</strong>
+              <p>{benefit.detail}</p>
+            </div>)}
+          </div>
         </motion.section>}
         {page === 'home' && <motion.section className="balance-card glass" key="balance-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}><div className="balance-top"><div><h2>Score de resiliencia financiera</h2><div className="total score-hero">{signals?.score.value ?? '—'}<span>/100</span></div>{signals && <TrendBadge trend={signals.score.trend} />}<p className={`score-status-message ${signals ? `is-${scoreStatusFeedback(signals).tone}` : ''}`}>{signals ? scoreStatusFeedback(signals).text : 'Cargando tu score…'}</p></div></div><div className="balance-bottom"><div className="account-orbs"><div className="orb-bridge" /><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.balance)}</strong><span>Saldo disponible</span></button><button className="orb purple" onClick={() => setModal('score')}><strong>{signals ? `${signals.liquidity.days_covered} días` : '—'}</strong><span>Gastos cubiertos</span></button><button className="orb" onClick={() => setPage('transactions')}><strong>{money(data?.summary.total_income)}</strong><span>Ingresos registrados</span></button></div></div><button className="outline-button score-details-button" onClick={() => setModal('score')}>Entender mi score</button></motion.section>}
         {page === 'home' && <motion.section className="glass budget-goal-card" key="budget-goal-card" variants={dashboardItem} whileHover={hoverLift} transition={{ duration: 0.2 }}>

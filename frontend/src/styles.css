@@ -442,3 +442,8 @@ body{padding-bottom:112px}
   .connected-dashboard .orb strong{font-size:14px}
   .connected-dashboard .orb span{font-size:9px}
 }
+.benefits-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:22px}
+.benefit-card{background:#f8fafc;border:1px solid var(--c1-border);border-radius:18px;padding:22px 20px;display:flex;flex-direction:column;gap:10px}
+.benefit-icon{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:var(--c1-navy);color:#fff;flex-shrink:0}
+.benefit-card strong{font-size:15px;font-weight:600;color:#14191c}
+.benefit-card p{font-size:13px;line-height:1.55;margin:0;color:#536780}
