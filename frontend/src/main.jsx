@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, ChevronLeft, Search, Bell, Send, User, Lock, Eye, EyeOff, FileText, Copy, Check, Receipt, Download, PiggyBank, CalendarDays } from 'lucide-react';
+import { ChartPie, MessageCircle, Wallet, RefreshCw, X, ShieldAlert, ArrowUpRight, ArrowDownLeft, ArrowUp, ArrowDown, Minus, Play, RotateCcw, ChevronRight, ChevronLeft, Search, Bell, Send, User, Lock, Eye, EyeOff, FileText, Copy, Check, Download, PiggyBank, CalendarDays } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { api, sessionKey } from './api.js';
 import { appendCheckpoint, appendChatExchange, emptySession, normalizeData } from './data.js';
@@ -594,7 +594,7 @@ function App() {
 
   return <>
   <motion.main className={`dashboard connected-dashboard ${isFullPage ? 'full-page-layout page-focused' : ''}`} variants={dashboardContainer} initial="hidden" animate="visible">
-    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Spark', 'chat'], [Wallet, 'Movimientos', 'transactions'], [CalendarDays, 'Calendario de gastos', 'calendar'], [FileText, 'Reporte de confianza', 'trust'], [Receipt, 'Estado de cuenta', 'statement'], [PiggyBank, 'Apartados', 'envelopes']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
+    <motion.aside className="sidebar" aria-label="Navegación principal" variants={dashboardItem}><nav>{[[ChartPie, 'Inicio', 'home'], [MessageCircle, 'Chat con Spark', 'chat'], [Wallet, 'Movimientos', 'transactions'], [CalendarDays, 'Calendario de gastos', 'calendar'], [FileText, 'Reporte de confianza', 'trust'], [PiggyBank, 'Apartados', 'envelopes']].map(([Icon, label, destination]) => <button className={`nav-button ${page === destination ? 'active' : ''}`} key={destination} aria-label={label} title={label} onClick={() => setPage(destination)}><Icon size={23} /></button>)}</nav><div className="sidebar-bottom"><button className="nav-button notification" aria-label="Avisos" title="Avisos" onClick={() => setModal('notifications')}><Bell size={21} />{notifications.length > 0 && <i />}</button><button className="user-avatar" aria-label="Perfil de Ana" onClick={() => setModal('profile')}>A</button></div></motion.aside>
     <section className="main-column">
       <motion.header className="page-header" variants={dashboardItem}><div><div className="page-brand"><img src="/capital-one-logo.svg" alt="Capital One" className="page-brand-logo" /><h1>Spark</h1></div><p>Hola, Ana. Tu progreso financiero, en un solo lugar.</p></div><button className="pill" disabled={loading || busy} aria-label="Actualizar datos" onClick={refresh}><RefreshCw size={16} /> {loading ? 'Cargando…' : 'Actualizar'}</button></motion.header>
       {error && <div className="error-banner" role="alert">{error} <button disabled={loading || busy} onClick={refresh}>Reintentar lectura</button></div>}
@@ -612,15 +612,33 @@ function App() {
           </form>
           <div className="chat-feed-section"><h3>Acciones recientes</h3>{feed}</div>
         </motion.section>}
-        {page === 'transactions' && <motion.section className="glass page-panel transactions-page" key="transactions-page"
+        {page === 'transactions' && <motion.section className="glass page-panel transactions-page statement-printable" key="transactions-page"
           initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
           transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
-          <header className="card-heading"><h2>Todos los movimientos</h2>{backToHome}</header>
-          <p>{transactions.length} movimientos · Saldo: {money(data?.balance)}</p>
+          <div className="statement-header">
+            <div><h2>Movimientos</h2><p className="muted-copy">{transactions.length} movimientos · Saldo: {money(data?.balance)}</p></div>
+            <div className="statement-header-actions">
+              <select aria-label="Filtrar movimientos por mes" value={activeStatementMonth} onChange={event => { const ym = event.target.value; setStatementMonth(ym); setDateFrom(`${ym}-01`); setDateTo(`${ym}-${String(new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0).getDate()).padStart(2, '0')}`); }}>
+                {statementMonths.map(ym => <option key={ym} value={ym}>{monthLabel(ym)}</option>)}
+              </select>
+              <button className="black-button small" onClick={() => window.print()}><Download size={15} /> Descargar PDF</button>
+              {backToHome}
+            </div>
+          </div>
+          {statementTransactions.length > 0 && <div className="statement-summary">
+            <div className="statement-summary-item"><span>Saldo inicial del mes</span><strong>{money(statementOpening)}</strong></div>
+            <div className="statement-summary-item"><span>Ingresos del mes</span><strong className="inflow">+{money(statementIncome)}</strong></div>
+            <div className="statement-summary-item"><span>Gastos del mes</span><strong>-{money(statementExpense)}</strong></div>
+            <div className="statement-summary-item"><span>Saldo final del mes</span><strong>{money(statementClosing)}</strong></div>
+          </div>}
           <div className="transactions-charts">
             <div><h3 className="chart-block-title">Balance histórico</h3><LineChart values={transactions.map(tx => tx.running_balance)} label="Balance histórico calculado por el backend" /></div>
             <CategorySpending summary={data?.summary} loading={loading} />
           </div>
+          {statementBreakdown.length > 0 && <>
+            <h3>En qué se fue el dinero en {monthLabel(activeStatementMonth)}</h3>
+            {statementBreakdown.map(([label, amount]) => <div className="detail-line" key={label}><span>{label}</span><strong>{money(amount)}</strong></div>)}
+          </>}
           <label className="ledger-search"><Search size={18} /><input aria-label="Buscar movimientos" placeholder="Buscar comercio o categoría" value={query} onChange={event => setQuery(event.target.value)} /></label>
           <div className="ledger-filters">
             <label className="ledger-filter"><span>Categoría</span><select aria-label="Filtrar por categoría" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}><option value="">Todas</option>{categoryOptions.map(opt => <option key={opt.key} value={opt.key}>{opt.label}</option>)}</select></label>
@@ -704,32 +722,6 @@ function App() {
             <p className="muted-copy">{signals.activation.detail}</p>
             {signals.wallet_share?.value != null && <p className="muted-copy">{signals.wallet_share.detail}</p>}
           </div>}
-        </motion.section>}
-        {page === 'statement' && <motion.section className="glass page-panel statement-printable" key="statement-page"
-          initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
-          transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: MOTION_EASE }}>
-          <div className="statement-header">
-            <div><h2>Estado de cuenta</h2><p className="muted-copy">Libro financiero mensual de Ana: en qué se fue el dinero y de dónde vino.</p></div>
-            <div className="statement-header-actions">
-              <select aria-label="Mes del estado de cuenta" value={activeStatementMonth} onChange={event => setStatementMonth(event.target.value)}>
-                {statementMonths.map(ym => <option key={ym} value={ym}>{monthLabel(ym)}</option>)}
-              </select>
-              <button className="black-button small" onClick={() => window.print()}><Download size={15} /> Descargar PDF</button>
-              {backToHome}
-            </div>
-          </div>
-          {!statementTransactions.length ? <p className="empty">Sin movimientos en {activeStatementMonth ? monthLabel(activeStatementMonth) : 'este periodo'}.</p> : <>
-            <div className="statement-summary">
-              <div className="statement-summary-item"><span>Saldo inicial</span><strong>{money(statementOpening)}</strong></div>
-              <div className="statement-summary-item"><span>Ingresos</span><strong className="inflow">+{money(statementIncome)}</strong></div>
-              <div className="statement-summary-item"><span>Gastos</span><strong>-{money(statementExpense)}</strong></div>
-              <div className="statement-summary-item"><span>Saldo final</span><strong>{money(statementClosing)}</strong></div>
-            </div>
-            <h3>En qué se fue el dinero</h3>
-            {statementBreakdown.map(([label, amount]) => <div className="detail-line" key={label}><span>{label}</span><strong>{money(amount)}</strong></div>)}
-            <h3>Movimientos del mes ({statementTransactions.length})</h3>
-            {statementTransactions.map(tx => <div className="detail-line" key={tx.id}><span>{tx.name}<small>{dateLabel(tx.date)} · {tx.category_label}</small></span><strong className={tx.signed_amount > 0 ? 'inflow' : ''}>{money(tx.signed_amount)}</strong></div>)}
-          </>}
         </motion.section>}
         {page === 'envelopes' && <motion.section className="glass page-panel" key="envelopes-page"
           initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: shouldReduceMotion ? 0 : 32 }}
