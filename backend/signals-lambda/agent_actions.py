@@ -17,7 +17,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 
-from signal_engine import compute_signals, score_liquidity, compute_elapsed_days, LIQUIDITY_WARNING_DAYS, resolve_reference_date, is_neutral, NON_RECURRING_DEPOSIT_CATEGORIES
+from signal_engine import compute_signals, compute_totals, score_liquidity, compute_elapsed_days, LIQUIDITY_WARNING_DAYS, resolve_reference_date, is_neutral, NON_RECURRING_DEPOSIT_CATEGORIES
 from nessie_actions import sweep_to_savings, release_from_savings, receive_from_third_party
 
 REGION = "us-east-1"
@@ -141,11 +141,14 @@ def get_full_signals(deposits, purchases, bills_plain, user_id=None, as_of_date=
     # aqui, y record_score() abajo sigue usando la fecha real de hoy para
     # el punto de historial (eso si es correcto: es cuando se registro,
     # no una fecha de referencia para anomalia/pronostico).
-    total_income = sum(float(d["amount"]) for d in deposits)
-    # Bank-only, igual que signal_engine.compute_totals: el gasto declarado
-    # en efectivo/otra tarjeta (log_external_expense) nunca salio de la
-    # cuenta que este balance representa.
-    total_expense = sum(float(p["amount"]) for p in purchases if p.get("source", "bank") == "bank")
+    # compute_totals (no reimplementado a mano) -- una version anterior sumaba
+    # deposits/purchases aqui mismo sin el trato especial de savings_release
+    # (dinero liberado del ahorro de vuelta a checking), asi que lo contaba
+    # como gasto en vez de ingreso: current_balance quedaba subestimado casi
+    # el doble de cualquier release_savings_buffer, afectando de rebote a
+    # get_status, move_to_savings, release_savings_buffer y
+    # compute_smart_allocation (todos pasan por aqui).
+    total_income, total_expense = compute_totals(deposits, purchases)
     history = get_score_history(user_id) if user_id else []
     signals = compute_signals(
         deposits, purchases, bills_plain,
@@ -269,8 +272,10 @@ def simulate_decision(user_id, action, params=None):
         return {"ok": False, "reason": f"No se como simular '{action}'. Puedo simular: {', '.join(sorted(SIMULATABLE_ACTIONS))}."}
 
     deposits, purchases, bills_plain = load_data(user_id)
-    total_income = sum(float(d["amount"]) for d in deposits)
-    total_expense = sum(float(p["amount"]) for p in purchases if p.get("source", "bank") == "bank")
+    # compute_totals, no reimplementado a mano -- mismo bug real que ya se
+    # corrigio en get_full_signals: sumar purchases bank-only sin el trato
+    # especial de savings_release lo contaba como gasto en vez de ingreso.
+    total_income, total_expense = compute_totals(deposits, purchases)
     history = get_score_history(user_id) if user_id else []
     current = compute_signals(deposits, purchases, bills_plain, total_income=total_income, total_expense=total_expense, score_history=history)
 
@@ -312,7 +317,7 @@ def simulate_decision(user_id, action, params=None):
             {**p, "amount": float(p["amount"]) * scale} if p["category"] == "discretionary" else p
             for p in purchases
         ]
-        hypothetical_total_expense = sum(float(p["amount"]) for p in hypothetical_purchases if p.get("source", "bank") == "bank")
+        _, hypothetical_total_expense = compute_totals(deposits, hypothetical_purchases)
         hypothetical = compute_signals(
             deposits, hypothetical_purchases, bills_plain,
             total_income=total_income, total_expense=hypothetical_total_expense,
