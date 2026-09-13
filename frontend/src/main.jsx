@@ -341,12 +341,19 @@ function App() {
   const activeStatementMonth = statementMonth || statementMonths[0] || '';
   const statementTransactions = transactions.filter(tx => tx.date.slice(0, 7) === activeStatementMonth).sort((a, b) => a.date.localeCompare(b.date));
   const statementIncome = statementTransactions.filter(tx => tx.signed_amount > 0).reduce((sum, tx) => sum + tx.signed_amount, 0);
-  const statementExpense = statementTransactions.filter(tx => tx.signed_amount < 0).reduce((sum, tx) => sum - tx.signed_amount, 0);
+  // Bank-only, igual que running_balance del backend: un gasto en efectivo/otra
+  // tarjeta nunca salio de esta cuenta, asi que no debe restarse del saldo que
+  // el estado de cuenta reconcilia (saldo inicial + ingresos - gastos = saldo final).
+  const statementExpense = statementTransactions.filter(tx => tx.signed_amount < 0 && tx.source === 'bank').reduce((sum, tx) => sum - tx.signed_amount, 0);
   const statementBreakdown = Object.entries(
     statementTransactions.filter(tx => tx.signed_amount < 0 && !['savings_transfer'].includes(tx.category) && !tx.category?.startsWith('envelope:'))
       .reduce((acc, tx) => { acc[tx.category_label] = (acc[tx.category_label] || 0) + Math.abs(tx.signed_amount); return acc; }, {})
   ).sort((a, b) => b[1] - a[1]);
-  const statementOpening = statementTransactions.length ? statementTransactions[0].running_balance - statementTransactions[0].signed_amount : null;
+  // No se deriva del propio signed_amount de la primera transaccion del mes
+  // (fragil desde que running_balance dejo de moverse con gasto externo) --
+  // se busca el running_balance real justo antes de que empezara el mes.
+  const firstStatementIndex = statementTransactions.length ? transactions.findIndex(tx => tx.id === statementTransactions[0].id) : -1;
+  const statementOpening = statementTransactions.length ? (firstStatementIndex > 0 ? transactions[firstStatementIndex - 1].running_balance : 0) : null;
   const statementClosing = statementTransactions.length ? statementTransactions.at(-1).running_balance : null;
   const editingBudgetCategory = newBudgetCategory && budgetData?.budget.categories.some(cat => cat.category === newBudgetCategory);
   // "Mes actual" = el mes mas reciente con movimientos en el ledger, no la fecha real

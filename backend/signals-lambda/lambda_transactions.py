@@ -2,7 +2,11 @@
 Lambda: GET /transactions?user_id=mia
 Devuelve TODOS los movimientos crudos (deposits + purchases), sin filtrar
 ni agregar - el frontend decide despues que mostrar. Incluye running_balance
-ya calculado por conveniencia.
+ya calculado por conveniencia -- bank-only, mismo criterio que
+compute_totals/score_liquidity: un gasto declarado en efectivo u otra
+tarjeta (log_external_expense) se sigue listando (Ana lo registro, debe
+poder verlo), pero nunca sale de running_balance/total_expense porque ese
+dinero nunca salio de ESTA cuenta.
 """
 import json
 import boto3
@@ -42,8 +46,10 @@ def lambda_handler(event, context):
         # verificacion opere pareja sobre esa lista), pero es dinero
         # ENTRANDO a checking, no saliendo -- el signo tiene que reflejarlo.
         is_inflow = t["type"] == "deposit" or t.get("category") == "savings_release"
+        is_bank = t.get("source", "bank") == "bank"
         signed = amount if is_inflow else -amount
-        running_balance += signed
+        if is_inflow or is_bank:
+            running_balance += signed
         enriched.append({
             "id": t["sk"],
             "date": t["date"],
@@ -55,12 +61,13 @@ def lambda_handler(event, context):
             "amount": amount,
             "signed_amount": signed,
             "running_balance": round(running_balance, 2),
+            "source": t.get("source", "bank"),
         })
 
     summary = {
         "count": len(enriched),
         "total_income": sum(t["amount"] for t in enriched if t["type"] == "deposit" or t["category"] == "savings_release"),
-        "total_expense": sum(t["amount"] for t in enriched if t["type"] == "purchase" and t["category"] != "savings_release"),
+        "total_expense": sum(t["amount"] for t in enriched if t["type"] == "purchase" and t["category"] != "savings_release" and t["source"] == "bank"),
         "by_category": {},
     }
     for t in enriched:
