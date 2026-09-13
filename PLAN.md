@@ -1,4 +1,4 @@
-# Plan de implementación — Centinel One
+# Plan de implementación — Spark (antes Centinel One)
 
 Este documento existe para que cualquiera del equipo pueda seguir construyendo sin necesitar una explicación en vivo. Todo lo marcado como "en vivo" ya está probado end-to-end contra la cuenta oficial de AWS y el sandbox de Nessie — no es teoría.
 
@@ -219,3 +219,32 @@ Se pidió explícitamente buscar el mismo patrón de bug ya encontrado una vez (
 **Cobertura de pruebas — ✅ resuelto.** `backend/signals-lambda/test_agent_actions.py`, 33 tests con `unittest`/`unittest.mock` de la stdlib (cero dependencias nuevas, no se empaquetan en ningún Lambda). Mockea `table` (DynamoDB) y las funciones de `nessie_actions` — corre en ~15ms, nunca toca AWS/Nessie real. Cubre `verified_move_to_savings`, `verified_release_buffer`, `verified_allocate_envelopes`, el flujo de dos pasos de `propose_stop_bill`/`confirm_stop_bill`/`verified_stop_bill`, la deduplicación de `get_verified_action_history`, y `deposit_matches_income_pattern`.
 
 **Verificado que el suite de verdad atrapa regresiones, no solo que pasa en verde:** se reintrodujeron temporalmente (y se revirtieron de inmediato) los dos bugs de seguridad ya corregidos esta sesión — el guardrail de anomalía ignorado en `verified_allocate_envelopes` y la ejecución prematura en `propose_stop_bill` — y en ambos casos el test correspondiente falló como se esperaba antes de restaurar el fix real. Correr con `python -m unittest test_agent_actions -v` desde `backend/signals-lambda/`.
+
+## 8. Pivote de producto — Spark (persona Ana, estudiante) — backlog concreto, nada de esto está construido todavía
+
+Decidido el 2026-09-12 tras feedback de jueces/mentores sobre el modelo de negocio original. Razonamiento completo en [PITCH.md](./PITCH.md). **Este pase solo tocó documentación** (este archivo, README.md, PITCH.md) — instrucción explícita de no tocar frontend/backend todavía. Lo que sigue es el backlog para cuando sí se autorice tocar código, en el orden recomendado:
+
+**8.1 — Docs (✅ hecho en este pase)**
+- README.md: sección de pivote, persona nueva, panorama competitivo actualizado, notas de honestidad en seed/estado actual.
+- PITCH.md: frase en una línea nueva, modelo de negocio de dos líneas + TAM/SAM/SOM, argumento regulatorio invertido (ya no necesitamos licencia de money transmitter), citas verificadas nuevas (Cardlytics, Belvo, Finerio Connect, Santander Cuenta Universitaria/TUI), autocrítica del pivote mismo, guion de 3 minutos con narrativa de Ana + nota de honestidad sobre que el código no está al día.
+- PLAN.md: esta sección.
+
+**8.2 — Re-seed de Nessie (backend, no frontend) — estimado 30-40 min**
+- Mismo script/patrón que `seed/jarbis-seed.js`, mismos tipos de transacción (deposits/purchases/bills), nuevos labels: mesada/sueldo de medio tiempo (en vez de "pago freelance"), colegiatura o renta de cuarto, cafetería/comedor (en vez de súper), transporte, papelería/útiles, entretenimiento discrecional, una membresía sin usar (Gym Co se queda igual, sigue siendo creíble).
+- Decisión pendiente: ¿nueva cuenta Nessie (`user_id="ana"`) en paralelo a Mia, o reemplazar el seed de Mia? Recomendado: cuenta nueva en paralelo, así Mia sigue disponible como fallback/comparación y no se pierde el trabajo de pruebas ya hecho contra sus datos.
+
+**8.3 — Señal de "activación" (backend, nuevo) — estimado 30-40 min con tests**
+- Nueva función en `signal_engine.py`, ej. `compute_activation_signal(deposits, purchases, card_issued_date)` — mide días desde la última transacción real y/o frecuencia mensual de uso, devuelve un índice 0-100 y una alerta cuando está por debajo de un umbral.
+- Esta es la pieza de "Algorithmic Logic/Intelligence" (9% de la rúbrica, el sub-criterio individual más pesado) que justifica que esto no sea "solo un dashboard con ofertas" — sin esto, el pivote pierde Technical Depth respecto a la idea original.
+- Necesita tests unitarios siguiendo el patrón de `test_signal_engine.py` (funciones puras, sin mocks).
+
+**8.4 — Módulo de ofertas / card-linked offers (backend + una pantalla nueva) — estimado 20-30 min**
+- Lista curada estática de ofertas por categoría (ej. descuento estudiantil de streaming para "entretenimiento", promo Mastercard-Cinépolis) — lógica simple: toma la categoría de mayor gasto discrecional real (`summary.by_category`, ya existe) y regresa la oferta correspondiente.
+- No hace falta integración real con comercios para la demo — el punto es mostrar que la recomendación está basada en datos reales del usuario, no es genérica.
+
+**8.5 — Re-skin de frontend (copy únicamente, cero lógica nueva) — estimado 30-40 min**
+- Persona: nombre, edad, tagline del login, FAQ, mensajes de chat, narrativa de cierre del score.
+- Nombre del "empleador" en la simulación de depósito de un tercero: de "Estudio Creativo" a algo tipo "Papá y mamá" o "Beca/Trabajo de medio tiempo".
+- Nombre del banco ficticio en la demo: **no usar "Santander" literal** (evitar implicar un partnership real que no existe) — usar un nombre ficticio, ej. "Banco Aurora", y citar a Santander solo como evidencia de mercado en el pitch, no en la demo misma.
+
+**Nombre de producto elegido para el pivote: "Spark"** (discutido y elegido sobre otras opciones — Lanix, Activa, Kick, Boost, Pulse — por ser corto, fácil de decir en el pitch, y conectar directo con la tesis de "encender una tarjeta dormida").
