@@ -31,6 +31,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install test dependencies
+        # boto3 no se empaqueta en el zip del Lambda (lo da el runtime de
+        # AWS nativamente) -- solo hace falta aqui para poder importar y
+        # correr los tests localmente/en CI.
+        run: pip install boto3
+
       - name: Run tests
         run: python -m unittest test_agent_actions test_signal_engine test_lambda_chat -v
 
