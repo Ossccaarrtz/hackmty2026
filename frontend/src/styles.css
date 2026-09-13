@@ -248,3 +248,30 @@ input:focus,select:focus,textarea:focus{outline:0;box-shadow:0 0 0 3px #0048781f
   .connected-dashboard .category-spending{width:100%;align-self:center;margin-left:auto;margin-right:auto}
   .connected-dashboard .stats-grid>.health-card{height:auto;min-height:270px}
 }
+
+/* Fondo único y continuo: azul grisáceo suave, sin una card envolvente. */
+body,.login-page{
+  min-height:100vh;
+  background:
+    radial-gradient(circle at 8% 10%,rgba(255,255,255,.82) 0,transparent 34%),
+    radial-gradient(circle at 88% 84%,rgba(80,142,173,.20) 0,transparent 42%),
+    linear-gradient(145deg,#f4f5f3 0%,#e7eded 27%,#d4e3e6 60%,#b8d4dd 100%);
+  background-attachment:fixed;
+}
+
+.dashboard{
+  background:transparent;
+  border:0;
+  box-shadow:none;
+  backdrop-filter:none;
+}
+
+@media(max-width:700px){
+  body,.login-page{
+    background:
+      radial-gradient(circle at 12% 5%,rgba(255,255,255,.76) 0,transparent 31%),
+      radial-gradient(circle at 92% 86%,rgba(80,142,173,.20) 0,transparent 40%),
+      linear-gradient(160deg,#f3f5f3 0%,#e2ebeb 37%,#c6dde2 72%,#afd0da 100%);
+    background-attachment:scroll;
+  }
+}
